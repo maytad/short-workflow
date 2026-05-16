@@ -69,8 +69,8 @@ Never:
 - Add background music to the first MVP.
 - Let `apps/web` import `packages/db` directly.
 - Let `apps/web` connect to Supabase directly.
-- Use `drizzle-kit push` for normal schema changes.
-- Treat `drizzle-kit up` as the application migration-up command; it is for Drizzle snapshot metadata upgrades.
+- `drizzle-kit push` is prohibited for schema changes against any persistent database. Use committed migrations only.
+- `drizzle-kit up` is not the application migration-up command; it is for Drizzle snapshot metadata upgrades.
 - Store binary or base64 provider payloads in `prompt_versions`.
 - Commit `.env` files, secrets, service role keys, generated videos, or large generated assets.
 - Change the video output language away from English unless the user changes the product decision.
@@ -125,6 +125,7 @@ The MVP does not require a full automated test suite before the first working lo
 - Drizzle schema in `packages/db/src/schema.ts` is the table-definition source of truth.
 - Migration folders live under `packages/db/migrations`.
 - Each migration must include `migration.sql` and `down.sql`.
+- Normal schema change flow is: update Drizzle schema, run `bun run db:generate`, review or edit `migration.sql`, add reviewed `down.sql`, run `bun run db:check`, then run `bun run db:migrate:up`.
 - `db:migrate:up` applies unapplied `migration.sql` files in lexical order and records them in `app_migrations`.
 - `db:migrate:down -- --steps N` applies latest `down.sql` files in reverse order and removes their `app_migrations` records only after rollback succeeds.
 - Missing `down.sql` should fail loudly. Intentionally irreversible migrations must include an explicit failing statement and a comment explaining why rollback is blocked.
