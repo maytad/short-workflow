@@ -66,7 +66,23 @@ Default 45-second structure:
 
 ## Architecture
 
-The repository is a pnpm workspace monorepo orchestrated with Turborepo.
+The repository is a Bun workspace monorepo orchestrated with Turborepo.
+
+- Package manager: Bun workspaces.
+- Task orchestration and caching: Turborepo.
+- Runtime for `apps/api`: Bun.
+- Runtime for `apps/worker`: Bun.
+- Runtime for `apps/web`: Vite scripts launched through Bun.
+- Runtime for `apps/render`: Remotion scripts may run through Node.js when Studio or rendering compatibility requires it.
+
+The root `package.json` should declare Bun as the package manager and include direct workspace globs:
+
+```json
+{
+  "packageManager": "bun@1.2.0",
+  "workspaces": ["apps/*", "packages/*"]
+}
+```
 
 ```text
 short-workflow/
@@ -91,7 +107,7 @@ short-workflow/
 
 `apps/worker` runs local worker commands on Bun. It processes pending jobs from the database, calls AI providers, writes local assets, updates asset and job records, and triggers Remotion render jobs.
 
-`apps/render` owns Remotion compositions and render commands. It accepts a typed render input JSON and produces a local MP4.
+`apps/render` owns Remotion compositions and render commands. It accepts a typed render input JSON and produces a local MP4. Remotion is Node-first, so render and Studio commands should be allowed to run through Node.js even though the monorepo uses Bun for package management and the API/worker runtime.
 
 `packages/db` is the database boundary and source of truth for migrations, generated Supabase types, and DB query functions.
 
@@ -458,11 +474,12 @@ The service role key and AI keys are only used by `apps/api` and `apps/worker`.
 Expected local commands:
 
 ```text
-pnpm dev:web
-pnpm dev:api
-pnpm dev:worker
-pnpm dev:render
-pnpm render:project --project <projectId>
+bun run dev
+bun run dev:web
+bun run dev:api
+bun run dev:worker
+bun run dev:render
+bun run render:project --project <projectId>
 ```
 
 The exact scripts will be defined during implementation.
