@@ -147,6 +147,82 @@ short-workflow/
 
 `packages/shared` owns schemas and types shared by web, API, worker, and render.
 
+## Frontend React Design
+
+`apps/web` uses React with Vite, TanStack Router, and TanStack Query, also known as React Query. TanStack Router owns navigation and URL state. TanStack Query owns server state, cache invalidation, polling, retries, and mutation status.
+
+Frontend package expectations:
+
+- `@tanstack/react-router`
+- `@tanstack/react-query`
+- `@tanstack/react-query-devtools` for local development only
+- shared request and response schemas imported from `packages/shared`
+
+The root React tree should install a single `QueryClientProvider` next to the router provider. The query client should use conservative defaults:
+
+- `staleTime`: 5 seconds for project, scene, asset, and render reads.
+- `gcTime`: 5 minutes for normal reads.
+- `retry`: 1 retry for idempotent GET requests only.
+- Mutations should not retry provider-triggering actions by default.
+
+`apps/web` should expose a thin API client around `fetch`. It should:
+
+- call only `apps/api`
+- parse responses with shared schemas
+- throw a typed `ApiError` containing HTTP status and response payload
+- never import `packages/db`
+- never access Supabase directly
+
+Use a query key factory instead of ad hoc string arrays. Initial keys:
+
+```ts
+projects.all
+projects.detail(projectId)
+projects.scenes(projectId)
+projects.assets(projectId)
+projects.renders(projectId)
+projects.jobs(projectId, status)
+```
+
+Route components should read server data through query hooks, not duplicate it in local state. Local React state is reserved for UI-only concerns such as selected scene id, focused panel, unsaved form edits, disclosure modal visibility, and transient preview controls. URL state should hold durable navigation state such as active project id, selected scene id, and current step when useful for reloads or sharing local URLs.
+
+Core query hooks:
+
+- `useProjectsQuery()`
+- `useProjectQuery(projectId)`
+- `useProjectScenesQuery(projectId)`
+- `useProjectAssetsQuery(projectId)`
+- `useProjectRendersQuery(projectId)`
+- `useProjectJobsQuery(projectId, status)`
+
+Core mutation hooks:
+
+- `useCreateProjectMutation()`
+- `useUpdateProjectMutation(projectId)`
+- `useDeleteProjectMutation(projectId)`
+- `useGenerateScriptMutation(projectId)`
+- `useUpdateSceneMutation(sceneId)`
+- `useGenerateSceneImageMutation(sceneId)`
+- `useGenerateSceneAudioMutation(sceneId)`
+- `useRenderProjectMutation(projectId)`
+- `useRetryJobMutation(jobId)`
+- `useAcknowledgeDisclosureMutation(renderId)`
+
+Mutation invalidation rules:
+
+- Project create/delete invalidates `projects.all`.
+- Project update invalidates `projects.detail(projectId)` and `projects.all`.
+- Script generation invalidates project detail, scenes, jobs, assets, and renders for the project.
+- Scene patch invalidates project detail and scenes. It should also invalidate assets because prior image/audio may become stale for the current scene content.
+- Image/audio generation invalidates jobs and assets for the project.
+- Render mutation invalidates jobs, renders, assets, and project detail.
+- Job retry invalidates jobs and the affected project-level or scene-level resources once the retry succeeds.
+- Disclosure acknowledgement invalidates renders for the project.
+
+Job progress polling uses TanStack Query. `useProjectJobsQuery(projectId, "active")` should poll every 2 seconds only while the project screen is mounted and active jobs exist. When the active jobs query changes from non-empty to empty, invalidate project detail, scenes, assets, and renders once so the UI reflects completed worker outputs. SSE and WebSockets remain out of scope for the MVP.
+
+Optimistic updates are allowed only for lightweight text edits, such as project title/topic and scene text fields. Generation and render mutations should show pending job state from the API instead of fabricating generated assets on the client. API `409` and `422` responses should be displayed inline on the relevant step or scene so the user can fix the blocking condition.
+
 ## Security Model
 
 The MVP is intentionally local-only and single-user.
@@ -654,7 +730,7 @@ Read-only scene fields in the MVP:
 
 `duration_seconds` remains fixed by the selected duration preset. A freeform timeline editor is out of scope for the MVP.
 
-Job progress uses polling in the MVP. The frontend should poll `GET /projects/:projectId/jobs?status=active` every 2 seconds while active jobs exist and stop polling once all jobs are in a terminal status. SSE and WebSockets are out of scope for the MVP.
+Job progress uses TanStack Query polling in the MVP. The frontend should poll `GET /projects/:projectId/jobs?status=active` every 2 seconds while active jobs exist and stop polling once all jobs are in a terminal status. SSE and WebSockets are out of scope for the MVP.
 
 `GET /projects/:projectId/jobs` query behavior:
 
