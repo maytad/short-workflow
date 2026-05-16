@@ -198,6 +198,21 @@ Project status values:
 
 Project status represents the top-level project lifecycle only. Script, image, audio, and render progress is derived from `jobs`, `assets`, `scenes`, and `renders`. A project becomes `ready` once the editable script and scene plan are complete enough to generate assets. Regenerating one scene image or audio file does not move the whole project back into a phase-specific status.
 
+Project status transitions:
+
+| Event | From | To | Rule |
+| --- | --- | --- | --- |
+| Project created | none | `draft` | New projects start without a complete scene plan. |
+| Script generation succeeds | `draft`, `ready`, `done`, `failed` | `ready` | All required scene rows exist and each scene is `ready`. |
+| Scene content becomes incomplete | `ready`, `done`, `failed` | `draft` | Any scene loses a required editable field. |
+| Scene content changes after a successful render | `done`, `failed` | `ready` | Existing render history remains, but the latest render is stale. |
+| Render job starts processing | `ready`, `done`, `failed` | `rendering` | The worker has claimed a `render_video` job. |
+| Render succeeds | `rendering` | `done` | A render row is `succeeded` and has a ready output asset. |
+| Render fails permanently | `rendering` | `failed` | The render job reaches `failed` after auto-retry is exhausted. |
+| User retries failed render | `failed` | `rendering` | A new `render_video` retry job is claimed. |
+
+Project status is updated by API and worker mutation handlers. It is not a generated database column because render job lifecycle events affect it.
+
 ### scenes
 
 Stores the editable scene plan.
@@ -235,6 +250,8 @@ Scene status represents the editable content state only. Image and audio generat
 A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` are all present and non-empty. A scene can remain `ready` while its image or audio assets are missing, pending, regenerating, or failed.
 
 Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. Content generation failures are represented by `jobs`, not by `scenes.status`.
+
+Scene positions are unique within a project. The database must enforce `unique (project_id, position)` so script generation retries cannot create duplicate scene rows for the same slot.
 
 ### assets
 
@@ -280,11 +297,19 @@ The `path` field stores a relative portable path, not an absolute filesystem pat
 Example:
 
 ```text
-projects/{projectId}/scenes/{sceneId}/image.png
-projects/{projectId}/scenes/{sceneId}/voice.mp3
+projects/{projectId}/scenes/{sceneId}/images/{assetId}.png
+projects/{projectId}/scenes/{sceneId}/audio/{assetId}.mp3
 projects/{projectId}/renders/{renderId}.mp4
 projects/{projectId}/input/{renderId}.json
 ```
+
+Generated asset paths are append-only in the MVP. Image and audio regeneration creates new asset records and new file paths instead of overwriting an existing file.
+
+Consumers that need a scene image or audio file should select the newest `ready` asset for `(project_id, scene_id, kind)` by `created_at desc`. `pending` and `failed` assets are ignored for rendering.
+
+`mime_type`, `size_bytes`, and `checksum` are nullable while an asset is `pending` or `failed`. They are populated only after the worker has fully written the file and moved the asset to `ready`.
+
+Checksums use the format `sha256:<hex>`. If checksum computation fails in the MVP, leave the field null rather than blocking the whole generation flow.
 
 ### jobs
 
@@ -399,6 +424,8 @@ Job idempotency scopes:
 
 User-initiated retry creates a new job using the failed job input. The new job starts with `attempts = 0`, keeps the same default `max_attempts`, and stores the failed job id in `parent_job_id`. The failed job remains unchanged for audit history.
 
+`POST /jobs/:jobId/retry` is valid only for `failed` jobs. Retrying `pending`, `processing`, or `succeeded` jobs returns `409 Conflict`. Re-doing a successful generation should call the specific generation endpoint again, not the retry endpoint.
+
 Worker failure handling provides lightweight auto-retry:
 
 - If a handler fails and `attempts < max_attempts`, set the job back to `pending` and store the latest `error_message`.
@@ -410,7 +437,7 @@ Worker failure handling provides lightweight auto-retry:
 - `generate_script` and `render_video` are project-level jobs and must have `scene_id = null`.
 - `generate_scene_image` and `generate_scene_audio` are scene-level jobs and must have `scene_id` set.
 
-Idempotency must be enforced at the database level, not only by application checks. Use partial unique indexes for active jobs:
+Idempotency and scene position constraints must be enforced at the database level, not only by application checks:
 
 ```sql
 create unique index jobs_one_active_project_job
@@ -422,6 +449,9 @@ create unique index jobs_one_active_scene_job
 on jobs (scene_id, type)
 where scene_id is not null
   and status in ('pending', 'processing');
+
+create unique index scenes_one_position_per_project
+on scenes (project_id, position);
 ```
 
 Migration index hints:
@@ -477,7 +507,7 @@ Key fields:
 - `response_metadata`
 - `created_at`
 
-`prompt_versions` must not store binary payloads or base64 image/audio data. Large provider responses should be summarized in `response_text` and linked to generated files through `assets`. `response_metadata` may store compact JSON provider metadata, token usage, model ids, and safety/status fields. The implementation should keep each stored response payload under 64 KB.
+`prompt_versions` must not store binary payloads or base64 image/audio data. Large provider responses should be summarized in `response_text` and linked to generated files through `assets`. `response_metadata` may store compact JSON provider metadata, token usage, model ids, and provider-neutral `safety_info`. The implementation should keep each stored response payload under 64 KB.
 
 `revision` increments within the scope of `(project_id, scene_id, purpose)`. For project-level prompts where `scene_id` is null, the revision increments within `(project_id, purpose)`. This makes regenerated script, prompt, and SSML history easy to inspect without relying only on timestamps.
 
@@ -489,7 +519,7 @@ Key fields:
 - `tokens_out`
 - `finish_reason`
 - `latency_ms`
-- `safety_status`
+- `safety_info`
 
 ## Local Asset Storage
 
@@ -509,13 +539,17 @@ Suggested local structure:
     {projectId}/
       scenes/
         {sceneId}/
-          image.png
-          voice.mp3
+          images/
+            {assetId}.png
+          audio/
+            {assetId}.mp3
       renders/
         {renderId}.mp4
       input/
         {renderId}.json
 ```
+
+Workers write generated files to a temporary path first, then atomically rename the completed file to its final asset path. The worker updates the asset record to `ready` only after the rename succeeds and file metadata has been computed. On failure, the worker should delete the temporary file best-effort and leave the asset `failed` with nullable file metadata.
 
 Project deletion is destructive in the MVP. `DELETE /projects/:projectId` removes project rows and attempts to recursively delete:
 
@@ -551,6 +585,23 @@ Initial endpoints:
 
 The API returns typed JSON validated by shared schemas.
 
+`POST /projects/:projectId/generate-script` behavior:
+
+- First successful run creates the preset-driven scene rows for the selected duration.
+- If the project already has `pending` or `processing` jobs, return `409 Conflict`.
+- Regeneration merges by `position` inside one database transaction, using the `unique (project_id, position)` constraint.
+- Existing scene ids are preserved when the same position is regenerated.
+- `narration`, `caption`, `image_prompt`, `ssml`, `role`, and `duration_seconds` are updated from the new script output.
+- Scene rows whose positions are no longer present after a duration preset change are removed.
+- If a scene content field changes, existing image and audio asset records for that scene are removed and their local files are deleted best-effort, because they no longer match the current scene plan.
+- Existing render rows and render assets remain append-only history. The project moves back to `ready` after successful regeneration.
+
+`POST /scenes/:sceneId/generate-image` and `POST /scenes/:sceneId/generate-audio` behavior:
+
+- If an equivalent active job already exists for the scene and kind, return that job.
+- Otherwise create a new job and a new append-only asset record.
+- A successful generation writes a new ready asset; the newest ready asset becomes the default file used by previews and render input generation.
+
 `PATCH /scenes/:sceneId` editable fields in the MVP:
 
 - `narration`
@@ -579,6 +630,8 @@ Job progress uses polling in the MVP. The frontend should poll `GET /projects/:p
 - Sort order is newest first by `created_at`.
 
 Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds a render-specific input JSON, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
+
+The render input builder selects the newest ready image and audio asset for each scene. If any required scene is missing a ready image or audio asset, the `render_video` job fails with a clear error instead of producing a partial video.
 
 `POST /renders/:renderId/acknowledge-disclosure` sets `ai_disclosure_acknowledged_at` to the current timestamp. The endpoint is used by the export confirmation UI before the user uses the generated MP4 externally.
 
@@ -642,8 +695,8 @@ Example shape:
       "durationSeconds": 3,
       "narration": "English narration",
       "caption": "English caption",
-      "imagePath": "projects/project-id/scenes/scene-id/image.png",
-      "audioPath": "projects/project-id/scenes/scene-id/voice.mp3"
+      "imagePath": "projects/project-id/scenes/scene-id/images/asset-id.png",
+      "audioPath": "projects/project-id/scenes/scene-id/audio/asset-id.mp3"
     }
   ]
 }
