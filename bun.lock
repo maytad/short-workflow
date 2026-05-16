@@ -31,6 +31,12 @@
     },
     "apps/worker": {
       "name": "@short-workflow/worker",
+      "dependencies": {
+        "@short-workflow/ai": "workspace:*",
+        "@short-workflow/db": "workspace:*",
+        "@short-workflow/shared": "workspace:*",
+        "zod": "latest",
+      },
     },
     "packages/ai": {
       "name": "@short-workflow/ai",
