@@ -3,5 +3,5 @@
   "compilerOptions": {
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["drizzle.config.ts", "scripts/**/*.ts", "src/**/*.ts"]
 }
