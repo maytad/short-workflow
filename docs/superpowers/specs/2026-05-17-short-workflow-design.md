@@ -154,8 +154,11 @@ short-workflow/
 Frontend package expectations:
 
 - `@tanstack/react-router`
+- `@tanstack/router-plugin` for Vite file-based route generation
 - `@tanstack/react-query`
 - `@tanstack/react-query-devtools` for local development only
+- `react-hook-form`
+- `@hookform/resolvers`
 - `tailwindcss`
 - `@tailwindcss/vite`
 - shadcn/ui CLI-generated components
@@ -168,6 +171,8 @@ The root React tree should install a single `QueryClientProvider` next to the ro
 - `gcTime`: 5 minutes for normal reads.
 - `retry`: 1 retry for idempotent GET requests only.
 - Mutations should not retry provider-triggering actions by default.
+
+TanStack Router should use file-based routing through the Vite plugin. Route files live in `apps/web/src/routes`. The generated route tree lives at `apps/web/src/routeTree.gen.ts` and should not be manually edited. Feature implementation should stay in `apps/web/src/features/*`; route files should compose feature components and route-level loaders/search params.
 
 `apps/web` should expose a thin API client around `fetch`. It should:
 
@@ -189,6 +194,8 @@ projects.jobs(projectId, status)
 ```
 
 Route components should read server data through query hooks, not duplicate it in local state. Local React state is reserved for UI-only concerns such as selected scene id, focused panel, unsaved form edits, disclosure modal visibility, and transient preview controls. URL state should hold durable navigation state such as active project id, selected scene id, and current step when useful for reloads or sharing local URLs.
+
+Forms should use `react-hook-form` with `@hookform/resolvers/zod` and schemas from `packages/shared`. Scene editor forms should track dirty state, field-level validation errors, and submit state through form APIs instead of hand-rolled per-field state.
 
 Core query hooks:
 
@@ -223,6 +230,8 @@ Mutation invalidation rules:
 - Job retry invalidates jobs and the affected project-level or scene-level resources once the retry succeeds.
 - Disclosure acknowledgement invalidates renders for the project.
 
+Scene patch optimistic updates need special asset handling. If a scene content field changes optimistically, the mutation must immediately invalidate or optimistically mark the affected scene's image/audio assets as stale in `projects.assets(projectId)` during `onMutate`, before waiting for `onSuccess`. This prevents the UI from briefly showing an old image or audio as current while the server bumps `content_updated_at`.
+
 Job progress polling uses TanStack Query. `useProjectJobsQuery(projectId, "active")` should poll every 2 seconds only while the project screen is mounted and active jobs exist. When the active jobs query changes from non-empty to empty, invalidate project detail, scenes, assets, and renders once so the UI reflects completed worker outputs. SSE and WebSockets remain out of scope for the MVP.
 
 Optimistic updates are allowed only for lightweight text edits, such as project title/topic and scene text fields. Generation and render mutations should show pending job state from the API instead of fabricating generated assets on the client. API `409` and `422` responses should be displayed inline on the relevant step or scene so the user can fix the blocking condition.
@@ -248,7 +257,10 @@ shadcn/ui setup:
 
 Initial shadcn components:
 
+- `alert`
 - `button`
+- `card`
+- `form`
 - `input`
 - `textarea`
 - `label`
@@ -271,6 +283,8 @@ Design taste baseline for this workflow tool:
 - `MOTION_INTENSITY`: 3-4
 - `VISUAL_DENSITY`: 6
 
+These values use a 1-10 scale where 1 is the most conservative and 10 is the most expressive. `DESIGN_VARIANCE` controls layout asymmetry and visual distinctiveness, `MOTION_INTENSITY` controls animation amount, and `VISUAL_DENSITY` controls how much information appears on screen at once.
+
 This is a focused production tool, not a marketing site. The first screen should be the usable editor workflow, not a landing page. Use clear information architecture, compact controls, predictable navigation, and restrained visual styling.
 
 shadcn customization rules:
@@ -288,8 +302,9 @@ shadcn customization rules:
 
 Expected UI structure:
 
-- App shell with a left project/step rail, central scene editor, and right preview/status panel on desktop.
-- Mobile layout collapses into a single-column step flow with preview below the active editor.
+- MVP is desktop-first, optimized for laptop and desktop localhost use.
+- App shell has a left project/step rail, central scene editor, and right preview/status panel on desktop.
+- Mobile responsive polish is out of scope for the MVP. Small screens should avoid broken layout, but the app does not need an optimized phone workflow.
 - Scene list should be scannable, showing role, position, asset readiness, and job state.
 - Scene editor should expose narration, caption, image prompt, SSML, image generation, and audio generation without hiding required fields behind multiple modals.
 - Render step should show precondition failures inline before allowing render.
@@ -639,6 +654,7 @@ Migration index hints:
 
 - `jobs(project_id, status, created_at desc)` for project job polling.
 - `jobs(started_at) where status = 'processing'` for stale job recovery.
+- `assets(scene_id, kind, created_at desc) where status = 'ready'` for current asset lookup during render preconditions and render input generation.
 - `prompt_versions(project_id, scene_id, purpose, revision desc)` for prompt history lookup.
 
 ### renders
