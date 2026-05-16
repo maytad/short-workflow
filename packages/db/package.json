@@ -1,0 +1,14 @@
+{
+  "name": "@short-workflow/db",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "generate": "drizzle-kit generate",
+    "check": "bun test",
+    "migrate:up": "bun scripts/migrate.ts up",
+    "migrate:down": "bun scripts/migrate.ts down",
+    "studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit"
+  }
+}

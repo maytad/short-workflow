@@ -1,0 +1,26 @@
+{
+  "name": "short-workflow",
+  "private": true,
+  "packageManager": "bun@1.2.0",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "dev:web": "turbo run dev --filter=@short-workflow/web",
+    "dev:api": "turbo run dev --filter=@short-workflow/api",
+    "dev:worker": "turbo run dev --filter=@short-workflow/worker",
+    "dev:render": "turbo run dev --filter=@short-workflow/render",
+    "check": "turbo run check",
+    "typecheck": "turbo run typecheck",
+    "db:generate": "bun --cwd packages/db run generate",
+    "db:check": "bun --cwd packages/db run check",
+    "db:migrate:up": "bun --cwd packages/db run migrate:up",
+    "db:migrate:down": "bun --cwd packages/db run migrate:down",
+    "db:studio": "bun --cwd packages/db run studio",
+    "render:project": "bun --cwd apps/render run render:project"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "turbo": "latest",
+    "typescript": "latest"
+  }
+}

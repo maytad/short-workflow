@@ -1,0 +1,12 @@
+{
+  "name": "@short-workflow/render",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "render:project": "bun src/index.ts",
+    "check": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}

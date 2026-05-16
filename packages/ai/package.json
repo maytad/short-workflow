@@ -1,0 +1,10 @@
+{
+  "name": "@short-workflow/ai",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "check": "bun test",
+    "typecheck": "tsc --noEmit"
+  }
+}
