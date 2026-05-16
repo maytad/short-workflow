@@ -183,15 +183,12 @@ Key fields:
 Project status values:
 
 - `draft`
-- `script_generating`
-- `script_ready`
-- `images_generating`
-- `images_ready`
-- `audio_generating`
-- `audio_ready`
+- `ready`
 - `rendering`
 - `done`
 - `failed`
+
+Project status represents the top-level project lifecycle only. Script, image, audio, and render progress is derived from `jobs`, `assets`, `scenes`, and `renders`. A project becomes `ready` once the editable script and scene plan are complete enough to generate assets. Regenerating one scene image or audio file does not move the whole project back into a phase-specific status.
 
 ### scenes
 
@@ -227,6 +224,8 @@ Scene status values:
 - `failed`
 
 Scene status represents the editable content state only. Image and audio generation state is derived from `assets` and `jobs`, which are the source of truth for generated files and in-progress work.
+
+A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` are all present and non-empty. A scene can remain `ready` while its image or audio assets are missing, pending, regenerating, or failed.
 
 ### assets
 
@@ -291,6 +290,7 @@ Key fields:
 - `status`
 - `attempts`
 - `max_attempts`
+- `parent_job_id`
 - `error_message`
 - `input`
 - `output`
@@ -315,6 +315,14 @@ Job statuses:
 - `failed`
 
 The worker claims pending jobs atomically in the database and updates status after completion. Failed jobs can be retried from the UI.
+
+The MVP uses one worker process with configurable in-process concurrency. Default concurrency is `2` and can be configured with:
+
+```text
+WORKER_CONCURRENCY=2
+```
+
+Each concurrent handler must claim jobs through the same atomic database function. This keeps the MVP simple while allowing image or audio work across multiple scenes to proceed in parallel.
 
 The implementation should expose a database function such as `claim_next_job()` and call it from the worker. The function should use row locking so running two worker processes does not process the same job twice.
 
@@ -341,6 +349,18 @@ returning *;
 ```
 
 An alternative `UPDATE ... WHERE status = 'pending' RETURNING *` pattern is acceptable only if it preserves the same atomic claim behavior.
+
+Generation endpoints are idempotent by job scope. If an equivalent `pending` or `processing` job already exists, the API returns the existing job instead of creating a duplicate.
+
+Job idempotency scopes:
+
+- `generate_script`: one active job per project.
+- `generate_scene_image`: one active image job per scene.
+- `generate_scene_audio`: one active audio job per scene.
+- `render_video`: one active render job per project.
+- `build_render_input`: internal sub-step of `render_video`; it should not be created directly by the public API.
+
+User-initiated retry creates a new job using the failed job input. The new job starts with `attempts = 0`, keeps the same default `max_attempts`, and stores the failed job id in `parent_job_id`. The failed job remains unchanged for audit history.
 
 ### renders
 
@@ -393,6 +413,16 @@ Key fields:
 
 `revision` increments within the scope of `(project_id, scene_id, purpose)`. For project-level prompts where `scene_id` is null, the revision increments within `(project_id, purpose)`. This makes regenerated script, prompt, and SSML history easy to inspect without relying only on timestamps.
 
+`response_metadata` should include compact debugging fields when available:
+
+- `request_id`
+- `model_id`
+- `tokens_in`
+- `tokens_out`
+- `finish_reason`
+- `latency_ms`
+- `safety_status`
+
 ## Local Asset Storage
 
 Assets are stored on the local filesystem in the MVP. The database stores portable relative paths and metadata so asset records can later point to Supabase Storage or Google Cloud Storage without changing project or scene logic.
@@ -444,6 +474,7 @@ Initial endpoints:
 - `POST /scenes/:sceneId/generate-audio`
 - `POST /projects/:projectId/render`
 - `POST /jobs/:jobId/retry`
+- `POST /renders/:renderId/acknowledge-disclosure`
 - `GET /projects/:projectId/jobs`
 - `GET /projects/:projectId/assets`
 - `GET /projects/:projectId/renders`
@@ -454,6 +485,8 @@ Job progress uses polling in the MVP. The frontend should poll `GET /projects/:p
 
 Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds `remotion-input.json`, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
 
+`POST /renders/:renderId/acknowledge-disclosure` sets `ai_disclosure_acknowledged_at` to the current timestamp. The endpoint is used by the export confirmation UI before the user uses the generated MP4 externally.
+
 ## AI Provider Responsibilities
 
 OpenAI GPT-5.5 is used for:
@@ -463,6 +496,14 @@ OpenAI GPT-5.5 is used for:
 - caption drafting
 - image prompt drafting
 - SSML drafting
+
+The script model is config-driven, not hardcoded across the codebase:
+
+```text
+OPENAI_SCRIPT_MODEL=gpt-5.5
+```
+
+If the exact model id changes, update the configuration and provider wrapper rather than scattering model strings through app code.
 
 Google Gemini image generation, using the Nano Banana image model family, is used for:
 
@@ -564,6 +605,7 @@ OPENAI_API_KEY=
 GOOGLE_API_KEY=
 GOOGLE_CLOUD_TEXT_TO_SPEECH_KEY_PATH=
 LOCAL_ASSET_ROOT=
+WORKER_CONCURRENCY=2
 API_BASE_URL=http://localhost:3001
 ```
 
@@ -609,10 +651,9 @@ Automated platform disclosure and upload checks are out of scope for MVP.
 6. Add OpenAI script generation.
 7. Add scene image generation.
 8. Add scene audio generation.
-9. Add Remotion input generation.
-10. Add local Remotion rendering.
-11. Add retry and failure handling.
-12. Run a manual end-to-end MVP smoke pass from topic to MP4.
+9. Add internal render input builder and local Remotion rendering.
+10. Add retry and failure handling.
+11. Run a manual end-to-end MVP smoke pass from topic to MP4.
 
 ## Open Decisions
 
