@@ -7,5 +7,15 @@
     "dev": "bun --watch src/index.ts",
     "check": "bun test",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "latest",
+    "@short-workflow/db": "workspace:*",
+    "@short-workflow/shared": "workspace:*",
+    "elysia": "latest",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest"
   }
 }
