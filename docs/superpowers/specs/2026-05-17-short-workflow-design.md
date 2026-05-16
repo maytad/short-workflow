@@ -227,6 +227,8 @@ Scene status represents the editable content state only. Image and audio generat
 
 A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` are all present and non-empty. A scene can remain `ready` while its image or audio assets are missing, pending, regenerating, or failed.
 
+Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. `failed` is reserved for content-generation failures that prevent the scene text plan from being usable.
+
 ### assets
 
 Stores generated file metadata and portable local paths.
@@ -304,7 +306,6 @@ Job types:
 - `generate_script`
 - `generate_scene_image`
 - `generate_scene_audio`
-- `build_render_input`
 - `render_video`
 
 Job statuses:
@@ -323,6 +324,23 @@ WORKER_CONCURRENCY=2
 ```
 
 Each concurrent handler must claim jobs through the same atomic database function. This keeps the MVP simple while allowing image or audio work across multiple scenes to proceed in parallel.
+
+On startup, and periodically while running, the worker should recover stale `processing` jobs by moving jobs with an old `started_at` back to `pending`.
+
+Preferred stale recovery pattern:
+
+```sql
+update jobs
+set
+  status = 'pending',
+  started_at = null,
+  updated_at = now()
+where status = 'processing'
+  and started_at < now() - interval '10 minutes'
+returning *;
+```
+
+The stale threshold should be configurable later if render jobs need longer processing windows. For MVP, 10 minutes is acceptable.
 
 The implementation should expose a database function such as `claim_next_job()` and call it from the worker. The function should use row locking so running two worker processes does not process the same job twice.
 
@@ -358,9 +376,33 @@ Job idempotency scopes:
 - `generate_scene_image`: one active image job per scene.
 - `generate_scene_audio`: one active audio job per scene.
 - `render_video`: one active render job per project.
-- `build_render_input`: internal sub-step of `render_video`; it should not be created directly by the public API.
 
 User-initiated retry creates a new job using the failed job input. The new job starts with `attempts = 0`, keeps the same default `max_attempts`, and stores the failed job id in `parent_job_id`. The failed job remains unchanged for audit history.
+
+Worker failure handling provides lightweight auto-retry:
+
+- If a handler fails and `attempts < max_attempts`, set the job back to `pending` and store the latest `error_message`.
+- If a handler fails and `attempts >= max_attempts`, set the job to `failed`.
+- User retry is separate from auto-retry and always creates a new job.
+
+`scene_id` nullability is type-dependent:
+
+- `generate_script` and `render_video` are project-level jobs and must have `scene_id = null`.
+- `generate_scene_image` and `generate_scene_audio` are scene-level jobs and must have `scene_id` set.
+
+Idempotency must be enforced at the database level, not only by application checks. Use partial unique indexes for active jobs:
+
+```sql
+create unique index jobs_one_active_project_job
+on jobs (project_id, type)
+where scene_id is null
+  and status in ('pending', 'processing');
+
+create unique index jobs_one_active_scene_job
+on jobs (scene_id, type)
+where scene_id is not null
+  and status in ('pending', 'processing');
+```
 
 ### renders
 
@@ -455,7 +497,9 @@ Project deletion is destructive in the MVP. `DELETE /projects/:projectId` remove
 {LOCAL_ASSET_ROOT}/projects/{projectId}/
 ```
 
-If local file cleanup fails, the API should return an error and leave enough database state to retry cleanup manually. A trash/archive period is out of scope for the MVP.
+Project deletion is blocked when the project has `pending` or `processing` jobs. In that case, `DELETE /projects/:projectId` returns `409 Conflict` and does not delete database rows or local files.
+
+If there are no active jobs and local file cleanup fails, the API should return an error and leave enough database state to retry cleanup manually. A trash/archive period is out of scope for the MVP.
 
 ## API Contract
 
@@ -481,7 +525,32 @@ Initial endpoints:
 
 The API returns typed JSON validated by shared schemas.
 
-Job progress uses polling in the MVP. The frontend should poll `GET /projects/:projectId/jobs` every 2 seconds while active jobs exist and stop polling once all jobs are in a terminal status. SSE and WebSockets are out of scope for the MVP.
+`PATCH /scenes/:sceneId` editable fields in the MVP:
+
+- `narration`
+- `caption`
+- `image_prompt`
+- `ssml`
+
+Read-only scene fields in the MVP:
+
+- `project_id`
+- `position`
+- `role`
+- `duration_seconds`
+
+`duration_seconds` remains fixed by the selected duration preset. A freeform timeline editor is out of scope for the MVP.
+
+Job progress uses polling in the MVP. The frontend should poll `GET /projects/:projectId/jobs?status=active` every 2 seconds while active jobs exist and stop polling once all jobs are in a terminal status. SSE and WebSockets are out of scope for the MVP.
+
+`GET /projects/:projectId/jobs` query behavior:
+
+- `status=active` returns `pending` and `processing` jobs only.
+- `status=failed` returns failed jobs.
+- `status=all` returns all jobs.
+- Default `limit` is `50`.
+- Maximum `limit` is `100`.
+- Sort order is newest first by `created_at`.
 
 Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds `remotion-input.json`, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
 
