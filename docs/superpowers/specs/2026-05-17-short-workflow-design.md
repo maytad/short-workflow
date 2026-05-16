@@ -196,7 +196,7 @@ Project status values:
 - `done`
 - `failed`
 
-Project status represents the top-level project lifecycle only. Script, image, audio, and render progress is derived from `jobs`, `assets`, `scenes`, and `renders`. A project becomes `ready` once the editable script and scene plan are complete enough to generate assets. Regenerating one scene image or audio file does not move the whole project back into a phase-specific status.
+Project status represents the current working revision lifecycle only. Script, image, audio, and render progress is derived from `jobs`, `assets`, `scenes`, and `renders`. A project becomes `ready` once the editable script and scene plan are complete enough to generate assets. Regenerating one scene image or audio file does not move the whole project back into a phase-specific status.
 
 Project status transitions:
 
@@ -204,7 +204,7 @@ Project status transitions:
 | --- | --- | --- | --- |
 | Project created | none | `draft` | New projects start without a complete scene plan. |
 | Script generation succeeds | `draft`, `ready`, `done`, `failed` | `ready` | All required scene rows exist and each scene is `ready`. |
-| Scene content becomes incomplete | `ready`, `done`, `failed` | `draft` | Any scene loses a required editable field. |
+| Scene content becomes incomplete | `ready`, `done`, `failed` | `draft` | The current working revision is no longer renderable. Successful render history remains available in `renders`. |
 | Scene content changes after a successful render | `done`, `failed` | `ready` | Existing render history remains, but the latest render is stale. |
 | Render job starts processing | `ready`, `done`, `failed` | `rendering` | The worker has claimed a `render_video` job. |
 | Render succeeds | `rendering` | `done` | A render row is `succeeded` and has a ready output asset. |
@@ -212,6 +212,11 @@ Project status transitions:
 | User retries failed render | `failed` | `rendering` | A new `render_video` retry job is claimed. |
 
 Project status is updated by API and worker mutation handlers. It is not a generated database column because render job lifecycle events affect it.
+
+Project API responses should include derived fields rather than overloading `status`:
+
+- `hasSuccessfulRender`: true when the project has at least one `succeeded` render.
+- `latestRenderStale`: true when the latest successful render was produced before the current working revision changed.
 
 ### scenes
 
@@ -292,6 +297,16 @@ Asset status values:
 - `ready`
 - `failed`
 
+Asset provider values:
+
+- `openai`
+- `google_gemini`
+- `google_tts`
+- `remotion`
+- `local`
+
+`provider` is an enum. `model` is a nullable free-text provider model, voice, or renderer identifier such as `gpt-5.5`, a Gemini image model id, a Google TTS voice id, or a Remotion renderer version.
+
 The `path` field stores a relative portable path, not an absolute filesystem path.
 
 Example:
@@ -305,7 +320,7 @@ projects/{projectId}/input/{renderId}.json
 
 Generated asset paths are append-only in the MVP. Image and audio regeneration creates new asset records and new file paths instead of overwriting an existing file.
 
-Consumers that need a scene image or audio file should select the newest `ready` asset for `(project_id, scene_id, kind)` by `created_at desc`. `pending` and `failed` assets are ignored for rendering.
+Consumers that need a scene image or audio file should select the newest current `ready` asset for `(project_id, scene_id, kind)` by `created_at desc`. For the MVP, an asset is current only when it was created after the scene's latest content update. Older ready assets remain historical stale assets for traceability and old render input reproducibility, but are ignored for new renders. `pending` and `failed` assets are ignored for rendering.
 
 `mime_type`, `size_bytes`, and `checksum` are nullable while an asset is `pending` or `failed`. They are populated only after the worker has fully written the file and moved the asset to `ready`.
 
@@ -346,6 +361,13 @@ Job statuses:
 - `processing`
 - `succeeded`
 - `failed`
+
+Job `output` is nullable until a job succeeds. On success, it stores compact JSON references to records created or updated by the handler:
+
+- `generate_script`: `{ "sceneIds": ["scene-id"] }`
+- `generate_scene_image`: `{ "assetId": "asset-id" }`
+- `generate_scene_audio`: `{ "assetId": "asset-id" }`
+- `render_video`: `{ "renderId": "render-id", "inputAssetId": "asset-id", "outputAssetId": "asset-id" }`
 
 The worker claims pending jobs atomically in the database and updates status after completion. Failed jobs can be retried from the UI.
 
@@ -507,6 +529,13 @@ Key fields:
 - `response_metadata`
 - `created_at`
 
+Prompt purpose values:
+
+- `script`
+- `image_prompt`
+- `ssml`
+- `caption`
+
 `prompt_versions` must not store binary payloads or base64 image/audio data. Large provider responses should be summarized in `response_text` and linked to generated files through `assets`. `response_metadata` may store compact JSON provider metadata, token usage, model ids, and provider-neutral `safety_info`. The implementation should keep each stored response payload under 64 KB.
 
 `revision` increments within the scope of `(project_id, scene_id, purpose)`. For project-level prompts where `scene_id` is null, the revision increments within `(project_id, purpose)`. This makes regenerated script, prompt, and SSML history easy to inspect without relying only on timestamps.
@@ -585,22 +614,29 @@ Initial endpoints:
 
 The API returns typed JSON validated by shared schemas.
 
+`PATCH /projects/:projectId` editable fields in the MVP:
+
+- `title`
+- `topic`
+
+`target_duration_seconds` can be changed only before a project has scene rows. After scenes exist, duration changes return `409 Conflict`; create a new project to change duration in the MVP. This keeps scene rows and historical assets append-only without introducing archived scene records. `status`, `language`, and `format` are read-only in the MVP.
+
 `POST /projects/:projectId/generate-script` behavior:
 
 - First successful run creates the preset-driven scene rows for the selected duration.
 - If the project already has `pending` or `processing` jobs, return `409 Conflict`.
+- Regeneration uses the project's existing `target_duration_seconds`.
 - Regeneration merges by `position` inside one database transaction, using the `unique (project_id, position)` constraint.
 - Existing scene ids are preserved when the same position is regenerated.
 - `narration`, `caption`, `image_prompt`, `ssml`, `role`, and `duration_seconds` are updated from the new script output.
-- Scene rows whose positions are no longer present after a duration preset change are removed.
-- If a scene content field changes, existing image and audio asset records for that scene are removed and their local files are deleted best-effort, because they no longer match the current scene plan.
+- If a scene content field changes, existing image and audio asset records and files for that scene are kept as stale history. New renders ignore those stale scene assets until fresh ready assets are generated for the updated scene content.
 - Existing render rows and render assets remain append-only history. The project moves back to `ready` after successful regeneration.
 
 `POST /scenes/:sceneId/generate-image` and `POST /scenes/:sceneId/generate-audio` behavior:
 
 - If an equivalent active job already exists for the scene and kind, return that job.
 - Otherwise create a new job and a new append-only asset record.
-- A successful generation writes a new ready asset; the newest ready asset becomes the default file used by previews and render input generation.
+- A successful generation writes a new ready asset; the newest current ready asset becomes the default file used by previews and render input generation.
 
 `PATCH /scenes/:sceneId` editable fields in the MVP:
 
@@ -631,7 +667,14 @@ Job progress uses polling in the MVP. The frontend should poll `GET /projects/:p
 
 Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds a render-specific input JSON, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
 
-The render input builder selects the newest ready image and audio asset for each scene. If any required scene is missing a ready image or audio asset, the `render_video` job fails with a clear error instead of producing a partial video.
+`POST /projects/:projectId/render` preconditions:
+
+- If an active `render_video` job already exists for the project, return the existing job.
+- Every scene for the current duration preset must be `ready`.
+- Every scene must have a current ready image asset and a current ready audio asset.
+- If preconditions fail, return `422 Unprocessable Entity` with the missing or stale scene ids and asset kinds.
+
+The render input builder revalidates the same preconditions and selects the newest current ready image and audio asset for each scene. If any required scene is missing a current ready image or audio asset, the `render_video` job fails with a clear error instead of producing a partial video.
 
 `POST /renders/:renderId/acknowledge-disclosure` sets `ai_disclosure_acknowledged_at` to the current timestamp. The endpoint is used by the export confirmation UI before the user uses the generated MP4 externally.
 
