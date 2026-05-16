@@ -61,6 +61,14 @@ Scene count is preset-driven in the MVP so prompt design and rendering stay pred
 
 Scene ordering is fixed by the selected duration preset in the MVP. Users can edit scene text and prompts, but arbitrary scene reordering is out of scope because the roles and timing form the video structure.
 
+Default role mapping:
+
+- 30 seconds: `hook`, `context`, `point`, `payoff`, `cta`
+- 45 seconds: `hook`, `context`, `point`, `point`, `payoff`, `cta`
+- 60 seconds: `hook`, `context`, `point`, `point`, `point`, `payoff`, `cta`
+
+Multiple `point` scenes are distinguished by `position`.
+
 30-second structure:
 
 - 0-3s: hook.
@@ -221,13 +229,12 @@ Scene status values:
 
 - `draft`
 - `ready`
-- `failed`
 
 Scene status represents the editable content state only. Image and audio generation state is derived from `assets` and `jobs`, which are the source of truth for generated files and in-progress work.
 
 A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` are all present and non-empty. A scene can remain `ready` while its image or audio assets are missing, pending, regenerating, or failed.
 
-Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. `failed` is reserved for content-generation failures that prevent the scene text plan from being usable.
+Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. Content generation failures are represented by `jobs`, not by `scenes.status`.
 
 ### assets
 
@@ -275,8 +282,8 @@ Example:
 ```text
 projects/{projectId}/scenes/{sceneId}/image.png
 projects/{projectId}/scenes/{sceneId}/voice.mp3
-projects/{projectId}/renders/final.mp4
-projects/{projectId}/input/remotion-input.json
+projects/{projectId}/renders/{renderId}.mp4
+projects/{projectId}/input/{renderId}.json
 ```
 
 ### jobs
@@ -316,6 +323,8 @@ Job statuses:
 - `failed`
 
 The worker claims pending jobs atomically in the database and updates status after completion. Failed jobs can be retried from the UI.
+
+Default `max_attempts` is `5`. Attempts are incremented on each claim, including claims after stale recovery, so the default leaves room for transient process crashes as well as provider errors.
 
 The MVP uses one worker process with configurable in-process concurrency. Default concurrency is `2` and can be configured with:
 
@@ -370,6 +379,17 @@ An alternative `UPDATE ... WHERE status = 'pending' RETURNING *` pattern is acce
 
 Generation endpoints are idempotent by job scope. If an equivalent `pending` or `processing` job already exists, the API returns the existing job instead of creating a duplicate.
 
+The API should create jobs with an insert-first pattern, not a select-then-insert pattern:
+
+```sql
+insert into jobs (...)
+values (...)
+on conflict do nothing
+returning *;
+```
+
+If the insert returns no row, the API selects the existing active job for the same idempotency scope and returns it. This avoids check-then-insert races under concurrent requests.
+
 Job idempotency scopes:
 
 - `generate_script`: one active job per project.
@@ -403,6 +423,12 @@ on jobs (scene_id, type)
 where scene_id is not null
   and status in ('pending', 'processing');
 ```
+
+Migration index hints:
+
+- `jobs(project_id, status, created_at desc)` for project job polling.
+- `jobs(started_at) where status = 'processing'` for stale job recovery.
+- `prompt_versions(project_id, scene_id, purpose, revision desc)` for prompt history lookup.
 
 ### renders
 
@@ -486,9 +512,9 @@ Suggested local structure:
           image.png
           voice.mp3
       renders/
-        final.mp4
+        {renderId}.mp4
       input/
-        remotion-input.json
+        {renderId}.json
 ```
 
 Project deletion is destructive in the MVP. `DELETE /projects/:projectId` removes project rows and attempts to recursively delete:
@@ -552,7 +578,7 @@ Job progress uses polling in the MVP. The frontend should poll `GET /projects/:p
 - Maximum `limit` is `100`.
 - Sort order is newest first by `created_at`.
 
-Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds `remotion-input.json`, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
+Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds a render-specific input JSON, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
 
 `POST /renders/:renderId/acknowledge-disclosure` sets `ai_disclosure_acknowledged_at` to the current timestamp. The endpoint is used by the export confirmation UI before the user uses the generated MP4 externally.
 
@@ -623,19 +649,19 @@ Example shape:
 }
 ```
 
-The worker writes this input to:
+The worker writes this input to an append-only render-specific path:
 
 ```text
-projects/{projectId}/input/remotion-input.json
+projects/{projectId}/input/{renderId}.json
 ```
 
 Then `apps/render` renders the final MP4 to:
 
 ```text
-projects/{projectId}/renders/final.mp4
+projects/{projectId}/renders/{renderId}.mp4
 ```
 
-The user does not inspect or approve the render input JSON in the MVP. It is stored for debugging and reproducibility.
+The user does not inspect or approve the render input JSON in the MVP. It is stored for debugging and reproducibility. Render files are append-only in the MVP; re-rendering creates a new `renders` row and new `render_input` and `render` asset records instead of overwriting a previous file path.
 
 ## Error Handling
 
@@ -646,7 +672,6 @@ The UI should allow retrying:
 - script generation for a project
 - image generation for a scene
 - audio generation for a scene
-- render preparation
 - video render
 
 Provider errors should be stored with a concise message and enough provider metadata to debug the issue. Raw secrets must never be stored.
