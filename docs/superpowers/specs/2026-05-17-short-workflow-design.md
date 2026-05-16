@@ -428,7 +428,7 @@ A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` 
 
 Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. Content generation failures are represented by `jobs`, not by `scenes.status`.
 
-`content_updated_at` tracks the latest meaningful scene content change. It is set when the scene is created and bumps only when one of these fields actually changes after normalization: `narration`, `caption`, `image_prompt`, `ssml`, `role`, or `duration_seconds`. A no-op `PATCH /scenes/:sceneId` that sends the same values must not touch `content_updated_at`. Generic `updated_at` triggers must not be used for asset freshness.
+`content_updated_at` tracks the latest meaningful scene content change. It is set when the scene is created and bumps only when one of these fields actually changes after normalization: `narration`, `caption`, `image_prompt`, `ssml`, `role`, or `duration_seconds`. The API mutation handler owns this comparison and update; do not use a database trigger for `content_updated_at`. A no-op `PATCH /scenes/:sceneId` that sends the same values must not touch `content_updated_at`. Generic `updated_at` triggers must not be used for asset freshness.
 
 Scene positions are unique within a project. The database must enforce `unique (project_id, position)` so script generation retries cannot create duplicate scene rows for the same slot.
 
@@ -517,6 +517,7 @@ Key fields:
 - `error_message`
 - `input`
 - `output`
+- `next_retry_at`
 - `created_at`
 - `started_at`
 - `finished_at`
@@ -545,7 +546,7 @@ Job `output` is nullable until a job succeeds. On success, it stores compact JSO
 
 The worker claims pending jobs atomically in the database and updates status after completion. Failed jobs can be retried from the UI.
 
-Default `max_attempts` is `5`. Attempts are incremented on each claim, including claims after stale recovery, so the default leaves room for transient process crashes as well as provider errors.
+Default `max_attempts` is `5`. Attempts are incremented on each claim, including claims after stale recovery, so the default leaves room for transient process crashes as well as provider errors. `next_retry_at` is nullable and defaults to null.
 
 The MVP uses one worker process with configurable in-process concurrency. Default concurrency is `2` and can be configured with:
 
@@ -582,6 +583,7 @@ with claimed as (
   from jobs
   where status = 'pending'
     and attempts < max_attempts
+    and (next_retry_at is null or next_retry_at <= now())
   order by created_at
   for update skip locked
   limit 1
@@ -591,6 +593,7 @@ set
   status = 'processing',
   attempts = attempts + 1,
   started_at = now(),
+  next_retry_at = null,
   updated_at = now()
 where id in (select id from claimed)
 returning *;
@@ -624,9 +627,18 @@ User-initiated retry creates a new job using the failed job input. The new job s
 
 Worker failure handling provides lightweight auto-retry:
 
-- If a handler fails and `attempts < max_attempts`, set the job back to `pending` and store the latest `error_message`.
+- If a handler fails and `attempts < max_attempts`, set the job back to `pending`, store the latest `error_message`, and set `next_retry_at` using incremental backoff.
 - If a handler fails and `attempts >= max_attempts`, set the job to `failed`.
 - User retry is separate from auto-retry and always creates a new job.
+
+MVP retry backoff uses a simple capped delay:
+
+```text
+retry_delay_seconds = min(300, attempts * 30)
+next_retry_at = now() + retry_delay_seconds
+```
+
+This prevents provider rate limits or transient API failures from burning all automatic attempts immediately. User-initiated retry starts a new job with `attempts = 0` and `next_retry_at = null`.
 
 `scene_id` nullability is type-dependent:
 
@@ -648,11 +660,22 @@ where scene_id is not null
 
 create unique index scenes_one_position_per_project
 on scenes (project_id, position);
+
+alter table jobs add constraint jobs_scene_id_per_type check (
+  case type
+    when 'generate_script' then scene_id is null
+    when 'render_video' then scene_id is null
+    when 'generate_scene_image' then scene_id is not null
+    when 'generate_scene_audio' then scene_id is not null
+    else false
+  end
+);
 ```
 
 Migration index hints:
 
 - `jobs(project_id, status, created_at desc)` for project job polling.
+- `jobs(status, next_retry_at, created_at)` for retry-aware atomic job claims.
 - `jobs(started_at) where status = 'processing'` for stale job recovery.
 - `assets(scene_id, kind, created_at desc) where status = 'ready'` for current asset lookup during render preconditions and render input generation.
 - `prompt_versions(project_id, scene_id, purpose, revision desc)` for prompt history lookup.
