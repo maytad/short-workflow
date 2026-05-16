@@ -105,7 +105,7 @@ The repository is a Bun workspace monorepo orchestrated with Turborepo.
 - Runtime for `apps/api`: Bun.
 - Runtime for `apps/worker`: Bun.
 - Runtime for `apps/web`: Vite scripts launched through Bun.
-- Runtime for `apps/render`: Remotion scripts may run through Node.js when Studio or rendering compatibility requires it.
+- Runtime for `apps/render`: Node.js. Remotion render and Studio commands should run through Node.js, not the Bun runtime.
 
 The root `package.json` should declare Bun as the package manager and include direct workspace globs:
 
@@ -137,9 +137,9 @@ short-workflow/
 
 `apps/api` is an ElysiaJS API running on Bun. It owns HTTP contracts, request validation, project mutations, job creation, and service orchestration. It uses `packages/db`, `packages/shared`, and `packages/ai` where needed.
 
-`apps/worker` runs local worker commands on Bun. It processes pending jobs from the database, calls AI providers, writes local assets, updates asset and job records, and triggers Remotion render jobs.
+`apps/worker` runs local worker commands on Bun. It processes pending jobs from the database, calls AI providers, writes local assets, updates asset and job records, and triggers Remotion render jobs through a Node.js subprocess in `apps/render`.
 
-`apps/render` owns Remotion compositions and render commands. It accepts a typed render input JSON and produces a local MP4. Remotion is Node-first, so render and Studio commands should be allowed to run through Node.js even though the monorepo uses Bun for package management and the API/worker runtime.
+`apps/render` owns Remotion compositions and render commands. It accepts a typed render input JSON and produces a local MP4. Remotion is Node-first, so render and Studio commands must run through Node.js even though the monorepo uses Bun for package management and the API/worker runtime.
 
 `packages/db` is the database boundary and source of truth for migrations, generated Supabase types, and DB query functions.
 
@@ -362,17 +362,17 @@ Project status transitions:
 | Script generation succeeds | `draft`, `ready`, `done`, `failed` | `ready` | All required scene rows exist and each scene is `ready`. |
 | Scene content becomes incomplete | `ready`, `done`, `failed` | `draft` | The current working revision is no longer renderable. Successful render history remains available in `renders`. |
 | Scene content changes after a successful render | `done`, `failed` | `ready` | Existing render history remains, but the latest render is stale. |
-| Render job starts processing | `ready`, `done`, `failed` | `rendering` | The worker has claimed a `render_video` job. |
+| Render job is active | `ready`, `done`, `failed` | `rendering` | A `render_video` job is `pending` or `processing`, including pending auto-retry states. |
 | Render succeeds | `rendering` | `done` | A render row is `succeeded` and has a ready output asset. |
 | Render fails permanently | `rendering` | `failed` | The render job reaches `failed` after auto-retry is exhausted. |
 | User retries failed render | `failed` | `rendering` | A new `render_video` retry job is claimed. |
 
-Project status is updated by API and worker mutation handlers. It is not a generated database column because render job lifecycle events affect it.
+Project status is updated by API and worker mutation handlers. It is not a generated database column because render job lifecycle events affect it. A project remains `rendering` while any `render_video` job is active, even if the worker temporarily moves that job from `processing` back to `pending` for auto-retry. It changes to `failed` only when the render job reaches terminal `failed`.
 
 Project API responses should include derived fields rather than overloading `status`:
 
 - `hasSuccessfulRender`: true when the project has at least one `succeeded` render.
-- `latestRenderStale`: true when the latest successful render was produced before the current working revision changed.
+- `latestRenderStale`: false when `hasSuccessfulRender` is false. Otherwise true when the latest succeeded render `created_at` is earlier than the maximum `content_updated_at` across the project's scenes.
 
 ### scenes
 
@@ -390,6 +390,7 @@ Key fields:
 - `image_prompt`
 - `ssml`
 - `status`
+- `content_updated_at`
 - `created_at`
 - `updated_at`
 
@@ -411,6 +412,8 @@ Scene status represents the editable content state only. Image and audio generat
 A scene becomes `ready` when `narration`, `caption`, `image_prompt`, and `ssml` are all present and non-empty. A scene can remain `ready` while its image or audio assets are missing, pending, regenerating, or failed.
 
 Scene status is computed at the application layer in the API mutation handler. `PATCH /scenes/:sceneId` should normalize editable text fields, then set `status = ready` when all required content fields are present. Content generation failures are represented by `jobs`, not by `scenes.status`.
+
+`content_updated_at` tracks the latest meaningful scene content change. It is set when the scene is created and bumps only when one of these fields actually changes after normalization: `narration`, `caption`, `image_prompt`, `ssml`, `role`, or `duration_seconds`. A no-op `PATCH /scenes/:sceneId` that sends the same values must not touch `content_updated_at`. Generic `updated_at` triggers must not be used for asset freshness.
 
 Scene positions are unique within a project. The database must enforce `unique (project_id, position)` so script generation retries cannot create duplicate scene rows for the same slot.
 
@@ -476,7 +479,7 @@ projects/{projectId}/input/{renderId}.json
 
 Generated asset paths are append-only in the MVP. Image and audio regeneration creates new asset records and new file paths instead of overwriting an existing file.
 
-Consumers that need a scene image or audio file should select the newest current `ready` asset for `(project_id, scene_id, kind)` by `created_at desc`. For the MVP, an asset is current only when it was created after the scene's latest content update. Older ready assets remain historical stale assets for traceability and old render input reproducibility, but are ignored for new renders. `pending` and `failed` assets are ignored for rendering.
+Consumers that need a scene image or audio file should select the newest current `ready` asset for `(project_id, scene_id, kind)` by `created_at desc`. An asset is current when `asset.created_at >= scene.content_updated_at`. An asset is stale when `asset.created_at < scene.content_updated_at`. Older ready assets remain historical stale assets for traceability and old render input reproducibility, but are ignored for new renders. `pending` and `failed` assets are ignored for rendering.
 
 `mime_type`, `size_bytes`, and `checksum` are nullable while an asset is `pending` or `failed`. They are populated only after the worker has fully written the file and moved the asset to `ready`.
 
@@ -680,7 +683,7 @@ Key fields:
 - `provider`
 - `model`
 - `revision`
-- `prompt`
+- `prompt_payload`
 - `response_text`
 - `response_metadata`
 - `created_at`
@@ -691,6 +694,8 @@ Prompt purpose values:
 - `image_prompt`
 - `ssml`
 - `caption`
+
+`prompt_payload` is JSONB. It stores the provider request input needed to debug or reproduce generation, such as chat messages, prompt text, structured output schema hints, model parameters, or provider-specific request fields. It must not store secrets, binary payloads, or base64 image/audio data.
 
 `prompt_versions` must not store binary payloads or base64 image/audio data. Large provider responses should be summarized in `response_text` and linked to generated files through `assets`. `response_metadata` may store compact JSON provider metadata, token usage, model ids, and provider-neutral `safety_info`. The implementation should keep each stored response payload under 64 KB.
 
@@ -821,7 +826,7 @@ Job progress uses TanStack Query polling in the MVP. The frontend should poll `G
 - Maximum `limit` is `100`.
 - Sort order is newest first by `created_at`.
 
-Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds a render-specific input JSON, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
+Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds a render-specific input JSON, stores it as a `render_input` asset, and then runs the Remotion render through a Node.js subprocess in `apps/render`. There is no separate public render-input endpoint in the MVP.
 
 `POST /projects/:projectId/render` preconditions:
 
@@ -829,6 +834,21 @@ Render input generation is an internal worker sub-step. The frontend calls `POST
 - Every scene for the current duration preset must be `ready`.
 - Every scene must have a current ready image asset and a current ready audio asset.
 - If preconditions fail, return `422 Unprocessable Entity` with the missing or stale scene ids and asset kinds.
+
+Example `422` response:
+
+```json
+{
+  "error": "render_preconditions_failed",
+  "details": {
+    "scenesNotReady": ["scene-id"],
+    "scenesMissingImage": ["scene-id"],
+    "scenesMissingAudio": ["scene-id"],
+    "scenesWithStaleImage": ["scene-id"],
+    "scenesWithStaleAudio": ["scene-id"]
+  }
+}
+```
 
 The render input builder revalidates the same preconditions and selects the newest current ready image and audio asset for each scene. If any required scene is missing a current ready image or audio asset, the `render_video` job fails with a clear error instead of producing a partial video.
 
@@ -1004,3 +1024,5 @@ Automated platform disclosure and upload checks are out of scope for MVP.
 ## Open Decisions
 
 There are no blocking open decisions for the MVP design. Later phases can revisit authentication, cloud storage, queueing, deployment, analytics, and publishing automation.
+
+Operational backup is not automated in the MVP. The user is responsible for backing up the local Supabase data and `LOCAL_ASSET_ROOT`. Automated backup, file sync, or cloud storage should be treated as post-MVP operational work, not a requirement for the first local flow.
