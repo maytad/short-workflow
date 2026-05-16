@@ -2,13 +2,13 @@
 
 ## Summary
 
-Short Workflow is a single-user, local-first tool for creating English vertical short-form videos with AI assistance. The MVP uses a step-by-step editor instead of one-click automation so the user can review and edit script, scenes, image prompts, voice, and render output before exporting the final video.
+Short Workflow is a single-user, local-running tool for creating English vertical short-form videos with AI assistance. The MVP uses a step-by-step editor instead of one-click automation so the user can review and edit script, scenes, image prompts, voice, and render output before exporting the final video.
 
 The initial output format is a 45-second English faceless short for YouTube Shorts, TikTok, and Instagram Reels.
 
 ## Goals
 
-- Create a local-first workflow that turns a topic into a finished vertical MP4.
+- Create a local workflow that turns a topic into a finished vertical MP4.
 - Keep the app usable by one person without authentication, multi-user permissions, or billing.
 - Keep AI generation steps explicit and reviewable.
 - Store generated assets on the local filesystem while keeping portable paths in the database for future migration to cloud storage.
@@ -22,6 +22,7 @@ The initial output format is a 45-second English faceless short for YouTube Shor
 - No public deployment in the MVP.
 - No Redis, BullMQ, or cloud queue in the MVP.
 - No Google Cloud Storage or Supabase Storage in the MVP.
+- No local Supabase CLI stack requirement in the MVP.
 - No YouTube upload automation in the MVP.
 - No SaaS billing, teams, or multi-user support in the MVP.
 - No cloud rendering in the MVP.
@@ -146,6 +147,19 @@ short-workflow/
 `packages/ai` wraps provider-specific API calls for OpenAI, Google Gemini image generation, and Google Cloud Text-to-Speech.
 
 `packages/shared` owns schemas and types shared by web, API, worker, and render.
+
+## Supabase Setup
+
+The MVP uses a hosted Supabase Free Tier project for Postgres. It does not require running the Supabase CLI stack locally.
+
+- `apps/web`, `apps/api`, `apps/worker`, and `apps/render` run locally during MVP development.
+- Database reads and writes go to the hosted Supabase project.
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` come from the Supabase Dashboard.
+- `SUPABASE_SERVICE_ROLE_KEY` is server-only and must be loaded only by `apps/api` and `apps/worker`.
+- The frontend must call `apps/api`; it must not connect to Supabase directly.
+- SQL migrations live in the repo under `packages/db/migrations`.
+- For the MVP, migrations can be applied manually through the Supabase Dashboard SQL Editor. Supabase CLI migration automation can be added later if needed.
+- Local-first in this design means local app/runtime/render/assets, not a local database.
 
 ## Frontend React Design
 
@@ -320,7 +334,7 @@ Interaction and state requirements:
 
 ## Security Model
 
-The MVP is intentionally local-only and single-user.
+The MVP is intentionally local-running and single-user. The app and API are local-only, while Postgres is the hosted Supabase Free Tier project.
 
 - No authentication is implemented.
 - No internal API token is implemented.
@@ -548,6 +562,13 @@ The worker claims pending jobs atomically in the database and updates status aft
 
 Default `max_attempts` is `5`. Attempts are incremented on each claim, including claims after stale recovery, so the default leaves room for transient process crashes as well as provider errors. `next_retry_at` is nullable and defaults to null.
 
+Job timestamp semantics:
+
+- `started_at` is set when the worker claims a job.
+- `finished_at` is set to `now()` only when the job enters a terminal state: `succeeded` or `failed`.
+- Auto-retry from `processing` back to `pending` clears `started_at` and `finished_at` to null because the job is not finished.
+- User-initiated retry creates a new job with `started_at = null`, `finished_at = null`, `attempts = 0`, and `next_retry_at = null`.
+
 The MVP uses one worker process with configurable in-process concurrency. Default concurrency is `2` and can be configured with:
 
 ```text
@@ -627,18 +648,19 @@ User-initiated retry creates a new job using the failed job input. The new job s
 
 Worker failure handling provides lightweight auto-retry:
 
-- If a handler fails and `attempts < max_attempts`, set the job back to `pending`, store the latest `error_message`, and set `next_retry_at` using incremental backoff.
-- If a handler fails and `attempts >= max_attempts`, set the job to `failed`.
+- If a handler fails and `attempts < max_attempts`, set the job back to `pending`, store the latest `error_message`, clear `started_at`, keep `finished_at = null`, and set `next_retry_at` using capped exponential backoff.
+- If a handler fails and `attempts >= max_attempts`, set the job to `failed` and `finished_at = now()`.
+- If a handler succeeds, set the job to `succeeded`, set `finished_at = now()`, and keep `next_retry_at = null`.
 - User retry is separate from auto-retry and always creates a new job.
 
-MVP retry backoff uses a simple capped delay:
+MVP retry backoff uses capped exponential delay:
 
 ```text
-retry_delay_seconds = min(300, attempts * 30)
+retry_delay_seconds = min(300, 30 * 2^(attempts - 1))
 next_retry_at = now() + retry_delay_seconds
 ```
 
-This prevents provider rate limits or transient API failures from burning all automatic attempts immediately. User-initiated retry starts a new job with `attempts = 0` and `next_retry_at = null`.
+With default `max_attempts = 5`, the normally scheduled auto-retry delays are 30s, 60s, 120s, and 240s before the final attempt. The 300s cap limits future configurations with higher `max_attempts`. This prevents provider rate limits or transient API failures from burning all automatic attempts immediately. User-initiated retry starts a new job with `attempts = 0` and `next_retry_at = null`.
 
 `scene_id` nullability is type-dependent:
 
@@ -1016,6 +1038,8 @@ API_BASE_URL=http://localhost:3001
 
 The service role key and AI keys are only used by `apps/api` and `apps/worker`.
 
+Supabase environment values should be copied from the hosted Supabase project dashboard. The MVP does not require `supabase start` or a local Supabase CLI stack.
+
 ## Development Workflow
 
 Expected local commands:
@@ -1050,7 +1074,7 @@ Automated platform disclosure and upload checks are out of scope for MVP.
 
 1. Set up monorepo tooling.
 2. Create shared schemas and constants, then run lightweight schema verification.
-3. Create Supabase migrations and DB query package, then verify migrations and core queries.
+3. Create Supabase migration SQL and DB query package, apply migrations through the hosted Supabase Dashboard SQL Editor for MVP, then verify core queries.
 4. Create Elysia API with project and job endpoints.
 5. Create React step-by-step editor shell.
 6. Add OpenAI script generation.
@@ -1064,4 +1088,4 @@ Automated platform disclosure and upload checks are out of scope for MVP.
 
 There are no blocking open decisions for the MVP design. Later phases can revisit authentication, cloud storage, queueing, deployment, analytics, and publishing automation.
 
-Operational backup is not automated in the MVP. The user is responsible for backing up the local Supabase data and `LOCAL_ASSET_ROOT`. Automated backup, file sync, or cloud storage should be treated as post-MVP operational work, not a requirement for the first local flow.
+Operational backup is not automated in the MVP. The user is responsible for backing up or exporting the hosted Supabase project data and `LOCAL_ASSET_ROOT`. Automated backup, file sync, or cloud storage should be treated as post-MVP operational work, not a requirement for the first local flow.
