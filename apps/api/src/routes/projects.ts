@@ -3,19 +3,31 @@ import {
   updateProjectRequestSchema,
 } from "@short-workflow/shared";
 import {
+  acknowledgeRenderDisclosure,
+  createJobIdempotent,
   createProject,
+  getProject,
+  getScene,
   listProjectAssets,
   listProjectRenders,
   listProjectScenes,
   listProjects,
+  retryFailedJob,
   updateProject,
   type DbClient,
 } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
-import { conflict, internalError, notFound, validationFailed } from "../http";
+import {
+  conflict,
+  internalError,
+  jsonError,
+  notFound,
+  validationFailed,
+} from "../http";
 import {
   assertProjectCanDelete,
+  buildRenderPreconditionReport,
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
@@ -31,7 +43,10 @@ type RouteContext = {
   set: StatusSetter;
   body: unknown;
   params: {
-    projectId: string;
+    projectId?: string;
+    sceneId?: string;
+    jobId?: string;
+    renderId?: string;
   };
   query: {
     status?: string;
@@ -54,6 +69,12 @@ export type ProjectRouteServices = {
   listProjectAssets: typeof listProjectAssets;
   listProjectRenders: typeof listProjectRenders;
   listProjectJobs: typeof listProjectJobs;
+  getProject: typeof getProject;
+  getScene: typeof getScene;
+  createJobIdempotent: typeof createJobIdempotent;
+  retryFailedJob: typeof retryFailedJob;
+  acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
+  buildRenderPreconditionReport: typeof buildRenderPreconditionReport;
 };
 
 const defaultServices: ProjectRouteServices = {
@@ -68,12 +89,32 @@ const defaultServices: ProjectRouteServices = {
   listProjectAssets,
   listProjectRenders,
   listProjectJobs,
+  getProject,
+  getScene,
+  createJobIdempotent,
+  retryFailedJob,
+  acknowledgeRenderDisclosure,
+  buildRenderPreconditionReport,
 };
+
+function hasRenderPreconditionFailures(
+  report: Awaited<ReturnType<typeof buildRenderPreconditionReport>>,
+) {
+  return (
+    report.scenesNotReady.length > 0 ||
+    report.scenesMissingImage.length > 0 ||
+    report.scenesMissingAudio.length > 0 ||
+    report.scenesStaleImage.length > 0 ||
+    report.scenesStaleAudio.length > 0
+  );
+}
 
 export function createProjectRoutes(
   services: ProjectRouteServices = defaultServices,
 ) {
-  return new Elysia({ prefix: "/projects" })
+  return new Elysia()
+    .group("/projects", (projects) =>
+      projects
     .get("/", (context) => {
       const { db } = withRouteContext(context);
       return services.listProjects(db);
@@ -90,7 +131,7 @@ export function createProjectRoutes(
     })
     .get("/:projectId", async (context) => {
       const { db, params, set } = withRouteContext(context);
-      const detail = await services.getProjectDetail(db, params.projectId);
+      const detail = await services.getProjectDetail(db, params.projectId!);
 
       if (!detail) {
         return notFound(set);
@@ -117,14 +158,14 @@ export function createProjectRoutes(
       }
 
       return services
-        .updateProject(db, params.projectId, input)
+        .updateProject(db, params.projectId!, input)
         .then((project) => project ?? notFound(set));
     })
     .delete("/:projectId", async (context) => {
       const { db, params, set } = withRouteContext(context);
       const canDelete = await services.assertProjectCanDelete(
         db,
-        params.projectId,
+        params.projectId!,
       );
 
       if (!canDelete) {
@@ -133,7 +174,7 @@ export function createProjectRoutes(
 
       const deletedProject = await services.deleteProjectRows(
         db,
-        params.projectId,
+        params.projectId!,
       );
 
       if (!deletedProject) {
@@ -141,7 +182,7 @@ export function createProjectRoutes(
       }
 
       try {
-        await services.deleteProjectLocalFiles(params.projectId);
+        await services.deleteProjectLocalFiles(params.projectId!);
       } catch {
         // Best-effort local cleanup must not mask successful DB deletion.
       }
@@ -150,23 +191,120 @@ export function createProjectRoutes(
     })
     .get("/:projectId/scenes", (context) => {
       const { db, params } = withRouteContext(context);
-      return services.listProjectScenes(db, params.projectId);
+      return services.listProjectScenes(db, params.projectId!);
     })
     .get("/:projectId/assets", (context) => {
       const { db, params } = withRouteContext(context);
-      return services.listProjectAssets(db, params.projectId);
+      return services.listProjectAssets(db, params.projectId!);
     })
     .get("/:projectId/renders", (context) => {
       const { db, params } = withRouteContext(context);
-      return services.listProjectRenders(db, params.projectId);
+      return services.listProjectRenders(db, params.projectId!);
     })
     .get("/:projectId/jobs", (context) => {
       const { db, params, query } = withRouteContext(context);
       return services.listProjectJobs(
         db,
-        params.projectId,
+        params.projectId!,
         query.status === "active" ? "active" : undefined,
       );
+    })
+    .post("/:projectId/generate-script", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const project = await services.getProject(db, params.projectId!);
+
+      if (!project) {
+        return notFound(set);
+      }
+
+      return services.createJobIdempotent(db, {
+        projectId: project.id,
+        sceneId: null,
+        type: "generate_script",
+        input: { projectId: project.id },
+      });
+    })
+    .post("/:projectId/render", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const project = await services.getProject(db, params.projectId!);
+
+      if (!project) {
+        return notFound(set);
+      }
+
+      const report = await services.buildRenderPreconditionReport(
+        db,
+        project.id,
+      );
+
+      if (hasRenderPreconditionFailures(report)) {
+        return jsonError(set, 422, "render_preconditions_failed", {
+          details: report,
+        });
+      }
+
+      return services.createJobIdempotent(db, {
+        projectId: project.id,
+        sceneId: null,
+        type: "render_video",
+        input: { projectId: project.id },
+      });
+    })
+    )
+    .post("/scenes/:sceneId/generate-image", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const scene = await services.getScene(db, params.sceneId!);
+
+      if (!scene) {
+        return notFound(set);
+      }
+
+      return services.createJobIdempotent(db, {
+        projectId: scene.projectId,
+        sceneId: scene.id,
+        type: "generate_scene_image",
+        input: { projectId: scene.projectId, sceneId: scene.id },
+      });
+    })
+    .post("/scenes/:sceneId/generate-audio", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const scene = await services.getScene(db, params.sceneId!);
+
+      if (!scene) {
+        return notFound(set);
+      }
+
+      return services.createJobIdempotent(db, {
+        projectId: scene.projectId,
+        sceneId: scene.id,
+        type: "generate_scene_audio",
+        input: { projectId: scene.projectId, sceneId: scene.id },
+      });
+    })
+    .post("/jobs/:jobId/retry", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+
+      try {
+        return await services.retryFailedJob(db, params.jobId!);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message === "retry_requires_failed_job"
+        ) {
+          return conflict(set, "retry_requires_failed_job");
+        }
+
+        throw error;
+      }
+    })
+    .post("/renders/:renderId/acknowledge", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const render = await services.acknowledgeRenderDisclosure(
+        db,
+        params.renderId!,
+      );
+
+      return render ?? notFound(set);
     })
     .onError(({ set }) => internalError(set));
 }

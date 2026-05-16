@@ -15,6 +15,25 @@ const project = {
   updatedAt: new Date("2026-05-17T00:00:00.000Z"),
 } as const;
 
+const job = {
+  id: "22222222-2222-4222-8222-222222222222",
+  projectId: project.id,
+  sceneId: null,
+  type: "render_video",
+  status: "pending",
+  attempts: 0,
+  maxAttempts: 5,
+  parentJobId: null,
+  errorMessage: null,
+  input: { projectId: project.id },
+  output: null,
+  nextRetryAt: null,
+  createdAt: new Date("2026-05-17T00:00:00.000Z"),
+  startedAt: null,
+  finishedAt: null,
+  updatedAt: new Date("2026-05-17T00:00:00.000Z"),
+} as const;
+
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
@@ -40,6 +59,18 @@ function createServices(
     listProjectAssets: async () => [],
     listProjectRenders: async () => [],
     listProjectJobs: async () => [],
+    getProject: async () => project,
+    getScene: async () => null,
+    createJobIdempotent: async () => job,
+    retryFailedJob: async () => job,
+    acknowledgeRenderDisclosure: async () => null,
+    buildRenderPreconditionReport: async () => ({
+      scenesNotReady: [],
+      scenesMissingImage: [],
+      scenesMissingAudio: [],
+      scenesStaleImage: [],
+      scenesStaleAudio: [],
+    }),
     ...overrides,
   };
 }
@@ -139,5 +170,83 @@ describe("createApp", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
     expect(receivedStatus).toBe("active");
+  });
+
+  test("creates a project script generation job", async () => {
+    let receivedInput: unknown;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        createJobIdempotent: async (_db, input) => {
+          receivedInput = input;
+          return job;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/generate-script`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ id: job.id });
+    expect(receivedInput).toEqual({
+      projectId: project.id,
+      sceneId: null,
+      type: "generate_script",
+      input: { projectId: project.id },
+    });
+  });
+
+  test("returns render precondition failures instead of creating render job", async () => {
+    let createdJob = false;
+    const report = {
+      scenesNotReady: ["33333333-3333-4333-8333-333333333333"],
+      scenesMissingImage: [],
+      scenesMissingAudio: [],
+      scenesStaleImage: [],
+      scenesStaleAudio: [],
+    };
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        buildRenderPreconditionReport: async () => report,
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return job;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/render`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "render_preconditions_failed",
+      details: report,
+    });
+    expect(createdJob).toBe(false);
+  });
+
+  test("maps retry_requires_failed_job to conflict", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        retryFailedJob: async () => {
+          throw new Error("retry_requires_failed_job");
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/jobs/${job.id}/retry`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      error: "retry_requires_failed_job",
+    });
   });
 });
