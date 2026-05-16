@@ -156,6 +156,10 @@ Frontend package expectations:
 - `@tanstack/react-router`
 - `@tanstack/react-query`
 - `@tanstack/react-query-devtools` for local development only
+- `tailwindcss`
+- `@tailwindcss/vite`
+- shadcn/ui CLI-generated components
+- `lucide-react` for icons
 - shared request and response schemas imported from `packages/shared`
 
 The root React tree should install a single `QueryClientProvider` next to the router provider. The query client should use conservative defaults:
@@ -222,6 +226,82 @@ Mutation invalidation rules:
 Job progress polling uses TanStack Query. `useProjectJobsQuery(projectId, "active")` should poll every 2 seconds only while the project screen is mounted and active jobs exist. When the active jobs query changes from non-empty to empty, invalidate project detail, scenes, assets, and renders once so the UI reflects completed worker outputs. SSE and WebSockets remain out of scope for the MVP.
 
 Optimistic updates are allowed only for lightweight text edits, such as project title/topic and scene text fields. Generation and render mutations should show pending job state from the API instead of fabricating generated assets on the client. API `409` and `422` responses should be displayed inline on the relevant step or scene so the user can fix the blocking condition.
+
+## Frontend Styling And Component System
+
+`apps/web` uses Tailwind CSS with shadcn/ui as the component foundation. shadcn components are copied into the repo and customized; they are not treated as an external black-box component library.
+
+Tailwind setup:
+
+- Use Tailwind v4 with the Vite plugin.
+- Configure Tailwind through `@tailwindcss/vite`.
+- Do not add the old `tailwindcss` PostCSS plugin for v4.
+- Keep global theme tokens in `apps/web/src/styles/globals.css`.
+
+shadcn/ui setup:
+
+- Store shadcn primitives in `apps/web/src/components/ui`.
+- Store domain components in `apps/web/src/features/*`.
+- Store app shell components in `apps/web/src/components/layout`.
+- Use `class-variance-authority` variants for reusable component states.
+- Treat shadcn as primitives only; do not paste generic shadcn blocks as finished screens.
+
+Initial shadcn components:
+
+- `button`
+- `input`
+- `textarea`
+- `label`
+- `select`
+- `tabs`
+- `dialog`
+- `sheet`
+- `tooltip`
+- `popover`
+- `badge`
+- `progress`
+- `separator`
+- `skeleton`
+- `table`
+- `sonner`
+
+Design taste baseline for this workflow tool:
+
+- `DESIGN_VARIANCE`: 5
+- `MOTION_INTENSITY`: 3-4
+- `VISUAL_DENSITY`: 6
+
+This is a focused production tool, not a marketing site. The first screen should be the usable editor workflow, not a landing page. Use clear information architecture, compact controls, predictable navigation, and restrained visual styling.
+
+shadcn customization rules:
+
+- Do not ship shadcn components in the generic default look.
+- Customize radius, colors, borders, focus rings, shadows, and spacing through theme tokens.
+- Use a quiet neutral base with one restrained accent color.
+- Avoid purple/blue AI-style gradients, neon glows, outer glow shadows, and decorative blobs.
+- Prefer borders, dividers, and spacing over nested cards.
+- Do not put cards inside cards.
+- Use cards only for repeated items, modals, preview frames, and genuinely grouped controls.
+- Use `Geist`, `Satoshi`, or `Outfit` for the UI font stack. Avoid serif fonts and generic dashboard typography.
+- Use `lucide-react` icons for icon buttons and tool actions. Do not hand-draw common UI icons.
+- Do not use emojis in UI copy, labels, alt text, or placeholder content.
+
+Expected UI structure:
+
+- App shell with a left project/step rail, central scene editor, and right preview/status panel on desktop.
+- Mobile layout collapses into a single-column step flow with preview below the active editor.
+- Scene list should be scannable, showing role, position, asset readiness, and job state.
+- Scene editor should expose narration, caption, image prompt, SSML, image generation, and audio generation without hiding required fields behind multiple modals.
+- Render step should show precondition failures inline before allowing render.
+
+Interaction and state requirements:
+
+- Loading states use skeletons that match the final layout dimensions.
+- Empty states explain the next concrete action without marketing copy.
+- Errors render inline near the blocked field, scene, or step.
+- Buttons must include disabled, loading, hover, focus-visible, and active states.
+- Use subtle transform or opacity transitions only; avoid continuous motion unless it communicates live job progress.
+- Job progress should be readable through badges, progress rows, and timestamps rather than decorative animation.
 
 ## Security Model
 
