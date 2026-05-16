@@ -59,6 +59,8 @@ Background music is out of scope for the MVP. It should not be modeled in the fi
 
 Scene count is preset-driven in the MVP so prompt design and rendering stay predictable. The AI may adjust wording and scene content, but it should return the requested scene roles and count.
 
+Scene ordering is fixed by the selected duration preset in the MVP. Users can edit scene text and prompts, but arbitrary scene reordering is out of scope because the roles and timing form the video structure.
+
 30-second structure:
 
 - 0-3s: hook.
@@ -221,14 +223,10 @@ Scene roles:
 Scene status values:
 
 - `draft`
-- `image_pending`
-- `image_generating`
-- `image_ready`
-- `audio_pending`
-- `audio_generating`
-- `audio_ready`
 - `ready`
 - `failed`
+
+Scene status represents the editable content state only. Image and audio generation state is derived from `assets` and `jobs`, which are the source of truth for generated files and in-progress work.
 
 ### assets
 
@@ -268,7 +266,6 @@ Asset status values:
 - `pending`
 - `ready`
 - `failed`
-- `deleted`
 
 The `path` field stores a relative portable path, not an absolute filesystem path.
 
@@ -324,16 +321,26 @@ The implementation should expose a database function such as `claim_next_job()` 
 Preferred Postgres pattern:
 
 ```sql
-select id
-from jobs
-where status = 'pending'
-  and attempts < max_attempts
-order by created_at
-for update skip locked
-limit 1;
+with claimed as (
+  select id
+  from jobs
+  where status = 'pending'
+    and attempts < max_attempts
+  order by created_at
+  for update skip locked
+  limit 1
+)
+update jobs
+set
+  status = 'processing',
+  attempts = attempts + 1,
+  started_at = now(),
+  updated_at = now()
+where id in (select id from claimed)
+returning *;
 ```
 
-The function then updates the claimed row to `processing`, increments `attempts`, sets `started_at`, and returns the full job row. An `UPDATE ... WHERE status = 'pending' RETURNING *` pattern is acceptable only if it preserves the same atomic claim behavior.
+An alternative `UPDATE ... WHERE status = 'pending' RETURNING *` pattern is acceptable only if it preserves the same atomic claim behavior.
 
 ### renders
 
@@ -350,7 +357,7 @@ Key fields:
 - `width`
 - `height`
 - `fps`
-- `ai_disclosure_required`
+- `ai_disclosure_acknowledged_at`
 - `error_message`
 - `created_at`
 - `updated_at`
@@ -361,7 +368,6 @@ Render status values:
 - `rendering`
 - `succeeded`
 - `failed`
-- `deleted`
 
 The rendered MP4 path is stored only in the `assets` table through the `output_asset_id` render asset. The render input JSON path is stored only in the `assets` table through the `input_asset_id` render input asset.
 
@@ -377,12 +383,15 @@ Key fields:
 - `purpose`
 - `provider`
 - `model`
+- `revision`
 - `prompt`
 - `response_text`
 - `response_metadata`
 - `created_at`
 
 `prompt_versions` must not store binary payloads or base64 image/audio data. Large provider responses should be summarized in `response_text` and linked to generated files through `assets`. `response_metadata` may store compact JSON provider metadata, token usage, model ids, and safety/status fields. The implementation should keep each stored response payload under 64 KB.
+
+`revision` increments within the scope of `(project_id, scene_id, purpose)`. For project-level prompts where `scene_id` is null, the revision increments within `(project_id, purpose)`. This makes regenerated script, prompt, and SSML history easy to inspect without relying only on timestamps.
 
 ## Local Asset Storage
 
@@ -429,12 +438,10 @@ Initial endpoints:
 - `PATCH /projects/:projectId`
 - `DELETE /projects/:projectId`
 - `GET /projects/:projectId/scenes`
-- `PATCH /projects/:projectId/scenes/reorder`
 - `POST /projects/:projectId/generate-script`
 - `PATCH /scenes/:sceneId`
 - `POST /scenes/:sceneId/generate-image`
 - `POST /scenes/:sceneId/generate-audio`
-- `POST /projects/:projectId/build-render-input`
 - `POST /projects/:projectId/render`
 - `POST /jobs/:jobId/retry`
 - `GET /projects/:projectId/jobs`
@@ -444,6 +451,8 @@ Initial endpoints:
 The API returns typed JSON validated by shared schemas.
 
 Job progress uses polling in the MVP. The frontend should poll `GET /projects/:projectId/jobs` every 2 seconds while active jobs exist and stop polling once all jobs are in a terminal status. SSE and WebSockets are out of scope for the MVP.
+
+Render input generation is an internal worker sub-step. The frontend calls `POST /projects/:projectId/render`; the worker builds `remotion-input.json`, stores it as a `render_input` asset, and then runs the Remotion render. There is no separate public render-input endpoint in the MVP.
 
 ## AI Provider Responsibilities
 
@@ -516,6 +525,8 @@ Then `apps/render` renders the final MP4 to:
 projects/{projectId}/renders/final.mp4
 ```
 
+The user does not inspect or approve the render input JSON in the MVP. It is stored for debugging and reproducibility.
+
 ## Error Handling
 
 Each generation and render step writes errors to its job record. A failed scene-level job should not force the whole project to be discarded.
@@ -525,7 +536,7 @@ The UI should allow retrying:
 - script generation for a project
 - image generation for a scene
 - audio generation for a scene
-- render input generation
+- render preparation
 - video render
 
 Provider errors should be stored with a concise message and enough provider metadata to debug the issue. Raw secrets must never be stored.
@@ -582,8 +593,9 @@ The MVP should include basic guidance and metadata for AI-assisted publishing:
 - Avoid misleading synthetic content.
 - Avoid unsupported medical, legal, or financial claims.
 - Keep prompts and outputs stored for traceability.
-- Store `ai_disclosure_required` metadata on render records.
+- AI disclosure is always required for generated videos in the MVP.
 - Require a simple export confirmation that the user reviewed AI disclosure and rights risk before using the final MP4 externally.
+- Store that confirmation on the render record as `ai_disclosure_acknowledged_at`.
 
 Automated platform disclosure and upload checks are out of scope for MVP.
 
