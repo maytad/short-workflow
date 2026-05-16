@@ -47,20 +47,24 @@ bun run render:project --project <projectId>
 
 Never use `npm`, `yarn`, or `pnpm` unless the package-manager decision is explicitly changed.
 
+`bun run dev` should run the Turborepo development pipeline for local app dev tasks. Use the suffixed commands when working on one app at a time.
+
 ## Boundaries
 
 Always:
 
 - Keep the MVP single-user and local-running.
 - Keep `apps/web` and `apps/api` bound to localhost for MVP development.
-- Use hosted Supabase Postgres through `DATABASE_URL`; do not require a local Supabase CLI stack.
+- Use hosted Supabase Postgres through Drizzle; do not require a local Supabase CLI stack.
+- Use `DATABASE_URL` for app runtime and `DATABASE_DIRECT_URL` for Drizzle Kit and migration scripts.
 - Keep the app UI and generated video content in English.
 - Store asset paths in the database as portable relative paths.
-- Keep `DATABASE_URL`, Supabase service role keys, and AI provider keys out of the frontend.
+- Keep `DATABASE_URL`, `DATABASE_DIRECT_URL`, Supabase service role keys, and AI provider keys out of the frontend.
 - Use `packages/shared` for shared schemas, enums, constants, and cross-app types.
 - Use `packages/db` as the Drizzle database boundary for schema, queries, clients, and migrations.
 - Keep `apps/web` as an API consumer, not a direct database client.
 - Keep generated image/audio/render files under `LOCAL_ASSET_ROOT`.
+- Treat generated assets as machine-local. Cross-machine work requires manually copying or syncing `LOCAL_ASSET_ROOT`.
 - Keep generated assets append-only; stale scene assets remain history and are ignored for new renders.
 
 Never:
@@ -126,10 +130,15 @@ The MVP does not require a full automated test suite before the first working lo
 - Migration folders live under `packages/db/migrations`.
 - Each migration must include `migration.sql` and `down.sql`.
 - Normal schema change flow is: update Drizzle schema, run `bun run db:generate`, review or edit `migration.sql`, add reviewed `down.sql`, run `bun run db:check`, then run `bun run db:migrate:up`.
+- App runtime connects with `DATABASE_URL`. Drizzle Kit and migration scripts connect with `DATABASE_DIRECT_URL`.
+- If `DATABASE_URL` uses Supabase transaction pooler mode, configure the Postgres client with prepared statements disabled, for example `postgres(DATABASE_URL, { prepare: false })`.
 - `db:migrate:up` applies unapplied `migration.sql` files in lexical order and records them in `app_migrations`.
 - `db:migrate:down -- --steps N` applies latest `down.sql` files in reverse order and removes their `app_migrations` records only after rollback succeeds.
+- Applied migration checksum mismatches must fail loudly and abort the migration run.
 - Missing `down.sql` should fail loudly. Intentionally irreversible migrations must include an explicit failing statement and a comment explaining why rollback is blocked.
-- Migration scripts connect to hosted Supabase through `DATABASE_URL`; do not require `supabase start`.
+- Migration scripts connect to hosted Supabase through `DATABASE_DIRECT_URL`; do not require `supabase start`.
+- Drizzle Studio opens the hosted Supabase database as a live editor. Treat manual row edits and deletes as production data changes.
+- Supabase Free Tier has a 500 MB database limit before read-only behavior, constrained connections, and pausing after 1 week of inactivity. Keep worker concurrency conservative and keep binary assets out of Postgres.
 
 ## Frontend Rules
 

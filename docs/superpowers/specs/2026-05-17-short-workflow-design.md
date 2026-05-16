@@ -154,13 +154,28 @@ The MVP uses a hosted Supabase Free Tier project for Postgres. It does not requi
 
 - `apps/web`, `apps/api`, `apps/worker`, and `apps/render` run locally during MVP development.
 - Database reads and writes go to the hosted Supabase project.
-- `DATABASE_URL` comes from the Supabase project's Postgres connection string and is used by Drizzle ORM and migration scripts.
+- `DATABASE_URL` is the runtime Postgres connection string for `apps/api` and `apps/worker`. It should use a Supabase pooled connection for normal app traffic.
+- `DATABASE_DIRECT_URL` is the direct Postgres connection string for Drizzle Kit and migration scripts.
 - `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` come from the Supabase Dashboard if the app later needs Supabase platform APIs. Normal database access should use Drizzle through `DATABASE_URL`.
-- `DATABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are server/tooling-only and must be loaded only by `apps/api`, `apps/worker`, and database scripts.
+- `DATABASE_URL`, `DATABASE_DIRECT_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are server/tooling-only and must be loaded only by `apps/api`, `apps/worker`, and database scripts.
 - The frontend must call `apps/api`; it must not connect to Supabase directly.
 - SQL migrations live in the repo under `packages/db/migrations`.
 - For the MVP, migrations are applied to the hosted Supabase database through repo scripts. The Supabase Dashboard SQL Editor is a fallback for inspection/manual recovery, not the primary workflow.
 - Local-first in this design means local app/runtime/render/assets, not a local database.
+
+Connection string rules:
+
+- App runtime uses `DATABASE_URL`.
+- Drizzle Kit, migration checks that touch the database, and `db:migrate:up/down` use `DATABASE_DIRECT_URL`.
+- Prefer Supabase pooler session mode for long-running local `apps/api` and `apps/worker` processes when direct IPv6 connections are unavailable or connection limits are tight.
+- Transaction pooler mode is acceptable only when the Postgres client disables prepared statements, for example `postgres(DATABASE_URL, { prepare: false })`.
+- Direct connections should be reserved for migrations, one-off tooling, backups, and other short-lived operational commands.
+
+Supabase Free Tier operational notes:
+
+- Free Tier database size is limited to 500 MB before read-only behavior; large text metadata should stay compact and binary assets must stay out of Postgres.
+- Free projects may pause after 1 week of inactivity. If the app has not been used for a while, the hosted Supabase project may need to be restored or unpaused in the dashboard before local services work again.
+- Connection limits are constrained on small compute tiers. Keep runtime clients pooled, avoid unnecessary direct connections, and keep `WORKER_CONCURRENCY` conservative.
 
 ## Database Access And Migrations
 
@@ -213,7 +228,7 @@ bun run db:studio
 - `db:check` runs Drizzle Kit migration checks before applying migrations.
 - `db:migrate:up` runs the repo's custom migration runner and applies unapplied `migration.sql` files in lexical order.
 - `db:migrate:down` runs the repo's custom migration runner and applies the latest applied `down.sql` files in reverse order.
-- `db:studio` opens Drizzle Studio for local inspection against the hosted Supabase database.
+- `db:studio` opens Drizzle Studio for local inspection against the hosted Supabase database. Drizzle Studio is a live database editor; treat row edits and deletes as production data changes.
 
 Do not use `drizzle-kit push` for the normal MVP workflow because it mutates the database directly without committed migration files. Do not treat `drizzle-kit up` as application migration up; Drizzle Kit `up` upgrades Drizzle schema snapshot metadata and is not the same as applying app migrations.
 
@@ -228,7 +243,7 @@ The custom migration runner should create and own an `app_migrations` table with
 
 1. Read migration folders in lexical order.
 2. Skip migrations already present in `app_migrations`.
-3. Verify the checksum for any previously applied migration.
+3. Verify the checksum for any previously applied migration. If the checksum differs from the committed file on disk, fail loudly and abort the migration run.
 4. Run `migration.sql` inside a transaction when Postgres allows it.
 5. Insert the migration record only after the SQL succeeds.
 
@@ -242,7 +257,7 @@ The custom migration runner should create and own an `app_migrations` table with
 
 Every migration must include a reviewed `down.sql`. If a migration is intentionally irreversible, `down.sql` must contain an explicit failing statement and a comment explaining why rollback is blocked. This keeps the script contract consistent while avoiding fake rollbacks for destructive data changes.
 
-Migration scripts connect to the hosted Supabase Postgres database through `DATABASE_URL`. They do not require Supabase CLI, `supabase start`, or a local Docker database.
+Migration scripts connect to the hosted Supabase Postgres database through `DATABASE_DIRECT_URL`. They do not require Supabase CLI, `supabase start`, or a local Docker database.
 
 ## Frontend React Design
 
@@ -423,7 +438,7 @@ The MVP is intentionally local-running and single-user. The app and API are loca
 - No internal API token is implemented.
 - The API must bind to localhost during MVP development.
 - Public deployment is out of scope until an auth boundary is added.
-- Database credentials and Supabase service role access are allowed only in `apps/api`, `apps/worker`, and database scripts.
+- `DATABASE_URL`, `DATABASE_DIRECT_URL`, and `SUPABASE_SERVICE_ROLE_KEY` are allowed only in `apps/api`, `apps/worker`, and database scripts.
 - The frontend must not receive database credentials or service role keys.
 - The frontend must not access database tables directly.
 
@@ -859,6 +874,8 @@ Prompt purpose values:
 
 Assets are stored on the local filesystem in the MVP. The database stores portable relative paths and metadata so asset records can later point to Supabase Storage or Google Cloud Storage without changing project or scene logic.
 
+Generated assets are tied to the machine that produced them. The hosted Supabase database stores only relative paths; it does not store the files. Cross-machine use requires manually copying or syncing `LOCAL_ASSET_ROOT` to the other machine before previewing, regenerating dependent outputs, or rendering from existing assets.
+
 The root is configured with:
 
 ```text
@@ -1110,6 +1127,7 @@ Expected variables:
 
 ```text
 DATABASE_URL=
+DATABASE_DIRECT_URL=
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
@@ -1120,7 +1138,7 @@ WORKER_CONCURRENCY=2
 API_BASE_URL=http://localhost:3001
 ```
 
-`DATABASE_URL`, the service role key, and AI keys are only used by `apps/api`, `apps/worker`, and trusted local database scripts. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are optional for the first Drizzle-only database flow unless a later implementation calls Supabase platform APIs.
+`DATABASE_URL`, `DATABASE_DIRECT_URL`, the service role key, and AI keys are only used by `apps/api`, `apps/worker`, and trusted local database scripts. `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` are optional for the first Drizzle-only database flow unless a later implementation calls Supabase platform APIs.
 
 Supabase environment values should be copied from the hosted Supabase project dashboard. The MVP does not require `supabase start` or a local Supabase CLI stack.
 
@@ -1141,7 +1159,7 @@ bun run db:migrate:down -- --steps 1
 bun run render:project --project <projectId>
 ```
 
-The exact scripts will be defined during implementation.
+`bun run dev` runs the Turborepo development pipeline for the local apps that have dev tasks, normally web, api, worker, and render. The exact scripts will be defined during implementation.
 
 ## Compliance Guardrails
 
