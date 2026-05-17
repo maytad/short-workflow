@@ -6,3 +6,4 @@ export * from "./queries/promptVersions";
 export * from "./queries/renders";
 export * from "./queries/scenes";
 export * from "./schema";
+export * from "./transaction";

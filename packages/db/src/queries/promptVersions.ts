@@ -4,6 +4,7 @@ import { and, desc, eq, isNull, sql } from "drizzle-orm";
 import type { DbClient } from "../client";
 import { promptVersions } from "../schema";
 import type { PromptVersionRow } from "../schema";
+import { withAdvisoryTransactionLock } from "../transaction";
 
 export type PromptPurpose = (typeof PROMPT_PURPOSES)[number];
 
@@ -44,14 +45,26 @@ export async function nextPromptRevision(db: DbClient, scope: PromptVersionScope
 }
 
 export async function insertPromptVersion(db: DbClient, input: InsertPromptVersionInput) {
-  const revision =
-    input.revision ??
-    (await nextPromptRevision(db, {
+  if (input.revision !== undefined) {
+    return insertPromptVersionRow(db, input, input.revision);
+  }
+
+  return withAdvisoryTransactionLock(db, promptVersionRevisionLockKey(input), async (tx) => {
+    const revision = await nextPromptRevision(tx, {
       projectId: input.projectId,
       sceneId: input.sceneId,
       purpose: input.purpose,
-    }));
+    });
 
+    return insertPromptVersionRow(tx, input, revision);
+  });
+}
+
+async function insertPromptVersionRow(
+  db: DbClient,
+  input: InsertPromptVersionInput,
+  revision: number,
+) {
   const [promptVersion] = await db
     .insert(promptVersions)
     .values({
@@ -72,6 +85,12 @@ export async function insertPromptVersion(db: DbClient, input: InsertPromptVersi
   }
 
   return promptVersion;
+}
+
+function promptVersionRevisionLockKey(scope: PromptVersionScope) {
+  return ["prompt_version_revision", scope.projectId, scope.sceneId ?? "project", scope.purpose].join(
+    ":",
+  );
 }
 
 export async function listPromptVersions(db: DbClient, projectId: string) {
