@@ -4,11 +4,11 @@
   "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "generate": "drizzle-kit generate",
+    "generate": "bun --env-file=../../.env drizzle-kit generate",
     "check": "bun scripts/check.ts",
-    "migrate:up": "bun scripts/migrate.ts up",
-    "migrate:down": "bun scripts/migrate.ts down",
-    "studio": "drizzle-kit studio",
+    "migrate:up": "bun --env-file=../../.env scripts/migrate.ts up",
+    "migrate:down": "bun --env-file=../../.env scripts/migrate.ts down",
+    "studio": "bun --env-file=../../.env drizzle-kit studio",
     "test": "bun test",
     "typecheck": "tsc --noEmit"
   },
