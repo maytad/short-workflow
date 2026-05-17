@@ -54,6 +54,8 @@ generate_scene_audio job
   │          previousText, nextText, outputFormat="mp3_44100_128"
   │     out: { audioBase64, alignment: { characters, characterStartTimesSeconds, characterEndTimesSeconds } }
   ├─ derive audioDurationSeconds = max(characterEndTimesSeconds) (alignment is required, see §Audio overflow)
+  ├─ validate raw alignment (non-empty, equal-length arrays, finite numbers, end > start)
+  │     fail audio if not — alignment is malformed
   ├─ if audioDurationSeconds > sceneDurationSeconds + 0.5:
   │     mark audio asset failed, throw — job retries (see §Audio overflow)
   ├─ save audio asset (mp3, kind=audio, provider=elevenlabs)
@@ -128,6 +130,12 @@ Pure utility, no side effects. Exposes:
 ```ts
 export type CaptionWord = { text: string; start: number; end: number };
 
+export type ElevenLabsAlignment = {
+  characters: string[];
+  characterStartTimesSeconds: number[];
+  characterEndTimesSeconds: number[];
+};
+
 export type CaptionTimingDoc = {
   version: 1;
   sourceAudioAssetId: string;     // for audit; pairing at render time uses the file path
@@ -136,22 +144,38 @@ export type CaptionTimingDoc = {
   words: CaptionWord[];
 };
 
-export function alignmentToWords(alignment: {
-  characters: string[];
-  characterStartTimesSeconds: number[];
-  characterEndTimesSeconds: number[];
-}): CaptionWord[];
+// Validates the *raw* alignment from ElevenLabs before any audio is written.
+// Catches malformed responses (empty arrays, length mismatch, NaN, end <= start)
+// that would otherwise sneak past the audio overflow gate (e.g. max([]) === -Infinity).
+export function validateAlignment(
+  alignment: ElevenLabsAlignment,
+): { ok: true } | { ok: false; reason: string };
+
+export function alignmentToWords(alignment: ElevenLabsAlignment): CaptionWord[];
 
 export function buildCaptionTimingDoc(input: {
   alignment: ElevenLabsAlignment;
   sourceAudioAssetId: string;
 }): CaptionTimingDoc;
 
+// Timing-shape validation that runs *after* a doc is built. Cannot fail the
+// audio — only decides whether to save caption_timing.
 export function validateCaptionTimingDoc(
   doc: CaptionTimingDoc,
   options: { sceneDurationSeconds: number },
 ): { ok: true } | { ok: false; reason: string };
 ```
+
+`validateAlignment` checks:
+
+- `characters.length >= 1`
+- `characterStartTimesSeconds.length === characters.length`
+- `characterEndTimesSeconds.length === characters.length`
+- every entry in both timing arrays is a finite number (`Number.isFinite`)
+- every position `i`: `characterEndTimesSeconds[i] > characterStartTimesSeconds[i]`
+- `characterStartTimesSeconds[0] >= 0`
+
+If any check fails, return `{ ok: false, reason }`. The handler treats this as a malformed response and **fails the audio asset**, identical to alignment being `null`.
 
 `alignmentToWords` walks the parallel arrays:
 
@@ -319,24 +343,25 @@ Replace the Gemini TTS call with ElevenLabs. Steps:
 3. Load latest script `prompt_version` and derive `styleContext` (existing).
 4. Create pending `audio` asset (provider `"elevenlabs"`).
 5. Call `generateSpeechWithTimestamps`.
-6. **Alignment required**: if `alignment` is `null` / missing → mark audio asset failed with `elevenlabs_alignment_missing`, throw the same error. The endpoint is documented to always return alignment; an empty alignment is a malformed response, not a normal case. Retry via existing backoff. (Avoids pulling in an MP3 duration library and avoids producing audio we cannot validate against the scene budget.)
-7. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)`.
-8. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
-9. Write audio bytes to `sceneAudioPath(projectId, sceneId, audioAsset.id, "mp3")`.
-10. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
-11. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc`:
-    - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 12.
+6. **Alignment required**: if `alignment` is `null` / missing → mark audio asset failed with `elevenlabs_alignment_missing`, throw the same error. The endpoint is documented to always return alignment; an absent alignment is a malformed response, not a normal case. Retry via existing backoff.
+7. **Validate raw alignment** via `validateAlignment(alignment)` (see §`captionTiming.ts`). Catches empty arrays, length mismatch, NaN, and `end <= start`. If invalid → mark audio asset failed with `elevenlabs_alignment_invalid:<reason>`, throw, retry. This step **must** run before step 8, otherwise `Math.max(...[])` returns `-Infinity` and bypasses the audio overflow gate.
+8. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)`.
+9. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
+10. Write audio bytes to `sceneAudioPath(projectId, sceneId, audioAsset.id, "mp3")`.
+11. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
+12. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc` (timing-shape only):
+    - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 13.
     - If valid: create pending `caption_timing` asset (path = `sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)`). Try to write the JSON file:
       - On success: mark caption asset ready.
       - On file write failure: `markAssetFailed(captionAsset.id, message)` to leave a clean DB state, then log warning. Audio asset and job still succeed.
       - On DB mark-ready failure (rare): leave the file on disk, log error, audio asset and job still succeed. Renderer's `getReadyAssetByPath` lookup will return null and fall back to static caption.
-12. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
-13. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
+13. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
+14. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
 
 Error handling:
 
 - ElevenLabs call throws → audio asset marked failed, caption asset never created, error bubbles up to existing retry logic.
-- Alignment missing → audio asset marked failed (treated as malformed response), error bubbles up, retry.
+- Alignment missing or `validateAlignment` fails → audio asset marked failed (malformed response), error bubbles up, retry.
 - Audio overflow gate fails → audio asset marked failed, error bubbles up. Treated as a real failure because the audio cannot be shown in the scene as-designed.
 - File write fails after audio call → audio asset marked failed.
 - `caption_timing` asset failure (file write or mark-ready) → mark the caption asset failed when possible, log, continue. Audio asset and job still succeed. The renderer fallback path covers this case. **Never** leave a caption asset in `pending` state.
@@ -388,18 +413,14 @@ Add `"caption"` as an accepted `kind` in `stageAsset` for the staged filename su
 
 ### `apps/render/src/ShortVideo.tsx`
 
+The current renderer wraps each scene in `<Sequence durationInFrames={...} from={sequenceFrom}>` (`apps/render/src/ShortVideo.tsx:53`). Inside a `<Sequence>`, Remotion's `useCurrentFrame()` returns a **local** frame starting at 0 — not the global timeline frame. The caption component must therefore use only local frames; never add `sceneStartFrame`.
+
 Split caption rendering:
 
 ```tsx
-function SceneCaption({ scene, sceneStartFrame, fps }) {
+function SceneCaption({ scene }: { scene: RenderInput["scenes"][number] }) {
   if (scene.captionTimingPath) {
-    return (
-      <KaraokeCaption
-        timingSrc={resolveMediaSrc(scene.captionTimingPath)}
-        sceneStartFrame={sceneStartFrame}
-        fps={fps}
-      />
-    );
+    return <KaraokeCaption timingSrc={resolveMediaSrc(scene.captionTimingPath)} staticFallback={scene.caption} />;
   }
   return <StaticCaption text={scene.caption} />;
 }
@@ -407,34 +428,66 @@ function SceneCaption({ scene, sceneStartFrame, fps }) {
 
 `StaticCaption` is the current caption block.
 
-`KaraokeCaption` reads the JSON via Remotion's data fetching pattern: `delayRender()` on first render, `fetch(timingSrc)` in `useEffect`, set state, `continueRender()` so the bundle waits until the JSON loads. Once words are loaded:
+`KaraokeCaption` does data fetching via Remotion's `delayRender` / `continueRender` pattern, with explicit failure handling so the renderer is never left hanging:
 
-- Compute `t = (useCurrentFrame() - sceneStartFrame) / fps`.
-- Find `activeIndex` such that `words[i].start <= t < words[i].end`. If none, use `-1`.
-- Build chunks via `chunkWords(words, { target: 5, min: 4, max: 6 })`:
+```tsx
+const [handle] = useState(() => delayRender("caption_timing_load"));
+const [doc, setDoc] = useState<CaptionTimingDoc | null>(null);
+const [failed, setFailed] = useState(false);
+
+useEffect(() => {
+  let cancelled = false;
+  fetch(timingSrc)
+    .then((r) => { if (!r.ok) throw new Error(`fetch_status_${r.status}`); return r.json(); })
+    .then((json) => captionTimingDocSchema.parse(json))     // Zod parse
+    .then((parsed) => { if (!cancelled) { setDoc(parsed); continueRender(handle); } })
+    .catch(() => {
+      if (cancelled) return;
+      setFailed(true);
+      continueRender(handle);                               // never call cancelRender — fall back to static
+    });
+  return () => { cancelled = true; };
+}, [timingSrc, handle]);
+
+if (failed || !doc) {
+  // While loading we render the static fallback so a frame screenshot is never blank.
+  // After failure we keep the static fallback for the rest of the scene.
+  return <StaticCaption text={staticFallback} />;
+}
+```
+
+Failure policy: never `cancelRender` for caption issues. A bad caption file is a soft fault — the audio still plays and the static caption is meaningful. `cancelRender` would abort the entire video render, which is far worse than losing karaoke on one scene.
+
+Once `doc` is loaded:
+
+- All math uses **local frame**: `const localFrame = useCurrentFrame()` and `t = localFrame / fps`. No `sceneStartFrame` parameter, no global frame.
+- Find `activeIndex` such that `doc.words[i].start <= t < doc.words[i].end`. If none, use `-1`.
+- Build chunks via `chunkWords(doc.words, { target: 5, min: 4, max: 6 })`:
   - Greedy walk. Start a new chunk after a word ending in `.`, `?`, `!`, or after a comma if chunk size >= `min`.
   - Force a break after `max` words even without punctuation.
-- Choose the chunk that contains `activeIndex`; if `activeIndex === -1`, choose the first chunk for pre-roll and the last chunk for post-roll based on `t` vs the chunk boundaries.
+- Choose the chunk that contains `activeIndex`; if `activeIndex === -1`, choose the first chunk for pre-roll (`t` before the first word) and the last chunk for post-roll (`t` after the last word).
 - Render the chunk in one line, white text. The active word is animated via Remotion's deterministic frame interpolation, **not CSS transitions** — Remotion renders frame-by-frame and CSS transitions are not guaranteed to evaluate at frame boundaries (per `remotion-best-practices` skill). Approach:
 
   ```tsx
   // For each word i in the chunk:
-  const word = words[i];
+  const word = doc.words[i];
   const isActive = i === activeIndex;
-  const wordStartFrame = sceneStartFrame + Math.round(word.start * fps);
-  const easeInFrames   = Math.round(0.08 * fps);   // ~80ms ease-in
-  const easeOutFrames  = Math.round(0.08 * fps);   // ~80ms ease-out after word ends
-  const wordEndFrame   = sceneStartFrame + Math.round(word.end   * fps);
 
-  // Scale animates up while active, then back down to 1 after word.end.
+  // All frames are LOCAL to this Sequence — never add a scene offset.
+  const wordStartFrame = Math.round(word.start * fps);
+  const wordEndFrame   = Math.round(word.end   * fps);
+  const wordSpan       = Math.max(1, wordEndFrame - wordStartFrame);
+
+  // Clamp ease durations so the four-stop range stays strictly increasing
+  // even for very short words (interpolate throws otherwise).
+  const desiredEase = Math.round(0.08 * fps);
+  const easeFrames  = Math.max(1, Math.min(desiredEase, Math.floor(wordSpan / 2)));
+  const easeIn      = wordStartFrame + easeFrames;
+  const easeOut     = wordEndFrame   + easeFrames;
+
   const scaleProgress = interpolate(
     frame,
-    [
-      wordStartFrame,
-      wordStartFrame + easeInFrames,
-      wordEndFrame,
-      wordEndFrame + easeOutFrames,
-    ],
+    [wordStartFrame, easeIn, wordEndFrame, easeOut],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
   );
@@ -463,7 +516,14 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 
 Per AGENTS.md MVP testing policy: lightweight checks only.
 
-- `captionTiming.test.ts` (new, in `packages/ai`): unit-test `alignmentToWords`, `buildCaptionTimingDoc`, and `validateCaptionTimingDoc` against fixed fixtures (one well-formed, one with whitespace at start, one missing alignment data, one with overflow audio duration to confirm the gate is upstream of timing-shape checks).
+- `captionTiming.test.ts` (new, in `packages/ai`): unit-test `validateAlignment`, `alignmentToWords`, `buildCaptionTimingDoc`, and `validateCaptionTimingDoc` against fixed fixtures. Cases:
+  - well-formed alignment → words derived correctly
+  - empty arrays → `validateAlignment` rejects
+  - length mismatch (`characters.length !== characterStartTimesSeconds.length`) → `validateAlignment` rejects
+  - NaN / -Infinity timestamp → `validateAlignment` rejects
+  - `end <= start` for some character → `validateAlignment` rejects
+  - whitespace at start of `characters` → first word still has correct start time
+  - overflow audio duration → caller's overflow gate fires (the unit test asserts `validateCaptionTimingDoc` does **not** mask overflow as a caption issue)
 - Manual: run `generate_scene_audio` for one scene of an existing tiny-mechanisms project. Verify on disk:
   - `audio/<audioAssetId>.mp3` exists, plays back.
   - `captions/<audioAssetId>.json` exists (same id as the audio file), schema matches §Components, `sourceAudioAssetId` matches the audio asset.
@@ -479,6 +539,7 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 | ElevenLabs 4xx (auth/quota) | Throw, retries, max attempts hit, job fails. |
 | Audio longer than `scene.durationSeconds + 0.5` | Audio asset marked failed, error thrown, job retries. After max attempts the job surfaces in the UI for manual narration shortening. |
 | Response missing `alignment` | Audio asset marked failed (`elevenlabs_alignment_missing`), error thrown, job retries. Treated as a malformed response, not a normal case. |
+| Alignment present but malformed (empty arrays, length mismatch, NaN, end ≤ start) | Audio asset marked failed (`elevenlabs_alignment_invalid:<reason>`), error thrown, job retries. Validated **before** the audio overflow gate so `Math.max([])` cannot bypass it. |
 | `validateCaptionTimingDoc` fails (timing-shape) | Save audio. Do not create the caption_timing asset (no pending row left behind). Log reason. Renderer falls back to static caption. |
 | Caption file write fails after caption asset created | `markAssetFailed` on the caption asset, log, continue. Audio asset and job still succeed. Renderer falls back to static caption. |
 | Scene narration changes after audio gen | `content_updated_at` bump invalidates the audio asset for staleness checks (existing behavior). Regenerating produces a new audio + new caption_timing pair. |
@@ -516,7 +577,11 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 - **Job unit**: scene-by-scene, not single-shot. Reason: preserves scene-level retry, asset 1:1 model, edit-one-scene workflow. ElevenLabs `previousText`/`nextText` covers the prosody continuity argument for one-shot.
 - **Caption asset format**: JSON file under `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/`. Reason: matches existing append-only file layout. No new table needed.
 - **Audio overflow handling**: gate the audio asset itself (mark failed, throw, retry) rather than save audio + skip caption. Reason: an audio that runs past `scene.durationSeconds` gets cut mid-word in Remotion's `Sequence`. The render is broken, not just the caption.
+- **Raw alignment validation before audio gate**: `validateAlignment` runs against the response before the overflow gate so empty / malformed arrays cannot bypass it (`Math.max([])` is `-Infinity`, which would silently pass an overflow check). Reason: defense in depth against a malformed-but-non-null alignment response.
 - **Caption-audio pairing**: caption_timing files are named after the audio asset's id (`captions/{audioAssetId}.json`). The renderer pairs by file path, not by scanning recent assets. The JSON also stores `sourceAudioAssetId` for audit but the renderer does not consult it. Reason: without pairing, regenerated audio inherits stale caption_timing and karaoke drifts. File-path encoding avoids adding an `assets.metadata` column.
+- **Renderer uses local frame, not global**: `KaraokeCaption` is a child of `<Sequence>`, where `useCurrentFrame()` is local (starts at 0 per scene). The component derives word frames from local time only — no `sceneStartFrame` parameter. Reason: passing global frame math into a Sequence-scoped component would make every scene after the first render incorrectly (negative frames, never-active words).
+- **Caption fetch failure handling**: `KaraokeCaption` calls `continueRender(handle)` on fetch/parse error and falls back to `<StaticCaption>`. Never `cancelRender` for caption issues. Reason: a bad caption file is a soft fault — the audio still plays and the static caption is meaningful. `cancelRender` would abort the entire video.
+- **Clamped ease durations in `interpolate`**: `easeFrames = max(1, min(desiredEase, floor(wordSpan / 2)))` so the four-stop range stays strictly increasing for very short words. Reason: `interpolate` throws on a duplicated stop, and very short words (<160ms) are common.
 - **Audio file extension**: `sceneAudioPath` takes the extension as a parameter. Reason: ElevenLabs returns MP3 while the old helper hard-coded `.wav`; mislabeled extensions break the renderer and debug tooling.
 - **Migration shape**: `ALTER TYPE ... ADD VALUE` for the existing Postgres enums (`asset_kind`, `asset_provider`). Reason: that's how the schema actually stores these — confirmed via `packages/db/src/schema.ts` and `packages/db/migrations/0001_init/migration.sql`.
 - **Static caption fallback in renderer**: kept. Reason: lets old projects render without re-generating audio; required by append-only constraint.
