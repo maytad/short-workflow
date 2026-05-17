@@ -57,7 +57,22 @@ bun run dev:render
 ## Verification
 
 ```bash
+bun run format:check
+bun run lint
+bun run check
 bun run typecheck
+```
+
+Run all quality gates together:
+
+```bash
+bun run quality
+```
+
+Apply formatting before committing:
+
+```bash
+bun run format
 ```
 
 ## First Smoke Flow
