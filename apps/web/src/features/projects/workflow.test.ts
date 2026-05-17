@@ -105,7 +105,14 @@ describe("scene update helpers", () => {
       narration: "New narration",
       updatedAt: "2026-05-16T10:10:00.000Z",
     });
-    expect(isAssetCurrentForScene(asset(), updated.scenes[0]!)).toBe(false);
+
+    const updatedScene = updated.scenes[0];
+    expect(updatedScene).toBeDefined();
+    if (!updatedScene) {
+      throw new Error("Expected updated scene");
+    }
+
+    expect(isAssetCurrentForScene(asset(), updatedScene)).toBe(false);
   });
 });
 

@@ -1,4 +1,4 @@
-import { PROMPT_PURPOSES } from "@short-workflow/shared";
+import type { PROMPT_PURPOSES } from "@short-workflow/shared";
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
 
 import type { DbClient } from "../client";

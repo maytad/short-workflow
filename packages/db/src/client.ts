@@ -10,7 +10,7 @@ export function createDbClient(connectionString = process.env.DATABASE_URL) {
 
   const client = postgres(connectionString, {
     max: 4,
-    prepare: connectionString.includes("pooler.supabase.com:6543") ? false : true,
+    prepare: !connectionString.includes("pooler.supabase.com:6543"),
   });
 
   return {

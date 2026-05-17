@@ -1,4 +1,4 @@
-import { TextToSpeechClient, protos } from "@google-cloud/text-to-speech";
+import { TextToSpeechClient, type protos } from "@google-cloud/text-to-speech";
 
 import type { GenerateAudioOutput } from "./types";
 

@@ -48,17 +48,19 @@ describe("stageRenderInputAssets", () => {
     await writeFile(audioPath, "audio");
 
     const staged = await stageRenderInputAssets(makeInput(imagePath, audioPath), publicDir);
+    const stagedScene = staged.scenes[0];
 
-    expect(staged.scenes[0]!.imagePath).toBe(
-      "assets/00000000-0000-4000-8000-000000000031-image.png",
-    );
-    expect(staged.scenes[0]!.audioPath).toBe(
-      "assets/00000000-0000-4000-8000-000000000031-audio.wav",
-    );
-    await expect(readFile(path.join(publicDir, staged.scenes[0]!.imagePath), "utf8")).resolves.toBe(
+    expect(stagedScene).toBeDefined();
+    if (!stagedScene) {
+      throw new Error("Expected staged scene");
+    }
+
+    expect(stagedScene.imagePath).toBe("assets/00000000-0000-4000-8000-000000000031-image.png");
+    expect(stagedScene.audioPath).toBe("assets/00000000-0000-4000-8000-000000000031-audio.wav");
+    await expect(readFile(path.join(publicDir, stagedScene.imagePath), "utf8")).resolves.toBe(
       "image",
     );
-    await expect(readFile(path.join(publicDir, staged.scenes[0]!.audioPath), "utf8")).resolves.toBe(
+    await expect(readFile(path.join(publicDir, stagedScene.audioPath), "utf8")).resolves.toBe(
       "audio",
     );
   });

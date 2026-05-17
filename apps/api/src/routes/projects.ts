@@ -53,6 +53,14 @@ function withRouteContext(context: unknown) {
   return context as RouteContext;
 }
 
+function requireRouteParam(value: string | undefined, name: string) {
+  if (!value) {
+    throw new Error(`Missing route parameter: ${name}`);
+  }
+
+  return value;
+}
+
 export type ProjectRouteServices = {
   listProjects: typeof listProjects;
   createProject: typeof createProject;
@@ -128,7 +136,8 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         })
         .get("/:projectId", async (context) => {
           const { db, params, set } = withRouteContext(context);
-          const detail = await services.getProjectDetail(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const detail = await services.getProjectDetail(db, projectId);
 
           if (!detail) {
             return notFound(set);
@@ -138,6 +147,7 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         })
         .patch("/:projectId", (context) => {
           const { body, db, params, set } = withRouteContext(context);
+          const projectId = requireRouteParam(params.projectId, "projectId");
           const result = updateProjectRequestSchema.safeParse(body);
 
           if (!result.success) {
@@ -155,25 +165,26 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
           }
 
           return services
-            .updateProject(db, params.projectId!, input)
+            .updateProject(db, projectId, input)
             .then((project) => project ?? notFound(set));
         })
         .delete("/:projectId", async (context) => {
           const { db, params, set } = withRouteContext(context);
-          const canDelete = await services.assertProjectCanDelete(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const canDelete = await services.assertProjectCanDelete(db, projectId);
 
           if (!canDelete) {
             return conflict(set, "project_has_active_jobs");
           }
 
-          const deletedProject = await services.deleteProjectRows(db, params.projectId!);
+          const deletedProject = await services.deleteProjectRows(db, projectId);
 
           if (!deletedProject) {
             return notFound(set);
           }
 
           try {
-            await services.deleteProjectLocalFiles(params.projectId!);
+            await services.deleteProjectLocalFiles(projectId);
           } catch {
             // Best-effort local cleanup must not mask successful DB deletion.
           }
@@ -182,27 +193,32 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         })
         .get("/:projectId/scenes", (context) => {
           const { db, params } = withRouteContext(context);
-          return services.listProjectScenes(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          return services.listProjectScenes(db, projectId);
         })
         .get("/:projectId/assets", (context) => {
           const { db, params } = withRouteContext(context);
-          return services.listProjectAssets(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          return services.listProjectAssets(db, projectId);
         })
         .get("/:projectId/renders", (context) => {
           const { db, params } = withRouteContext(context);
-          return services.listProjectRenders(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          return services.listProjectRenders(db, projectId);
         })
         .get("/:projectId/jobs", (context) => {
           const { db, params, query } = withRouteContext(context);
+          const projectId = requireRouteParam(params.projectId, "projectId");
           return services.listProjectJobs(
             db,
-            params.projectId!,
+            projectId,
             query.status === "active" ? "active" : undefined,
           );
         })
         .post("/:projectId/generate-script", async (context) => {
           const { db, params, set } = withRouteContext(context);
-          const project = await services.getProject(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const project = await services.getProject(db, projectId);
 
           if (!project) {
             return notFound(set);
@@ -217,7 +233,8 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         })
         .post("/:projectId/render", async (context) => {
           const { db, params, set } = withRouteContext(context);
-          const project = await services.getProject(db, params.projectId!);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const project = await services.getProject(db, projectId);
 
           if (!project) {
             return notFound(set);
@@ -241,6 +258,7 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
     )
     .patch("/scenes/:sceneId", (context) => {
       const { body, db, params, set } = withRouteContext(context);
+      const sceneId = requireRouteParam(params.sceneId, "sceneId");
       const result = updateSceneRequestSchema.safeParse(body);
 
       if (!result.success) {
@@ -269,13 +287,12 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         input.durationSeconds = result.data.durationSeconds;
       }
 
-      return services
-        .updateScene(db, params.sceneId!, input)
-        .then((scene) => scene ?? notFound(set));
+      return services.updateScene(db, sceneId, input).then((scene) => scene ?? notFound(set));
     })
     .post("/scenes/:sceneId/generate-image", async (context) => {
       const { db, params, set } = withRouteContext(context);
-      const scene = await services.getScene(db, params.sceneId!);
+      const sceneId = requireRouteParam(params.sceneId, "sceneId");
+      const scene = await services.getScene(db, sceneId);
 
       if (!scene) {
         return notFound(set);
@@ -290,7 +307,8 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
     })
     .post("/scenes/:sceneId/generate-audio", async (context) => {
       const { db, params, set } = withRouteContext(context);
-      const scene = await services.getScene(db, params.sceneId!);
+      const sceneId = requireRouteParam(params.sceneId, "sceneId");
+      const scene = await services.getScene(db, sceneId);
 
       if (!scene) {
         return notFound(set);
@@ -305,9 +323,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
     })
     .post("/jobs/:jobId/retry", async (context) => {
       const { db, params, set } = withRouteContext(context);
+      const jobId = requireRouteParam(params.jobId, "jobId");
 
       try {
-        return await services.retryFailedJob(db, params.jobId!);
+        return await services.retryFailedJob(db, jobId);
       } catch (error) {
         if (error instanceof Error && error.message === "retry_requires_failed_job") {
           return conflict(set, "retry_requires_failed_job");
@@ -318,7 +337,8 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
     })
     .post("/renders/:renderId/acknowledge", async (context) => {
       const { db, params, set } = withRouteContext(context);
-      const render = await services.acknowledgeRenderDisclosure(db, params.renderId!);
+      const renderId = requireRouteParam(params.renderId, "renderId");
+      const render = await services.acknowledgeRenderDisclosure(db, renderId);
 
       return render ?? notFound(set);
     })

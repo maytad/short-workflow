@@ -15,8 +15,14 @@ describe("ShortVideo helpers", () => {
 
   test("computes scene and total duration in frames", () => {
     const scenes = [{ durationSeconds: 2.5 }, { durationSeconds: 1 }, { durationSeconds: 0.25 }];
+    const firstScene = scenes[0];
 
-    expect(getSceneDurationFrames(scenes[0]!, 30)).toBe(75);
+    expect(firstScene).toBeDefined();
+    if (!firstScene) {
+      throw new Error("Expected first scene");
+    }
+
+    expect(getSceneDurationFrames(firstScene, 30)).toBe(75);
     expect(getTotalDurationFrames(scenes, 30)).toBe(113);
   });
 });
