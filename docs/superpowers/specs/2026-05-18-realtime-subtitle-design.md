@@ -53,14 +53,15 @@ generate_scene_audio job
   │     in:  text=narration, voiceId, modelId, voiceSettings,
   │          previousText, nextText, outputFormat="mp3_44100_128"
   │     out: { audioBase64, alignment: { characters, characterStartTimesSeconds, characterEndTimesSeconds } }
-  ├─ derive audioDurationSeconds = max(characterEndTimesSeconds)
+  ├─ derive audioDurationSeconds = max(characterEndTimesSeconds) (alignment is required, see §Audio overflow)
   ├─ if audioDurationSeconds > sceneDurationSeconds + 0.5:
   │     mark audio asset failed, throw — job retries (see §Audio overflow)
   ├─ save audio asset (mp3, kind=audio, provider=elevenlabs)
   ├─ derive words[] from character alignment
   ├─ validate words[] (see §Validation)
   ├─ if valid: save caption_timing asset (json, kind=caption_timing, provider=elevenlabs)
-  │     — embeds sourceAudioAssetId in JSON for pairing with audio
+  │     — file name is {audioAssetId}.json, pairing the caption to the audio
+  │     — JSON also embeds sourceAudioAssetId for audit
   │  if invalid: log and skip — renderer falls back to static caption
   ├─ insert prompt_version row recording voiceSettings + modelId
   └─ mark job succeeded
@@ -129,7 +130,7 @@ export type CaptionWord = { text: string; start: number; end: number };
 
 export type CaptionTimingDoc = {
   version: 1;
-  sourceAudioAssetId: string;
+  sourceAudioAssetId: string;     // for audit; pairing at render time uses the file path
   narration: string;
   audioDurationSeconds: number;
   words: CaptionWord[];
@@ -288,13 +289,13 @@ export function sceneAudioPath(
 
 Existing call sites (`generateSceneAudio.ts`) pass `"mp3"` for the new ElevenLabs path. The previous Gemini handler is no longer wired in (left as dead code), so no other call sites need updating.
 
-Add a path helper for caption timing:
+Add a path helper for caption timing. The file is named after the **audio asset**, not the caption asset itself, so a render-time pairing only requires looking up the audio's id and reading the corresponding file path:
 
 ```ts
 export function sceneCaptionTimingPath(
   projectId: string,
   sceneId: string,
-  assetId: string,
+  audioAssetId: string,
 ): string {
   return path.join(
     "projects",
@@ -302,12 +303,12 @@ export function sceneCaptionTimingPath(
     "scenes",
     sceneId,
     "captions",
-    `${assetId}.json`,
+    `${audioAssetId}.json`,
   );
 }
 ```
 
-On-disk layout: `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/{assetId}.json`.
+On-disk layout: `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/{audioAssetId}.json`. Pairing is encoded in the path; no `assets.metadata` column or new query helper is required.
 
 ### `apps/worker/src/handlers/generateSceneAudio.ts`
 
@@ -318,24 +319,27 @@ Replace the Gemini TTS call with ElevenLabs. Steps:
 3. Load latest script `prompt_version` and derive `styleContext` (existing).
 4. Create pending `audio` asset (provider `"elevenlabs"`).
 5. Call `generateSpeechWithTimestamps`.
-6. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)` if alignment present, else estimate from MP3 duration (decode header, last resort).
-7. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
-8. Write audio bytes to `sceneAudioPath(projectId, sceneId, assetId, "mp3")`.
-9. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
-10. If `alignment` present:
-    - Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`.
-    - Run `validateCaptionTimingDoc`.
-    - On valid: create pending `caption_timing` asset, write JSON file, mark ready.
-    - On invalid: log structured warning `caption_timing_invalid: <reason>`, skip caption asset.
-11. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
-12. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }`.
+6. **Alignment required**: if `alignment` is `null` / missing → mark audio asset failed with `elevenlabs_alignment_missing`, throw the same error. The endpoint is documented to always return alignment; an empty alignment is a malformed response, not a normal case. Retry via existing backoff. (Avoids pulling in an MP3 duration library and avoids producing audio we cannot validate against the scene budget.)
+7. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)`.
+8. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
+9. Write audio bytes to `sceneAudioPath(projectId, sceneId, audioAsset.id, "mp3")`.
+10. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
+11. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc`:
+    - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 12.
+    - If valid: create pending `caption_timing` asset (path = `sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)`). Try to write the JSON file:
+      - On success: mark caption asset ready.
+      - On file write failure: `markAssetFailed(captionAsset.id, message)` to leave a clean DB state, then log warning. Audio asset and job still succeed.
+      - On DB mark-ready failure (rare): leave the file on disk, log error, audio asset and job still succeed. Renderer's `getReadyAssetByPath` lookup will return null and fall back to static caption.
+12. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
+13. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
 
 Error handling:
 
 - ElevenLabs call throws → audio asset marked failed, caption asset never created, error bubbles up to existing retry logic.
+- Alignment missing → audio asset marked failed (treated as malformed response), error bubbles up, retry.
 - Audio overflow gate fails → audio asset marked failed, error bubbles up. Treated as a real failure because the audio cannot be shown in the scene as-designed.
 - File write fails after audio call → audio asset marked failed.
-- `caption_timing` asset failure (file write or DB insert) → log and continue. Audio asset and job still succeed. The renderer fallback path covers this case.
+- `caption_timing` asset failure (file write or mark-ready) → mark the caption asset failed when possible, log, continue. Audio asset and job still succeed. The renderer fallback path covers this case. **Never** leave a caption asset in `pending` state.
 
 ### Audio overflow
 
@@ -349,23 +353,21 @@ This is the only validation that gates the audio asset. All other timing validat
 
 ### `apps/worker/src/handlers/renderVideo.ts`
 
-In `buildRenderInput`, fetch the caption_timing asset **paired** with the selected audio asset, not the most-recent one independently. Without pairing, a regenerated audio (where caption_timing was skipped or failed to write) would inherit the previous run's caption_timing and the karaoke would drift against the new audio.
+In `buildRenderInput`, look up the caption_timing file by the **audio asset's id**, not the most-recent caption_timing asset independently. Without pairing, a regenerated audio (where caption_timing was skipped or failed to write) would inherit the previous run's caption_timing and the karaoke would drift against the new audio.
 
 Pairing rule:
 
 ```
 audioAsset = getCurrentReadySceneAsset(db, { sceneId, kind: "audio" })
-candidates = listReadySceneAssets(db, { sceneId, kind: "caption_timing" })
-captionTiming = candidates.find(c => c.metadata.sourceAudioAssetId === audioAsset.id) ?? null
+captionPath = sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)
+captionAsset = getReadyAssetByPath(db, { sceneId, kind: "caption_timing", path: captionPath })
 ```
 
-`metadata.sourceAudioAssetId` is stored on the asset row at creation time. If `assets.metadata` does not yet exist as a column, add a `jsonb metadata` column to the `assets` table in the same migration. (TBD at implementation time — check `packages/db/src/schema.ts` for an existing JSON column on `assets`; if present, use it; if not, the migration adds one.)
+The file path is the source of truth for the pairing. The caption_timing JSON also stores `sourceAudioAssetId` for audit, but the renderer does not consult it — the file name already encodes the link.
 
-Alternative if metadata column is undesirable: encode the pairing in the file path. The caption_timing path becomes `projects/{p}/scenes/{s}/captions/{audioAssetId}.json` (named after the audio asset, not its own asset id). The handler reads the audio asset id from the path. Less clean than a metadata column but does not require a schema change.
+When `captionAsset` is found and on-disk file exists, attach `captionTimingPath: absoluteAssetPath(...)` to the scene input. Otherwise, omit the field. The render schema accepts it as optional.
 
-When found, attach `captionTimingPath: absoluteAssetPath(...)` to the scene input. When not found, omit the field. The render schema accepts it as optional.
-
-A new `db` query helper is needed: `listReadySceneAssets(db, { sceneId, kind })` (or extend `getCurrentReadySceneAsset` to accept an optional filter predicate). Implementation detail.
+A new `db` query helper is needed: `getReadyAssetByPath(db, { sceneId, kind, path })` — a narrow lookup that returns the ready asset matching the exact path. This is cheaper and clearer than scanning all caption_timing rows for the scene.
 
 ### `apps/render/src/render.ts`
 
@@ -416,23 +418,34 @@ function SceneCaption({ scene, sceneStartFrame, fps }) {
 - Render the chunk in one line, white text. The active word is animated via Remotion's deterministic frame interpolation, **not CSS transitions** — Remotion renders frame-by-frame and CSS transitions are not guaranteed to evaluate at frame boundaries (per `remotion-best-practices` skill). Approach:
 
   ```tsx
+  // For each word i in the chunk:
   const word = words[i];
+  const isActive = i === activeIndex;
   const wordStartFrame = sceneStartFrame + Math.round(word.start * fps);
+  const easeInFrames   = Math.round(0.08 * fps);   // ~80ms ease-in
+  const easeOutFrames  = Math.round(0.08 * fps);   // ~80ms ease-out after word ends
   const wordEndFrame   = sceneStartFrame + Math.round(word.end   * fps);
-  const easeInFrames   = Math.round(0.08 * fps);   // ~80ms in, deterministic
 
-  const progress = interpolate(
+  // Scale animates up while active, then back down to 1 after word.end.
+  const scaleProgress = interpolate(
     frame,
-    [wordStartFrame, wordStartFrame + easeInFrames, wordEndFrame],
-    [0, 1, 1],
+    [
+      wordStartFrame,
+      wordStartFrame + easeInFrames,
+      wordEndFrame,
+      wordEndFrame + easeOutFrames,
+    ],
+    [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
   );
 
-  const scale = 1 + 0.08 * progress;
-  const color = progress > 0 ? "#FFD400" : "#FFFFFF";
+  const scale = 1 + 0.08 * scaleProgress;
+  // Color uses the discrete activeIndex — only the currently-spoken word is yellow.
+  // Past words return to white instead of staying highlighted.
+  const color = isActive ? "#FFD400" : "#FFFFFF";
   ```
 
-  Each word in the chunk gets its own `progress` derived from `frame`, so the value is the same on every render of the same frame. No CSS transitions, no `requestAnimationFrame`-style timers.
+  Each word in the chunk derives `scaleProgress` from `frame`, so the value is the same on every render of the same frame. No CSS transitions, no `requestAnimationFrame`-style timers.
 
 - Font, weight, position, and shadow remain identical to the current `StaticCaption` so the visual baseline does not jump between scenes that have or lack timing.
 
@@ -452,8 +465,8 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 
 - `captionTiming.test.ts` (new, in `packages/ai`): unit-test `alignmentToWords`, `buildCaptionTimingDoc`, and `validateCaptionTimingDoc` against fixed fixtures (one well-formed, one with whitespace at start, one missing alignment data, one with overflow audio duration to confirm the gate is upstream of timing-shape checks).
 - Manual: run `generate_scene_audio` for one scene of an existing tiny-mechanisms project. Verify on disk:
-  - `audio/<id>.mp3` exists, plays back.
-  - `captions/<id>.json` exists, schema matches §Components, `sourceAudioAssetId` matches the audio asset.
+  - `audio/<audioAssetId>.mp3` exists, plays back.
+  - `captions/<audioAssetId>.json` exists (same id as the audio file), schema matches §Components, `sourceAudioAssetId` matches the audio asset.
 - Manual: render that scene through Remotion Studio. Confirm the active word visibly highlights and stays in sync.
 - Manual regression: regenerate audio for a scene where caption_timing was previously saved. Confirm the renderer pairs to the **new** audio's caption_timing (or falls back to static if the new run skipped it) — does not pick up the stale caption_timing.
 - Migration: `bun run db:check` → `bun run db:migrate:up`. Insert a test row using the new enum values to confirm `ALTER TYPE ... ADD VALUE` took effect.
@@ -465,12 +478,12 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 | ElevenLabs 5xx or network error | Throw, existing `next_retry_at` backoff retries. |
 | ElevenLabs 4xx (auth/quota) | Throw, retries, max attempts hit, job fails. |
 | Audio longer than `scene.durationSeconds + 0.5` | Audio asset marked failed, error thrown, job retries. After max attempts the job surfaces in the UI for manual narration shortening. |
-| Response missing `alignment` | Save audio (if duration is in budget), skip caption_timing, log `alignment_missing`. |
-| `validateCaptionTimingDoc` fails (timing-shape) | Save audio, skip caption_timing, log reason. |
-| Caption asset write/insert fails | Audio asset and job still succeed. Renderer falls back to static caption. |
+| Response missing `alignment` | Audio asset marked failed (`elevenlabs_alignment_missing`), error thrown, job retries. Treated as a malformed response, not a normal case. |
+| `validateCaptionTimingDoc` fails (timing-shape) | Save audio. Do not create the caption_timing asset (no pending row left behind). Log reason. Renderer falls back to static caption. |
+| Caption file write fails after caption asset created | `markAssetFailed` on the caption asset, log, continue. Audio asset and job still succeed. Renderer falls back to static caption. |
 | Scene narration changes after audio gen | `content_updated_at` bump invalidates the audio asset for staleness checks (existing behavior). Regenerating produces a new audio + new caption_timing pair. |
-| Audio regenerated, caption_timing skipped this time | Renderer pairs caption_timing to audio via `sourceAudioAssetId`. Stale caption_timing from a prior run is **not** picked up. Renderer falls back to static caption for the new audio. |
-| Multiple regenerations | Append-only. Pairing rule selects the caption_timing whose `sourceAudioAssetId` matches the current ready audio. |
+| Audio regenerated, caption_timing skipped this time | Renderer pairs caption_timing to audio via the file path `captions/{audioAssetId}.json`. The lookup against the new audio asset's id returns null, so stale caption_timing from a prior run is **not** picked up. Renderer falls back to static caption for the new audio. |
+| Multiple regenerations | Append-only. Pairing is by file path keyed on the audio asset's id, so each audio has at most one matching caption_timing on disk. |
 | Scene without caption_timing | Renderer uses `StaticCaption`. No render error. |
 | Rendering an old project (Gemini WAV scenes) | Audio still plays via existing `audio` kind. No `caption_timing` exists. Renderer falls back. |
 
@@ -489,9 +502,9 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 
 1. **SDK response shape** — the request body type (`BodyTextToSpeechFull`, camelCase) is confirmed via Context7. The response type for `convertWithTimestamps` is referenced but not dumped. When implementing, read the SDK type for the return value to confirm `audioBase64` and `alignment` field names. Adjust the parser if SDK uses different casing.
 2. **`eleven_v3` model** — only available on certain account tiers. Default env value is `eleven_multilingual_v2`. The user can override.
-3. **Pairing storage** — the pairing rule needs `sourceAudioAssetId` recorded somewhere on the caption_timing asset row. Two options: (a) add a `jsonb metadata` column on `assets` if not already present; (b) name the caption_timing file after the audio asset id. Pick at implementation time after inspecting `packages/db/src/schema.ts`.
-4. **Punctuation grouping in `alignmentToWords`** — initial implementation attaches trailing punctuation to the preceding word. If observed behavior in the live response is different (e.g. spaces around punctuation), adjust the grouping rule and add a fixture.
-5. **Audio overflow tolerance value** — 0.5s chosen as a starting point. May need to tune up (more permissive) or down (stricter) once we see real ElevenLabs output across the seed bank. Treat the constant as easy to change.
+3. **Punctuation grouping in `alignmentToWords`** — initial implementation attaches trailing punctuation to the preceding word. If observed behavior in the live response is different (e.g. spaces around punctuation), adjust the grouping rule and add a fixture.
+4. **Audio overflow tolerance value** — 0.5s chosen as a starting point. May need to tune up (more permissive) or down (stricter) once we see real ElevenLabs output across the seed bank. Treat the constant as easy to change.
+5. **Alignment-missing policy** — currently treated as a malformed response that fails the audio. If real ElevenLabs traffic shows this happens routinely (e.g. for very short text), revisit and either save audio without caption (and re-introduce the static-caption fallback for that case) or add a fallback duration source.
 
 ## Decision Log
 
@@ -503,7 +516,7 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 - **Job unit**: scene-by-scene, not single-shot. Reason: preserves scene-level retry, asset 1:1 model, edit-one-scene workflow. ElevenLabs `previousText`/`nextText` covers the prosody continuity argument for one-shot.
 - **Caption asset format**: JSON file under `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/`. Reason: matches existing append-only file layout. No new table needed.
 - **Audio overflow handling**: gate the audio asset itself (mark failed, throw, retry) rather than save audio + skip caption. Reason: an audio that runs past `scene.durationSeconds` gets cut mid-word in Remotion's `Sequence`. The render is broken, not just the caption.
-- **Caption-audio pairing**: caption_timing references the audio it was generated from via `sourceAudioAssetId`. Reason: without the link, regenerated audio can inherit a stale caption_timing and the karaoke drifts.
+- **Caption-audio pairing**: caption_timing files are named after the audio asset's id (`captions/{audioAssetId}.json`). The renderer pairs by file path, not by scanning recent assets. The JSON also stores `sourceAudioAssetId` for audit but the renderer does not consult it. Reason: without pairing, regenerated audio inherits stale caption_timing and karaoke drifts. File-path encoding avoids adding an `assets.metadata` column.
 - **Audio file extension**: `sceneAudioPath` takes the extension as a parameter. Reason: ElevenLabs returns MP3 while the old helper hard-coded `.wav`; mislabeled extensions break the renderer and debug tooling.
 - **Migration shape**: `ALTER TYPE ... ADD VALUE` for the existing Postgres enums (`asset_kind`, `asset_provider`). Reason: that's how the schema actually stores these — confirmed via `packages/db/src/schema.ts` and `packages/db/migrations/0001_init/migration.sql`.
 - **Static caption fallback in renderer**: kept. Reason: lets old projects render without re-generating audio; required by append-only constraint.
