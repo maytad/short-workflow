@@ -20,7 +20,7 @@ Update `.env`:
 2. Set `DATABASE_DIRECT_URL` to the Supabase direct connection string.
 3. Set `LOCAL_ASSET_ROOT` to an absolute directory on this machine.
 4. Set provider keys for OpenAI, Google image generation, and Google Text-to-Speech.
-5. Optionally override `OPENAI_MODEL` and the web app's `VITE_API_BASE_URL`.
+5. Optionally override `OPENAI_BASE_URL`, `OPENAI_MODEL`, and the web app's `VITE_API_BASE_URL`.
 
 Then run:
 
@@ -35,6 +35,7 @@ Notes:
 
 - Hosted Supabase Free Tier is the DB; no local Supabase CLI is required for MVP.
 - `DATABASE_URL` is the runtime pooler URL; `DATABASE_DIRECT_URL` is the direct URL for migrations.
+- `OPENAI_BASE_URL` points the OpenAI SDK at an OpenAI-compatible endpoint. Leave it unset to use OpenAI's default API.
 - Local assets are machine-local under `LOCAL_ASSET_ROOT`; the hosted DB stores relative paths only.
 - Drizzle Studio edits the hosted DB live.
 - Do not use `drizzle-kit push` for normal schema changes; use committed reversible migrations.
