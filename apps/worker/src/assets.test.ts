@@ -13,6 +13,15 @@ describe("asset utilities", () => {
     );
   });
 
+  test("rejects paths that escape the asset root", () => {
+    expect(() => absoluteAssetPath("/asset-root", "../escape.png")).toThrow(
+      "asset_path_escapes_root",
+    );
+    expect(() =>
+      absoluteAssetPath("/asset-root", "/tmp/outside-root.png"),
+    ).toThrow("asset_path_escapes_root");
+  });
+
   test("writes bytes and returns file metadata", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "short-workflow-assets-"));
 

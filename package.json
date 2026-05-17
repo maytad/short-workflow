@@ -11,12 +11,12 @@
     "dev:render": "turbo run dev --filter=@short-workflow/render",
     "check": "turbo run check",
     "typecheck": "turbo run typecheck",
-    "db:generate": "bun --cwd packages/db run generate",
-    "db:check": "bun --cwd packages/db run check",
-    "db:migrate:up": "bun --cwd packages/db run migrate:up",
-    "db:migrate:down": "bun --cwd packages/db run migrate:down",
-    "db:studio": "bun --cwd packages/db run studio",
-    "render:project": "bun --cwd apps/render run render:project"
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:check": "bun run --cwd packages/db check",
+    "db:migrate:up": "bun run --cwd packages/db migrate:up",
+    "db:migrate:down": "bun run --cwd packages/db migrate:down",
+    "db:studio": "bun run --cwd packages/db studio",
+    "render:project": "bun run --cwd apps/render render:project"
   },
   "devDependencies": {
     "@types/bun": "latest",

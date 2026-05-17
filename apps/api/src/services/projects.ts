@@ -20,6 +20,7 @@ export type ProjectDetail = NonNullable<
 >;
 
 export type RenderPreconditionReport = {
+  projectHasNoScenes: boolean;
   scenesNotReady: string[];
   scenesMissingImage: string[];
   scenesMissingAudio: string[];
@@ -94,6 +95,7 @@ function evaluateRenderPreconditions(
   assets: Pick<AssetRow, "sceneId" | "kind" | "status" | "createdAt">[],
 ): RenderPreconditionReport {
   const report: RenderPreconditionReport = {
+    projectHasNoScenes: scenes.length === 0,
     scenesNotReady: [],
     scenesMissingImage: [],
     scenesMissingAudio: [],

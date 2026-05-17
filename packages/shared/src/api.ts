@@ -55,6 +55,7 @@ export const renderPreconditionErrorSchema = z
     error: z.literal("render_preconditions_failed"),
     details: z
       .object({
+        projectHasNoScenes: z.boolean(),
         scenesNotReady: z.array(uuidSchema),
         scenesMissingImage: z.array(uuidSchema),
         scenesMissingAudio: z.array(uuidSchema),

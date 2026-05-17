@@ -28,7 +28,7 @@ export function createApp(options: CreateAppOptions = {}) {
 
   return new Elysia()
     .decorate("db", db)
-    .use(cors({ origin: "http://localhost:5173" }))
+    .use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] }))
     .use(healthRoutes)
     .use(createProjectRoutes(options.projectServices))
     .onError(({ code, set }) => {

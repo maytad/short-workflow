@@ -120,6 +120,7 @@ describe("render precondition helpers", () => {
     expect(
       getRenderPreconditionMessages({
         details: {
+          projectHasNoScenes: true,
           scenesMissingAudio: ["scene-a"],
           scenesMissingImage: ["scene-b"],
           scenesNotReady: ["scene-c"],
@@ -129,6 +130,7 @@ describe("render precondition helpers", () => {
         error: "render_preconditions_failed",
       }),
     ).toEqual([
+      "Add at least one scene before rendering.",
       "Scene scene-c is not ready.",
       "Scene scene-b is missing image.",
       "Scene scene-a is missing audio.",

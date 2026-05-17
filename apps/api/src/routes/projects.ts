@@ -105,6 +105,7 @@ function hasRenderPreconditionFailures(
   report: Awaited<ReturnType<typeof buildRenderPreconditionReport>>,
 ) {
   return (
+    report.projectHasNoScenes ||
     report.scenesNotReady.length > 0 ||
     report.scenesMissingImage.length > 0 ||
     report.scenesMissingAudio.length > 0 ||

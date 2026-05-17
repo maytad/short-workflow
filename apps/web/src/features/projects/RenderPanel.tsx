@@ -17,6 +17,9 @@ export function getRenderPreconditionMessages(
   error: RenderPreconditionError,
 ) {
   return [
+    ...(error.details.projectHasNoScenes
+      ? ["Add at least one scene before rendering."]
+      : []),
     ...error.details.scenesNotReady.map((sceneId) => `Scene ${sceneId} is not ready.`),
     ...error.details.scenesMissingImage.map(
       (sceneId) => `Scene ${sceneId} is missing image.`,

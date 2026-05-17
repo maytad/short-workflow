@@ -70,10 +70,27 @@ describe("buildRenderPreconditionReport", () => {
     });
 
     expect(report).toEqual({
+      projectHasNoScenes: false,
       scenesNotReady: [draftSceneId],
       scenesMissingImage: [draftSceneId],
       scenesMissingAudio: [staleSceneId, draftSceneId],
       scenesStaleImage: [staleSceneId],
+      scenesStaleAudio: [],
+    });
+  });
+
+  test("reports when a project has no scenes", async () => {
+    const report = await buildRenderPreconditionReport({} as never, projectId, {
+      listProjectScenes: async () => [],
+      listProjectAssets: async () => [],
+    });
+
+    expect(report).toEqual({
+      projectHasNoScenes: true,
+      scenesNotReady: [],
+      scenesMissingImage: [],
+      scenesMissingAudio: [],
+      scenesStaleImage: [],
       scenesStaleAudio: [],
     });
   });

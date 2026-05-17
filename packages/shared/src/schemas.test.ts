@@ -29,6 +29,7 @@ describe("shared API schemas", () => {
     const result = renderPreconditionErrorSchema.parse({
       error: "render_preconditions_failed",
       details: {
+        projectHasNoScenes: false,
         scenesNotReady: [],
         scenesMissingImage: [],
         scenesMissingAudio: [],

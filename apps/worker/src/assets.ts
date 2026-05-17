@@ -9,7 +9,18 @@ export type WrittenAssetFile = {
 };
 
 export function absoluteAssetPath(root: string, relativePath: string) {
-  return path.join(root, relativePath);
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, relativePath);
+  const relativeToRoot = path.relative(resolvedRoot, target);
+
+  if (
+    relativeToRoot.startsWith("..") ||
+    path.isAbsolute(relativeToRoot)
+  ) {
+    throw new Error("asset_path_escapes_root");
+  }
+
+  return target;
 }
 
 export async function writeAssetFile(

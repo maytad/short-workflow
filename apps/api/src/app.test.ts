@@ -82,6 +82,7 @@ function createServices(
     retryFailedJob: async () => job,
     acknowledgeRenderDisclosure: async () => null,
     buildRenderPreconditionReport: async () => ({
+      projectHasNoScenes: false,
       scenesNotReady: [],
       scenesMissingImage: [],
       scenesMissingAudio: [],
@@ -93,6 +94,27 @@ function createServices(
 }
 
 describe("createApp", () => {
+  test("allows CORS preflight from Vite 127.0.0.1 origin", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+    });
+
+    const response = await app.handle(
+      request("/projects", {
+        method: "OPTIONS",
+        headers: {
+          "access-control-request-method": "GET",
+          origin: "http://127.0.0.1:5173",
+        },
+      }),
+    );
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://127.0.0.1:5173",
+    );
+  });
+
   test("serves health without touching project services", async () => {
     const app = createApp({
       db: {} as never,
@@ -218,7 +240,41 @@ describe("createApp", () => {
   test("returns render precondition failures instead of creating render job", async () => {
     let createdJob = false;
     const report = {
+      projectHasNoScenes: false,
       scenesNotReady: ["33333333-3333-4333-8333-333333333333"],
+      scenesMissingImage: [],
+      scenesMissingAudio: [],
+      scenesStaleImage: [],
+      scenesStaleAudio: [],
+    };
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        buildRenderPreconditionReport: async () => report,
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return job;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/render`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({
+      error: "render_preconditions_failed",
+      details: report,
+    });
+    expect(createdJob).toBe(false);
+  });
+
+  test("returns render precondition failure for projects with no scenes", async () => {
+    let createdJob = false;
+    const report = {
+      projectHasNoScenes: true,
+      scenesNotReady: [],
       scenesMissingImage: [],
       scenesMissingAudio: [],
       scenesStaleImage: [],

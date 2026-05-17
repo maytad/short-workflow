@@ -20,6 +20,7 @@ Update `.env`:
 2. Set `DATABASE_DIRECT_URL` to the Supabase direct connection string.
 3. Set `LOCAL_ASSET_ROOT` to an absolute directory on this machine.
 4. Set provider keys for OpenAI, Google image generation, and Google Text-to-Speech.
+5. Optionally override `OPENAI_MODEL` and the web app's `VITE_API_BASE_URL`.
 
 Then run:
 
