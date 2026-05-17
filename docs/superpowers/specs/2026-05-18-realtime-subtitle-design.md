@@ -23,9 +23,11 @@ To support accurate word timing, switch the TTS provider for `generate_scene_aud
 Files that change:
 
 - `packages/ai/src/elevenLabsTts.ts` — new
-- `packages/ai/src/captionTiming.ts` — new
+- `packages/ai/src/captionTiming.ts` — new (builders + validators; imports types from `@short-workflow/shared`)
 - `packages/ai/src/index.ts` — re-export new modules
 - `packages/ai/package.json` — add `@elevenlabs/elevenlabs-js`
+- `packages/shared/src/captionTiming.ts` — new (Zod schema + types, shared between worker and renderer)
+- `packages/shared/src/index.ts` — re-export `captionTimingDocSchema` and types
 - `packages/shared/src/constants.ts` — extend `ASSET_KINDS` and `ASSET_PROVIDERS`
 - `packages/shared/src/render.ts` — add optional `captionTimingPath` on `renderSceneInputSchema`
 - `packages/db/migrations/<timestamp>_add_caption_timing/migration.sql` and `down.sql` — new
@@ -123,25 +125,49 @@ Implementation:
 
 ⚠️ Implementation flag: the request body type (`BodyTextToSpeechFull`) is confirmed camelCase via Context7. The response type is referenced but not dumped — when implementing, read the SDK type for `convertWithTimestamps` return value to confirm the exact field names (`audioBase64` and `alignment` with `characters`, `characterStartTimesSeconds`, `characterEndTimesSeconds`). Update parser if SDK uses different casing.
 
-### `packages/ai/src/captionTiming.ts`
+### `packages/shared/src/captionTiming.ts`
 
-Pure utility, no side effects. Exposes:
+The caption timing types and Zod schema live in `packages/shared` so both `packages/ai` (writes) and `apps/render` (reads) depend only on `shared`. `apps/render` must not import `packages/ai` (per AGENTS.md boundary rules — render is a separate app, not an AI consumer).
 
 ```ts
-export type CaptionWord = { text: string; start: number; end: number };
+import { z } from "zod";
+
+export const captionWordSchema = z
+  .object({
+    text: z.string().min(1),
+    start: z.number().nonnegative(),
+    end: z.number().positive(),
+  })
+  .strict();
+
+export type CaptionWord = z.infer<typeof captionWordSchema>;
+
+export const captionTimingDocSchema = z
+  .object({
+    version: z.literal(1),
+    sourceAudioAssetId: z.string().min(1),
+    narration: z.string().min(1),
+    audioDurationSeconds: z.number().positive(),
+    words: z.array(captionWordSchema).min(1),
+  })
+  .strict();
+
+export type CaptionTimingDoc = z.infer<typeof captionTimingDocSchema>;
+```
+
+Re-export from `packages/shared/src/index.ts` so consumers can `import { captionTimingDocSchema, type CaptionTimingDoc } from "@short-workflow/shared"`.
+
+### `packages/ai/src/captionTiming.ts`
+
+Pure utility, no side effects. Imports `CaptionTimingDoc` from `@short-workflow/shared` and exposes builder + validators:
+
+```ts
+import type { CaptionTimingDoc, CaptionWord } from "@short-workflow/shared";
 
 export type ElevenLabsAlignment = {
   characters: string[];
   characterStartTimesSeconds: number[];
   characterEndTimesSeconds: number[];
-};
-
-export type CaptionTimingDoc = {
-  version: 1;
-  sourceAudioAssetId: string;     // for audit; pairing at render time uses the file path
-  narration: string;
-  audioDurationSeconds: number;
-  words: CaptionWord[];
 };
 
 // Validates the *raw* alignment from ElevenLabs before any audio is written.
@@ -332,7 +358,7 @@ export function sceneCaptionTimingPath(
 }
 ```
 
-On-disk layout: `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/{audioAssetId}.json`. Pairing is encoded in the path; no `assets.metadata` column or new query helper is required.
+On-disk layout: `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/{audioAssetId}.json`. Pairing is encoded in the path. No `assets.metadata` column is needed. A narrow DB lookup helper (`getReadyAssetByPath`, see §`renderVideo.ts`) is added so the renderer can confirm the caption asset row is `ready` rather than trusting an on-disk file that may be stranded from a partial run.
 
 ### `apps/worker/src/handlers/generateSceneAudio.ts`
 
@@ -351,10 +377,9 @@ Replace the Gemini TTS call with ElevenLabs. Steps:
 11. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
 12. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc` (timing-shape only):
     - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 13.
-    - If valid: create pending `caption_timing` asset (path = `sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)`). Try to write the JSON file:
-      - On success: mark caption asset ready.
-      - On file write failure: `markAssetFailed(captionAsset.id, message)` to leave a clean DB state, then log warning. Audio asset and job still succeed.
-      - On DB mark-ready failure (rare): leave the file on disk, log error, audio asset and job still succeed. Renderer's `getReadyAssetByPath` lookup will return null and fall back to static caption.
+    - If valid: create pending `caption_timing` asset (path = `sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)`). Wrap the file write + mark-ready in a `try`:
+      - On success: caption asset is `ready`. Continue.
+      - On any failure during file write or mark-ready: call `markAssetFailed(captionAsset.id, message)`. If that **also** fails, log both errors at `error` level (`caption_mark_failed_twice`) and continue — this is the rare double-failure case. The audio asset and job still succeed regardless. The renderer's `getReadyAssetByPath` lookup will not return a `pending`/`failed` row, so it falls back to static caption.
 13. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
 14. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
 
@@ -481,13 +506,17 @@ Once `doc` is loaded:
   // Clamp ease durations so the four-stop range stays strictly increasing
   // even for very short words (interpolate throws otherwise).
   const desiredEase = Math.round(0.08 * fps);
-  const easeFrames  = Math.max(1, Math.min(desiredEase, Math.floor(wordSpan / 2)));
-  const easeIn      = wordStartFrame + easeFrames;
-  const easeOut     = wordEndFrame   + easeFrames;
+  const minSpan     = 2;                       // ensure end > start by at least 2 frames
+  const effectiveEnd = Math.max(wordStartFrame + minSpan, wordEndFrame);
+  const easeFrames   = Math.max(1, Math.min(desiredEase, Math.floor((effectiveEnd - wordStartFrame) / 2)));
+  const easeIn       = wordStartFrame + easeFrames;
+  const easeOut      = effectiveEnd   + easeFrames;
+  // Range stops are now guaranteed strictly increasing:
+  // wordStartFrame < easeIn <= effectiveEnd < easeOut
 
   const scaleProgress = interpolate(
     frame,
-    [wordStartFrame, easeIn, wordEndFrame, easeOut],
+    [wordStartFrame, easeIn, effectiveEnd, easeOut],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
   );
@@ -516,6 +545,7 @@ ELEVENLABS_MODEL_ID=eleven_multilingual_v2
 
 Per AGENTS.md MVP testing policy: lightweight checks only.
 
+- `captionTiming.test.ts` (new, in `packages/shared`): unit-test `captionTimingDocSchema` accepts a well-formed doc and rejects: missing `version`, `version !== 1`, empty `words`, `start < 0`, `end <= start` per word, `audioDurationSeconds <= 0`, missing `sourceAudioAssetId`.
 - `captionTiming.test.ts` (new, in `packages/ai`): unit-test `validateAlignment`, `alignmentToWords`, `buildCaptionTimingDoc`, and `validateCaptionTimingDoc` against fixed fixtures. Cases:
   - well-formed alignment → words derived correctly
   - empty arrays → `validateAlignment` rejects
@@ -578,7 +608,8 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 - **Caption asset format**: JSON file under `LOCAL_ASSET_ROOT/projects/{id}/scenes/{id}/captions/`. Reason: matches existing append-only file layout. No new table needed.
 - **Audio overflow handling**: gate the audio asset itself (mark failed, throw, retry) rather than save audio + skip caption. Reason: an audio that runs past `scene.durationSeconds` gets cut mid-word in Remotion's `Sequence`. The render is broken, not just the caption.
 - **Raw alignment validation before audio gate**: `validateAlignment` runs against the response before the overflow gate so empty / malformed arrays cannot bypass it (`Math.max([])` is `-Infinity`, which would silently pass an overflow check). Reason: defense in depth against a malformed-but-non-null alignment response.
-- **Caption-audio pairing**: caption_timing files are named after the audio asset's id (`captions/{audioAssetId}.json`). The renderer pairs by file path, not by scanning recent assets. The JSON also stores `sourceAudioAssetId` for audit but the renderer does not consult it. Reason: without pairing, regenerated audio inherits stale caption_timing and karaoke drifts. File-path encoding avoids adding an `assets.metadata` column.
+- **Caption timing schema lives in `packages/shared`**: `captionTimingDocSchema` and its types are defined in `packages/shared/src/captionTiming.ts` and consumed by both `packages/ai` (writes) and `apps/render` (reads). Reason: `apps/render` must not import `packages/ai` (render is a separate app). Keeping the schema in `shared` is the only way both sides can validate the same JSON without crossing app boundaries.
+- **Caption-audio pairing**: caption_timing files are named after the audio asset's id (`captions/{audioAssetId}.json`). The renderer pairs by file path, not by scanning recent assets. The JSON also stores `sourceAudioAssetId` for audit but the renderer does not consult it. A narrow DB lookup (`getReadyAssetByPath`) is added so the renderer trusts the DB row's `ready` status, not just the on-disk file. Reason: without pairing, regenerated audio inherits stale caption_timing and karaoke drifts. File-path encoding avoids adding an `assets.metadata` column.
 - **Renderer uses local frame, not global**: `KaraokeCaption` is a child of `<Sequence>`, where `useCurrentFrame()` is local (starts at 0 per scene). The component derives word frames from local time only — no `sceneStartFrame` parameter. Reason: passing global frame math into a Sequence-scoped component would make every scene after the first render incorrectly (negative frames, never-active words).
 - **Caption fetch failure handling**: `KaraokeCaption` calls `continueRender(handle)` on fetch/parse error and falls back to `<StaticCaption>`. Never `cancelRender` for caption issues. Reason: a bad caption file is a soft fault — the audio still plays and the static caption is meaningful. `cancelRender` would abort the entire video.
 - **Clamped ease durations in `interpolate`**: `easeFrames = max(1, min(desiredEase, floor(wordSpan / 2)))` so the four-stop range stays strictly increasing for very short words. Reason: `interpolate` throws on a duplicated stop, and very short words (<160ms) are common.
