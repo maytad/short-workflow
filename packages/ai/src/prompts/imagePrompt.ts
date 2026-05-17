@@ -34,18 +34,25 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
   provider: "openai",
   compile(input) {
     const style = input.styleContext ?? defaultProjectStyleContext();
+    const imagePrompt = sentence(input.scene.imagePrompt);
+    const narration = sentence(input.scene.narration);
+    const caption = sentence(input.scene.caption);
+    const visualStyle = sentence(style.visualStyle);
+    const imageContinuity = sentence(style.imageContinuity);
+    const tone = sentence(style.tone);
+    const colorAndLighting = sentence(style.colorAndLighting);
     const prompt = [
       "Create a vertical 9:16 editorial documentary image for a short-form science explainer.",
-      `Project: ${input.project.title}.`,
+      `Project: ${sentence(input.project.title)}`,
       `Scene ${input.scene.position} role: ${input.scene.role}.`,
       `Scene duration: ${input.scene.durationSeconds} seconds.`,
-      `Specific subject and action: ${input.scene.imagePrompt}.`,
-      `Narration context: ${input.scene.narration}.`,
-      `Caption context only, do not render this as text: ${input.scene.caption}.`,
-      `Visual style: ${style.visualStyle}.`,
-      `Continuity: ${style.imageContinuity}.`,
-      `Tone: ${style.tone}.`,
-      `Color and lighting: ${style.colorAndLighting}.`,
+      `Specific subject and action: ${imagePrompt}`,
+      `Narration context: ${narration}`,
+      `Caption context only, do not render this as text: ${caption}`,
+      `Visual style: ${visualStyle}`,
+      `Continuity: ${imageContinuity}`,
+      `Tone: ${tone}`,
+      `Color and lighting: ${colorAndLighting}`,
       "Use strong vertical framing, clear subject hierarchy, macro details or object cutaways when useful, and realistic depth.",
       "Do not include text, captions, watermarks, logos, UI, public figures, fake screenshots, or misleading depictions of real events.",
       "Prefer faceless scenes, objects, places, hands, silhouettes, environments, symbolic details, and documentary visual evidence.",
@@ -68,3 +75,12 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
     };
   },
 };
+
+function sentence(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return ".";
+  }
+
+  return /[.!?]$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
