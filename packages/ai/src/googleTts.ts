@@ -1,12 +1,6 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-import type { GenerateAudioOutput } from "./types";
-
-type GenerateSpeechInput = {
-  ssml: string;
-  model?: string;
-  voiceName?: string;
-};
+import type { GenerateAudioInput, GenerateAudioOutput } from "./types";
 
 type GoogleTtsClient = {
   models: {
@@ -45,7 +39,7 @@ type GoogleTtsResponse = {
   }>;
 };
 
-export async function generateSpeech(input: GenerateSpeechInput): Promise<GenerateAudioOutput> {
+export async function generateSpeech(input: GenerateAudioInput): Promise<GenerateAudioOutput> {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_API_KEY_missing");
@@ -57,12 +51,14 @@ export async function generateSpeech(input: GenerateSpeechInput): Promise<Genera
 
 export async function generateSpeechWithClient(
   client: GoogleTtsClient,
-  input: GenerateSpeechInput,
+  input: GenerateAudioInput,
 ): Promise<GenerateAudioOutput> {
   const model = input.model ?? process.env.GEMINI_TTS_MODEL ?? "gemini-3.1-flash-tts-preview";
   const voiceName = input.voiceName ?? process.env.GEMINI_TTS_VOICE ?? "Kore";
   const narrationText = speechTextFromSsml(input.ssml);
-  const prompt = `Read the following transcript naturally for a short-form video narration:\n\n${narrationText}`;
+  const prompt =
+    input.prompt ??
+    `Synthesize speech for this short-form video narration.\n\n### TRANSCRIPT\n${narrationText}`;
 
   const data = await client.models.generateContent({
     model,
@@ -106,6 +102,7 @@ export async function generateSpeechWithClient(
       sample_rate_hz: sampleRateHz,
       finish_reason: data.candidates?.[0]?.finishReason,
       candidate_count: data.candidates?.length ?? 0,
+      prompt_metadata: input.promptMetadata,
     },
   };
 }

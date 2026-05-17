@@ -1,6 +1,12 @@
-import { generateSpeech } from "@short-workflow/ai";
+import {
+  generateSpeech,
+  promptPayload,
+  styleContextFromScriptResponseText,
+  ttsPromptTemplate,
+} from "@short-workflow/ai";
 import {
   createPendingAsset,
+  getLatestPromptVersion,
   getScene,
   insertPromptVersion,
   markAssetFailed,
@@ -26,6 +32,13 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
     throw new Error("scene_not_found");
   }
 
+  const latestScriptPrompt = await getLatestPromptVersion(db, {
+    projectId: scene.projectId,
+    sceneId: null,
+    purpose: "script",
+  });
+  const styleContext = styleContextFromScriptResponseText(latestScriptPrompt?.responseText);
+
   let asset: AssetRow | null = null;
   let assetReady = false;
 
@@ -38,7 +51,21 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       provider: "google_gemini",
     });
 
-    const generated = await generateSpeech({ ssml: scene.ssml });
+    const voiceName = process.env.GEMINI_TTS_VOICE ?? "Kore";
+    const compiledPrompt = ttsPromptTemplate.compile({
+      scene,
+      voiceName,
+      ...(styleContext ? { styleContext } : {}),
+    });
+    const generated = await generateSpeech({
+      ssml: scene.ssml,
+      prompt: compiledPrompt.prompt,
+      voiceName,
+      promptMetadata: {
+        templateId: compiledPrompt.templateId,
+        templateVersion: compiledPrompt.templateVersion,
+      },
+    });
     const finalPath = sceneAudioPath(scene.projectId, scene.id, asset.id);
     const file = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalPath, generated.bytes);
 
@@ -58,7 +85,11 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       purpose: "ssml",
       provider: "google_gemini",
       model: generated.model,
-      promptPayload: { ssml: scene.ssml },
+      promptPayload: promptPayload(compiledPrompt, {
+        sceneId: scene.id,
+        ssml: scene.ssml,
+        narration: scene.narration,
+      }),
       responseMetadata: generated.responseMetadata,
     });
 
