@@ -165,6 +165,132 @@ export const TINY_MECHANISMS_SEEDS: TinyMechanismsSeed[] = [
     visualMetaphor: "a thermos cross-section with heat arrows blocked by a vacuum gap",
     riskLevel: "low",
   },
+  {
+    seedId: "nonstick_pans",
+    centralQuestion: "Why food slides off nonstick pans",
+    everydayObjectOrPhenomenon: "nonstick pans",
+    mechanismHint:
+      "Low-surface-energy coatings make it harder for food molecules and oils to grip the pan surface.",
+    visualMetaphor: "a fried egg gliding over a smooth microscopic surface like water on wax",
+    riskLevel: "low",
+  },
+  {
+    seedId: "stainless_steel_garlic_smell",
+    centralQuestion: "Why stainless steel can reduce garlic smell",
+    everydayObjectOrPhenomenon: "garlic smell on hands",
+    mechanismHint:
+      "Sulfur-containing odor compounds can bind to stainless steel surfaces instead of staying on skin.",
+    visualMetaphor: "tiny sulfur particles leaving fingertips and attaching to a brushed steel surface",
+    riskLevel: "low",
+  },
+  {
+    seedId: "soda_fizz",
+    centralQuestion: "Why soda fizzes when you open it",
+    everydayObjectOrPhenomenon: "carbonated soda",
+    mechanismHint:
+      "Opening the bottle lowers pressure, so dissolved carbon dioxide escapes as bubbles.",
+    visualMetaphor: "carbon dioxide bubbles rushing out of a dark soda like released springs",
+    riskLevel: "low",
+  },
+  {
+    seedId: "compass_north",
+    centralQuestion: "Why a compass points north",
+    everydayObjectOrPhenomenon: "a compass needle",
+    mechanismHint:
+      "A magnetized needle aligns with Earth's magnetic field, which roughly points toward magnetic north.",
+    visualMetaphor: "a compass needle floating inside faint magnetic field lines around Earth",
+    riskLevel: "low",
+  },
+  {
+    seedId: "rubber_bands_snap_back",
+    centralQuestion: "Why rubber bands snap back",
+    everydayObjectOrPhenomenon: "rubber bands",
+    mechanismHint:
+      "Stretching lines up tangled polymer chains, and entropy pulls them back toward a more disordered shape.",
+    visualMetaphor: "tangled elastic strands stretching straight, then curling back into loops",
+    riskLevel: "low",
+  },
+  {
+    seedId: "phone_screen_rotation",
+    centralQuestion: "How your phone knows it turned sideways",
+    everydayObjectOrPhenomenon: "phone screen rotation",
+    mechanismHint:
+      "Tiny motion sensors measure acceleration and gravity direction so software can infer orientation.",
+    visualMetaphor: "a phone cross-section with a tiny mass shifting as gravity arrows rotate",
+    riskLevel: "low",
+  },
+  {
+    seedId: "escalator_steps_level",
+    centralQuestion: "Why escalator steps stay level",
+    everydayObjectOrPhenomenon: "escalator steps",
+    mechanismHint:
+      "Each step rides on tracks that control its angle while the chain moves it up or down.",
+    visualMetaphor: "escalator steps following hidden rails that keep each tread flat",
+    riskLevel: "low",
+  },
+  {
+    seedId: "washing_machine_spin",
+    centralQuestion: "Why a washing machine spin cycle dries clothes",
+    everydayObjectOrPhenomenon: "washing machine spin cycle",
+    mechanismHint:
+      "Fast rotation forces water out through drum holes while fabric stays inside the spinning basket.",
+    visualMetaphor: "water droplets flinging outward from clothes against a perforated metal drum",
+    riskLevel: "low",
+  },
+  {
+    seedId: "traffic_light_colors",
+    centralQuestion: "Why traffic lights use red, yellow, and green",
+    everydayObjectOrPhenomenon: "traffic light colors",
+    mechanismHint:
+      "The colors combine visibility, historical signaling conventions, and easy category separation.",
+    visualMetaphor: "three colored signals cutting through mist at different attention levels",
+    riskLevel: "low",
+  },
+  {
+    seedId: "stop_sign_octagons",
+    centralQuestion: "Why stop signs are octagons",
+    everydayObjectOrPhenomenon: "stop signs",
+    mechanismHint:
+      "A unique shape lets drivers recognize the sign from the back, side, or in poor visibility.",
+    visualMetaphor: "an octagon silhouette standing out among circles, triangles, and rectangles",
+    riskLevel: "low",
+  },
+  {
+    seedId: "pencils_write",
+    centralQuestion: "Why pencils write on paper",
+    everydayObjectOrPhenomenon: "pencils",
+    mechanismHint:
+      "Graphite layers slide off onto rough paper fibers, leaving a dark trail without melting or ink.",
+    visualMetaphor: "thin graphite sheets peeling from a pencil tip onto paper fibers",
+    riskLevel: "low",
+  },
+  {
+    seedId: "sticky_notes_peel",
+    centralQuestion: "Why sticky notes peel off cleanly",
+    everydayObjectOrPhenomenon: "sticky notes",
+    mechanismHint:
+      "Low-tack adhesive makes many weak contact points, enough to hold paper but weak enough to release.",
+    visualMetaphor: "tiny soft adhesive dots letting go from a desk surface one by one",
+    riskLevel: "low",
+  },
+  {
+    seedId: "hook_and_loop_fasteners",
+    centralQuestion: "Why hook-and-loop fasteners stick and rip apart",
+    everydayObjectOrPhenomenon: "hook-and-loop fasteners",
+    mechanismHint:
+      "Tiny hooks catch flexible loops across many contact points, then release when peeled at an angle.",
+    visualMetaphor: "macro hooks grabbing fabric loops like a miniature forest canopy",
+    riskLevel: "low",
+  },
+  {
+    seedId: "ice_cubes_crack",
+    centralQuestion: "Why ice cubes crack in warm drinks",
+    everydayObjectOrPhenomenon: "ice cubes in drinks",
+    mechanismHint:
+      "The outside warms and expands faster than the cold center, creating stress that fractures the ice.",
+    visualMetaphor: "crack lines racing through a clear ice cube as warm liquid surrounds it",
+    riskLevel: "low",
+  },
 ];
 
 export function encodeTinyMechanismsTopic(seedId: string) {

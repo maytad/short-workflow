@@ -28,7 +28,11 @@ test("generateScript throws before provider call when OPENAI_API_KEY is missing"
   delete process.env.OPENAI_API_KEY;
 
   await expect(
-    generateScript({ topic: "local coffee shop", targetDurationSeconds: 30 }),
+    generateScript({
+      channelPresetId: "tiny_mechanisms",
+      seedId: "recorded_voice",
+      targetDurationSeconds: 30,
+    }),
   ).rejects.toThrow("OPENAI_API_KEY_missing");
 });
 
