@@ -81,3 +81,14 @@ export async function listPromptVersions(db: DbClient, projectId: string) {
     .where(eq(promptVersions.projectId, projectId))
     .orderBy(desc(promptVersions.createdAt));
 }
+
+export async function getLatestPromptVersion(db: DbClient, scope: PromptVersionScope) {
+  const [promptVersion] = await db
+    .select()
+    .from(promptVersions)
+    .where(promptVersionScopeWhere(scope))
+    .orderBy(desc(promptVersions.revision), desc(promptVersions.createdAt))
+    .limit(1);
+
+  return promptVersion ?? null;
+}
