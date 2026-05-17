@@ -1,6 +1,7 @@
 import {
   createProjectRequestSchema,
   updateProjectRequestSchema,
+  updateSceneRequestSchema,
 } from "@short-workflow/shared";
 import {
   acknowledgeRenderDisclosure,
@@ -14,6 +15,7 @@ import {
   listProjects,
   retryFailedJob,
   updateProject,
+  updateScene,
   type DbClient,
 } from "@short-workflow/db";
 import { Elysia } from "elysia";
@@ -71,6 +73,7 @@ export type ProjectRouteServices = {
   listProjectJobs: typeof listProjectJobs;
   getProject: typeof getProject;
   getScene: typeof getScene;
+  updateScene: typeof updateScene;
   createJobIdempotent: typeof createJobIdempotent;
   retryFailedJob: typeof retryFailedJob;
   acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
@@ -91,6 +94,7 @@ const defaultServices: ProjectRouteServices = {
   listProjectJobs,
   getProject,
   getScene,
+  updateScene,
   createJobIdempotent,
   retryFailedJob,
   acknowledgeRenderDisclosure,
@@ -251,6 +255,40 @@ export function createProjectRoutes(
       });
     })
     )
+    .patch("/scenes/:sceneId", (context) => {
+      const { body, db, params, set } = withRouteContext(context);
+      const result = updateSceneRequestSchema.safeParse(body);
+
+      if (!result.success) {
+        return validationFailed(set, result.error);
+      }
+
+      const input: Parameters<typeof updateScene>[2] = {};
+
+      if (result.data.narration !== undefined) {
+        input.narration = result.data.narration.trim();
+      }
+
+      if (result.data.caption !== undefined) {
+        input.caption = result.data.caption.trim();
+      }
+
+      if (result.data.imagePrompt !== undefined) {
+        input.imagePrompt = result.data.imagePrompt.trim();
+      }
+
+      if (result.data.ssml !== undefined) {
+        input.ssml = result.data.ssml.trim();
+      }
+
+      if (result.data.durationSeconds !== undefined) {
+        input.durationSeconds = result.data.durationSeconds;
+      }
+
+      return services
+        .updateScene(db, params.sceneId!, input)
+        .then((scene) => scene ?? notFound(set));
+    })
     .post("/scenes/:sceneId/generate-image", async (context) => {
       const { db, params, set } = withRouteContext(context);
       const scene = await services.getScene(db, params.sceneId!);

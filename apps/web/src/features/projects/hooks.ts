@@ -3,6 +3,8 @@ import type {
   Job,
   Project,
   ProjectDetailResponse,
+  Scene,
+  UpdateSceneRequest,
 } from "@short-workflow/shared";
 import {
   useMutation,
@@ -39,6 +41,81 @@ function invalidateProjectWorkflow(
   void queryClient.invalidateQueries({
     queryKey: [...queryKeys.projects.detail(projectId), "jobs"],
   });
+}
+
+const SCENE_CONTENT_FIELDS = [
+  "narration",
+  "caption",
+  "imagePrompt",
+  "ssml",
+  "durationSeconds",
+] as const;
+
+function hasSceneContentChange(scene: Scene, input: UpdateSceneRequest) {
+  return SCENE_CONTENT_FIELDS.some(
+    (field) => input[field] !== undefined && input[field] !== scene[field],
+  );
+}
+
+export function applyOptimisticSceneUpdate(
+  detail: ProjectDetailResponse,
+  sceneId: string,
+  input: UpdateSceneRequest,
+  timestamp: string,
+): ProjectDetailResponse {
+  return {
+    ...detail,
+    scenes: detail.scenes.map((scene) => {
+      if (scene.id !== sceneId) {
+        return scene;
+      }
+
+      const contentChanged = hasSceneContentChange(scene, input);
+      const updatedScene: Scene = {
+        ...scene,
+        ...(contentChanged
+          ? {
+              contentUpdatedAt: timestamp,
+              updatedAt: timestamp,
+            }
+          : {}),
+      };
+
+      if (input.narration !== undefined) {
+        updatedScene.narration = input.narration;
+      }
+
+      if (input.caption !== undefined) {
+        updatedScene.caption = input.caption;
+      }
+
+      if (input.imagePrompt !== undefined) {
+        updatedScene.imagePrompt = input.imagePrompt;
+      }
+
+      if (input.ssml !== undefined) {
+        updatedScene.ssml = input.ssml;
+      }
+
+      if (input.durationSeconds !== undefined) {
+        updatedScene.durationSeconds = input.durationSeconds;
+      }
+
+      return updatedScene;
+    }),
+  };
+}
+
+function replaceScene(
+  detail: ProjectDetailResponse,
+  updatedScene: Scene,
+): ProjectDetailResponse {
+  return {
+    ...detail,
+    scenes: detail.scenes.map((scene) =>
+      scene.id === updatedScene.id ? updatedScene : scene,
+    ),
+  };
 }
 
 export function useProjectsQuery() {
@@ -134,7 +211,7 @@ export function useGenerateSceneImageMutation(
 
   return useMutation({
     mutationFn: () =>
-      apiFetch<Job>(`/projects/scenes/${sceneId}/generate-image`, {
+      apiFetch<Job>(`/scenes/${sceneId}/generate-image`, {
         method: "POST",
       }),
     onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
@@ -149,10 +226,54 @@ export function useGenerateSceneAudioMutation(
 
   return useMutation({
     mutationFn: () =>
-      apiFetch<Job>(`/projects/scenes/${sceneId}/generate-audio`, {
+      apiFetch<Job>(`/scenes/${sceneId}/generate-audio`, {
         method: "POST",
       }),
     onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
+  });
+}
+
+export function useUpdateSceneMutation(projectId: string, sceneId: string) {
+  const queryClient = useQueryClient();
+  const detailQueryKey = queryKeys.projects.detail(projectId);
+
+  return useMutation({
+    mutationFn: (input: UpdateSceneRequest) =>
+      apiFetch<Scene>(`/scenes/${sceneId}`, {
+        body: JSON.stringify(input),
+        method: "PATCH",
+      }),
+    onMutate: async (input) => {
+      await queryClient.cancelQueries({ queryKey: detailQueryKey });
+      const previousDetail =
+        queryClient.getQueryData<ProjectDetailResponse>(detailQueryKey);
+
+      if (previousDetail) {
+        queryClient.setQueryData<ProjectDetailResponse>(
+          detailQueryKey,
+          applyOptimisticSceneUpdate(
+            previousDetail,
+            sceneId,
+            input,
+            new Date().toISOString(),
+          ),
+        );
+      }
+
+      return { previousDetail };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previousDetail) {
+        queryClient.setQueryData(detailQueryKey, context.previousDetail);
+      }
+    },
+    onSuccess: (updatedScene) => {
+      queryClient.setQueryData<ProjectDetailResponse>(
+        detailQueryKey,
+        (detail) => (detail ? replaceScene(detail, updatedScene) : detail),
+      );
+      invalidateProjectWorkflow(queryClient, projectId);
+    },
   });
 }
 

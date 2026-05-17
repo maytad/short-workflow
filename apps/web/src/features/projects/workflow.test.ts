@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import type { Asset, Scene } from "@short-workflow/shared";
+import type { Asset, ProjectDetailResponse, Scene } from "@short-workflow/shared";
 
 import {
   getLatestSceneAsset,
   isAssetCurrentForScene,
 } from "./AssetPanel";
+import { applyOptimisticSceneUpdate } from "./hooks";
 import { getRenderPreconditionMessages } from "./RenderPanel";
 
 function scene(overrides: Partial<Scene> = {}): Scene {
@@ -75,6 +76,42 @@ describe("workflow asset helpers", () => {
         sceneId: "11111111-1111-4111-8111-111111111111",
       }),
     ).toEqual(newest);
+  });
+});
+
+describe("scene update helpers", () => {
+  test("optimistically updates changed scene content timestamps", () => {
+    const detail: ProjectDetailResponse = {
+      assets: [asset()],
+      jobs: [],
+      project: {
+        createdAt: "2026-05-16T09:00:00.000Z",
+        format: "vertical_9_16",
+        id: "22222222-2222-4222-8222-222222222222",
+        language: "en",
+        status: "draft",
+        targetDurationSeconds: 45,
+        title: "Project",
+        topic: "Topic",
+        updatedAt: "2026-05-16T09:00:00.000Z",
+      },
+      renders: [],
+      scenes: [scene()],
+    };
+
+    const updated = applyOptimisticSceneUpdate(
+      detail,
+      "11111111-1111-4111-8111-111111111111",
+      { narration: "New narration" },
+      "2026-05-16T10:10:00.000Z",
+    );
+
+    expect(updated.scenes[0]).toMatchObject({
+      contentUpdatedAt: "2026-05-16T10:10:00.000Z",
+      narration: "New narration",
+      updatedAt: "2026-05-16T10:10:00.000Z",
+    });
+    expect(isAssetCurrentForScene(asset(), updated.scenes[0]!)).toBe(false);
   });
 });
 

@@ -217,7 +217,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
           </section>
         )}
 
-        <SceneEditor selectedScene={selectedScene} />
+        <SceneEditor projectId={projectId} selectedScene={selectedScene} />
       </main>
 
       <aside className="space-y-4">

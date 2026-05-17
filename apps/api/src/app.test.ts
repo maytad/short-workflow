@@ -34,6 +34,22 @@ const job = {
   updatedAt: new Date("2026-05-17T00:00:00.000Z"),
 } as const;
 
+const scene = {
+  id: "33333333-3333-4333-8333-333333333333",
+  projectId: project.id,
+  position: 1,
+  role: "hook",
+  durationSeconds: 10,
+  narration: "Updated narration",
+  caption: "Updated caption",
+  imagePrompt: "Updated image prompt",
+  ssml: "<speak>Updated narration</speak>",
+  status: "ready",
+  contentUpdatedAt: new Date("2026-05-17T00:00:00.000Z"),
+  createdAt: new Date("2026-05-17T00:00:00.000Z"),
+  updatedAt: new Date("2026-05-17T00:00:00.000Z"),
+} as const;
+
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
@@ -61,6 +77,7 @@ function createServices(
     listProjectJobs: async () => [],
     getProject: async () => project,
     getScene: async () => null,
+    updateScene: async () => scene,
     createJobIdempotent: async () => job,
     retryFailedJob: async () => job,
     acknowledgeRenderDisclosure: async () => null,
@@ -228,6 +245,82 @@ describe("createApp", () => {
       details: report,
     });
     expect(createdJob).toBe(false);
+  });
+
+  test("updates a scene with normalized editable fields", async () => {
+    let receivedSceneId: string | undefined;
+    let receivedInput: unknown;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        updateScene: async (_db, sceneId, input) => {
+          receivedSceneId = sceneId;
+          receivedInput = input;
+          return scene;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/scenes/${scene.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          narration: "  Updated narration  ",
+          caption: "Updated caption",
+          imagePrompt: "Updated image prompt",
+          ssml: "<speak>Updated narration</speak>",
+          ignored: "field",
+        }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(receivedInput).toBeUndefined();
+
+    const validResponse = await app.handle(
+      request(`/scenes/${scene.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          narration: "  Updated narration  ",
+          caption: "Updated caption",
+          imagePrompt: "Updated image prompt",
+          ssml: "<speak>Updated narration</speak>",
+        }),
+      }),
+    );
+
+    expect(validResponse.status).toBe(200);
+    expect(await validResponse.json()).toMatchObject({ id: scene.id });
+    expect(receivedSceneId).toBe(scene.id);
+    expect(receivedInput).toEqual({
+      narration: "Updated narration",
+      caption: "Updated caption",
+      imagePrompt: "Updated image prompt",
+      ssml: "<speak>Updated narration</speak>",
+    });
+  });
+
+  test("returns 400 for invalid scene update input", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+    });
+
+    const response = await app.handle(
+      request(`/scenes/${scene.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ durationSeconds: 0 }),
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({
+      error: "validation_failed",
+      issues: [{ path: "durationSeconds" }],
+    });
   });
 
   test("maps retry_requires_failed_job to conflict", async () => {
