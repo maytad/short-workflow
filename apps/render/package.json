@@ -18,7 +18,7 @@
     "react-dom": "latest",
     "remotion": "latest",
     "tsx": "3.12.5",
-    "zod": "latest"
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/react": "latest",

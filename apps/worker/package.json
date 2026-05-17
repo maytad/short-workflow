@@ -12,6 +12,6 @@
     "@short-workflow/ai": "workspace:*",
     "@short-workflow/db": "workspace:*",
     "@short-workflow/shared": "workspace:*",
-    "zod": "latest"
+    "zod": "4.3.6"
   }
 }
