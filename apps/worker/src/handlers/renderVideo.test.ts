@@ -34,7 +34,7 @@ describe("buildRenderInput", () => {
               createdAt,
             },
             audio: {
-              path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
+              path: "projects/project-1/scenes/scene-1/audio/audio.wav",
               createdAt,
             },
           },
@@ -60,7 +60,7 @@ describe("buildRenderInput", () => {
           narration: scene.narration,
           caption: scene.caption,
           imagePath: "/tmp/asset-root/projects/project-1/scenes/scene-1/images/image.png",
-          audioPath: "/tmp/asset-root/projects/project-1/scenes/scene-1/audio/audio.mp3",
+          audioPath: "/tmp/asset-root/projects/project-1/scenes/scene-1/audio/audio.wav",
         },
       ],
     });

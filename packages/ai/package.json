@@ -8,7 +8,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@google-cloud/text-to-speech": "latest",
     "@google/genai": "^2.3.0",
     "openai": "latest",
     "zod": "latest"

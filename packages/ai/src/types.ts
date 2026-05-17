@@ -38,7 +38,7 @@ export type GenerateImageOutput = {
 
 export type GenerateAudioOutput = {
   bytes: Uint8Array;
-  mimeType: "audio/mpeg";
+  mimeType: "audio/wav";
   model: string;
   responseMetadata: Record<string, unknown>;
 };

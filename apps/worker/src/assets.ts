@@ -56,7 +56,7 @@ export function sceneImagePath(projectId: string, sceneId: string, assetId: stri
 }
 
 export function sceneAudioPath(projectId: string, sceneId: string, assetId: string) {
-  return path.join("projects", projectId, "scenes", sceneId, "audio", `${assetId}.mp3`);
+  return path.join("projects", projectId, "scenes", sceneId, "audio", `${assetId}.wav`);
 }
 
 export function renderInputPath(projectId: string, renderId: string) {

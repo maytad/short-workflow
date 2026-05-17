@@ -591,7 +591,9 @@ Asset provider values:
 - `remotion`
 - `local`
 
-`provider` is an enum. `model` is a nullable free-text provider model, voice, or renderer identifier such as `gpt-5.5`, a Gemini image model id, a Google TTS voice id, or a Remotion renderer version.
+`provider` is an enum. `model` is a nullable free-text provider model, voice, or renderer identifier such as `gpt-5.5`, a Gemini image model id, a Gemini TTS model id, or a Remotion renderer version.
+
+Narration generation uses Google Gen AI through `@google/genai` and `gemini-3.1-flash-tts-preview` by default. The worker stores the generated PCM response as a local WAV file.
 
 The `path` field stores a relative portable path, not an absolute filesystem path.
 
@@ -599,7 +601,7 @@ Example:
 
 ```text
 projects/{projectId}/scenes/{sceneId}/images/{assetId}.png
-projects/{projectId}/scenes/{sceneId}/audio/{assetId}.mp3
+projects/{projectId}/scenes/{sceneId}/audio/{assetId}.wav
 projects/{projectId}/renders/{renderId}.mp4
 projects/{projectId}/input/{renderId}.json
 ```
@@ -893,7 +895,7 @@ Suggested local structure:
           images/
             {assetId}.png
           audio/
-            {assetId}.mp3
+            {assetId}.wav
       renders/
         {renderId}.mp4
       input/
@@ -1076,7 +1078,7 @@ Example shape:
       "narration": "English narration",
       "caption": "English caption",
       "imagePath": "projects/project-id/scenes/scene-id/images/asset-id.png",
-      "audioPath": "projects/project-id/scenes/scene-id/audio/asset-id.mp3"
+      "audioPath": "projects/project-id/scenes/scene-id/audio/asset-id.wav"
     }
   ]
 }
@@ -1132,7 +1134,8 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 GOOGLE_API_KEY=
-GOOGLE_CLOUD_TEXT_TO_SPEECH_KEY_PATH=
+GEMINI_TTS_MODEL=gemini-3.1-flash-tts-preview
+GEMINI_TTS_VOICE=Kore
 LOCAL_ASSET_ROOT=
 WORKER_CONCURRENCY=2
 API_BASE_URL=http://localhost:3001

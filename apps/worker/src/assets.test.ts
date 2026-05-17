@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { absoluteAssetPath, renderInputPath, writeAssetFile } from "./assets";
+import { absoluteAssetPath, renderInputPath, sceneAudioPath, writeAssetFile } from "./assets";
 
 describe("asset utilities", () => {
   test("joins the asset root and relative path", () => {
@@ -47,6 +47,12 @@ describe("asset utilities", () => {
   test("builds render input paths under the project input directory", () => {
     expect(renderInputPath("project-1", "render-1")).toBe(
       path.join("projects", "project-1", "input", "render-1.json"),
+    );
+  });
+
+  test("builds scene audio paths as wav files", () => {
+    expect(sceneAudioPath("project-1", "scene-1", "asset-1")).toBe(
+      path.join("projects", "project-1", "scenes", "scene-1", "audio", "asset-1.wav"),
     );
   });
 });

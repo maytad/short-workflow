@@ -35,7 +35,7 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       sceneId: scene.id,
       kind: "audio",
       path: sceneAudioPath(scene.projectId, scene.id, "pending"),
-      provider: "google_tts",
+      provider: "google_gemini",
     });
 
     const generated = await generateSpeech({ ssml: scene.ssml });
@@ -47,7 +47,7 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       mimeType: generated.mimeType,
       sizeBytes: file.sizeBytes,
       checksum: file.checksum,
-      provider: "google_tts",
+      provider: "google_gemini",
       model: generated.model,
     });
     assetReady = true;
@@ -56,7 +56,7 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       projectId: scene.projectId,
       sceneId: scene.id,
       purpose: "ssml",
-      provider: "google_tts",
+      provider: "google_gemini",
       model: generated.model,
       promptPayload: { ssml: scene.ssml },
       responseMetadata: generated.responseMetadata,

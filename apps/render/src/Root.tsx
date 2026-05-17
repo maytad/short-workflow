@@ -22,7 +22,7 @@ const defaultRenderInput: RenderInput = {
       narration: "Preview narration",
       caption: "Short Workflow Preview",
       imagePath: "preview.png",
-      audioPath: "preview.mp3",
+      audioPath: "preview.wav",
     },
   ],
 };

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 
 import { generateGoogleImageWithClient } from "./googleImage";
+import { generateSpeech, generateSpeechWithClient, speechTextFromSsml } from "./googleTts";
 import { generateImage, generateImageWithProviders } from "./image";
 import { generateScript } from "./openai";
 import { generateOpenAIImageWithClient } from "./openaiImage";
@@ -10,6 +11,8 @@ const originalGoogleApiKey = process.env.GOOGLE_API_KEY;
 const originalImageProvider = process.env.IMAGE_PROVIDER;
 const originalOpenAiImageModel = process.env.OPENAI_IMAGE_MODEL;
 const originalOpenAiImageSize = process.env.OPENAI_IMAGE_SIZE;
+const originalGeminiTtsModel = process.env.GEMINI_TTS_MODEL;
+const originalGeminiTtsVoice = process.env.GEMINI_TTS_VOICE;
 
 afterEach(() => {
   restoreEnv("OPENAI_API_KEY", originalOpenAiKey);
@@ -17,6 +20,8 @@ afterEach(() => {
   restoreEnv("IMAGE_PROVIDER", originalImageProvider);
   restoreEnv("OPENAI_IMAGE_MODEL", originalOpenAiImageModel);
   restoreEnv("OPENAI_IMAGE_SIZE", originalOpenAiImageSize);
+  restoreEnv("GEMINI_TTS_MODEL", originalGeminiTtsModel);
+  restoreEnv("GEMINI_TTS_VOICE", originalGeminiTtsVoice);
 });
 
 test("generateScript throws before provider call when OPENAI_API_KEY is missing", async () => {
@@ -98,6 +103,14 @@ test("generateImage throws before Google provider call when GOOGLE_API_KEY is mi
   delete process.env.GOOGLE_API_KEY;
 
   await expect(generateImage({ prompt: "A vertical photo of a desk setup" })).rejects.toThrow(
+    "GOOGLE_API_KEY_missing",
+  );
+});
+
+test("generateSpeech throws before provider call when GOOGLE_API_KEY is missing", async () => {
+  delete process.env.GOOGLE_API_KEY;
+
+  await expect(generateSpeech({ ssml: "<speak>Hello world.</speak>" })).rejects.toThrow(
     "GOOGLE_API_KEY_missing",
   );
 });
@@ -207,6 +220,87 @@ test("generateImageWithClient requests image content through Google GenAI client
     finish_reason: "STOP",
     candidate_count: 1,
   });
+});
+
+test("generateSpeechWithClient requests Gemini TTS audio and returns WAV bytes", async () => {
+  const requests: unknown[] = [];
+  const pcmBytes = Buffer.from([1, 0, 2, 0, 3, 0, 4, 0]);
+  const client = {
+    models: {
+      generateContent: async (request: unknown) => {
+        requests.push(request);
+
+        return {
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "audio/pcm;rate=24000",
+                      data: pcmBytes.toString("base64"),
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      },
+    },
+  };
+
+  const result = await generateSpeechWithClient(client, {
+    ssml: "<speak>Hello &amp; welcome.</speak>",
+    model: "gemini-3.1-flash-tts-preview",
+    voiceName: "Kore",
+  });
+
+  expect(requests).toEqual([
+    {
+      model: "gemini-3.1-flash-tts-preview",
+      contents: [
+        {
+          parts: [
+            {
+              text: "Read the following transcript naturally for a short-form video narration:\n\nHello & welcome.",
+            },
+          ],
+        },
+      ],
+      config: {
+        responseModalities: ["AUDIO"],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: {
+              voiceName: "Kore",
+            },
+          },
+        },
+      },
+    },
+  ]);
+  expect(Buffer.from(result.bytes.subarray(0, 4)).toString("ascii")).toBe("RIFF");
+  expect(Buffer.from(result.bytes.subarray(8, 12)).toString("ascii")).toBe("WAVE");
+  expect(Buffer.from(result.bytes.subarray(44))).toEqual(pcmBytes);
+  expect(result.mimeType).toBe("audio/wav");
+  expect(result.model).toBe("gemini-3.1-flash-tts-preview");
+  expect(result.responseMetadata).toEqual({
+    model_id: "gemini-3.1-flash-tts-preview",
+    voice_name: "Kore",
+    mime_type: "audio/pcm;rate=24000",
+    audio_encoding: "LINEAR16",
+    sample_rate_hz: 24000,
+    finish_reason: "STOP",
+    candidate_count: 1,
+  });
+});
+
+test("speechTextFromSsml strips XML tags before Gemini TTS", () => {
+  expect(speechTextFromSsml('<speak>Hello <break time="300ms"/>world &amp; friends.</speak>')).toBe(
+    "Hello world & friends.",
+  );
 });
 
 function restoreEnv(key: string, value: string | undefined): void {
