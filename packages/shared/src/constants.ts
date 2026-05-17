@@ -37,6 +37,11 @@ export const DEFAULT_TARGET_DURATION_SECONDS = 45;
 export const DEFAULT_WORKER_CONCURRENCY = 2;
 export const DEFAULT_MAX_ATTEMPTS = 5;
 
+export const TINY_MECHANISMS_TOPIC_PREFIX = "tiny_mechanisms:";
+export const TINY_MECHANISMS_PENDING_TOPIC = `${TINY_MECHANISMS_TOPIC_PREFIX}pending`;
+export const TINY_MECHANISMS_PENDING_TITLE = "Tiny Mechanisms Episode";
+export const TINY_MECHANISMS_PROJECT_DESCRIPTION = "Tiny Mechanisms episode";
+
 export const RENDER_WIDTH = 1080;
 export const RENDER_HEIGHT = 1920;
 export const RENDER_FPS = 30;

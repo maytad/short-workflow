@@ -16,17 +16,22 @@ export function ProjectCreateForm() {
   return (
     <form
       className="rounded-lg border border-border bg-card p-4 shadow-sm"
-      onSubmit={async (event) => {
+      onSubmit={(event) => {
         event.preventDefault();
 
-        const project = await createProject.mutateAsync({
-          targetDurationSeconds: selectedDuration,
-        });
-
-        await navigate({
-          params: { projectId: project.id },
-          to: "/projects/$projectId",
-        });
+        createProject.mutate(
+          {
+            targetDurationSeconds: selectedDuration,
+          },
+          {
+            onSuccess: (project) => {
+              void navigate({
+                params: { projectId: project.id },
+                to: "/projects/$projectId",
+              });
+            },
+          },
+        );
       }}
     >
       <div className="flex flex-col gap-4">
@@ -47,8 +52,14 @@ export function ProjectCreateForm() {
         </div>
 
         <div className="grid gap-2">
-          <span className="text-sm font-medium">Target duration</span>
-          <div className="grid grid-cols-3 rounded-md border border-border bg-background p-1">
+          <span className="text-sm font-medium" id="target-duration-label">
+            Target duration
+          </span>
+          <div
+            aria-labelledby="target-duration-label"
+            className="grid grid-cols-3 rounded-md border border-border bg-background p-1"
+            role="group"
+          >
             {DURATION_OPTIONS.map((duration) => {
               const isSelected = selectedDuration === duration;
 
@@ -74,13 +85,17 @@ export function ProjectCreateForm() {
         </div>
 
         {createProject.error ? (
-          <p className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm leading-6 text-accent-foreground">
+          <p
+            aria-live="polite"
+            className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm leading-6 text-accent-foreground"
+            role="status"
+          >
             Project creation failed. Check the API connection and try again.
           </p>
         ) : null}
 
         <button
-          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={createProject.isPending}
           type="submit"
         >

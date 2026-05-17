@@ -1,6 +1,8 @@
 import {
   createProjectRequestSchema,
   createTinyMechanismsProjectRequestSchema,
+  TINY_MECHANISMS_PENDING_TITLE,
+  TINY_MECHANISMS_PENDING_TOPIC,
   updateProjectRequestSchema,
   updateSceneRequestSchema,
 } from "@short-workflow/shared";
@@ -151,8 +153,8 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
           }
 
           return services.createProject(db, {
-            title: "Tiny Mechanisms Episode",
-            topic: "tiny_mechanisms:pending",
+            title: TINY_MECHANISMS_PENDING_TITLE,
+            topic: TINY_MECHANISMS_PENDING_TOPIC,
             targetDurationSeconds: result.data.targetDurationSeconds,
           });
         })

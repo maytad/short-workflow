@@ -1,3 +1,7 @@
+import {
+  TINY_MECHANISMS_PROJECT_DESCRIPTION,
+  TINY_MECHANISMS_TOPIC_PREFIX,
+} from "@short-workflow/shared";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ExternalLink, FolderOpen, Loader2 } from "lucide-react";
 
@@ -16,7 +20,9 @@ function formatDateTime(value: string) {
 }
 
 function projectDescription(topic: string) {
-  return topic.startsWith("tiny_mechanisms:") ? "Tiny Mechanisms episode" : topic;
+  return topic.startsWith(TINY_MECHANISMS_TOPIC_PREFIX)
+    ? TINY_MECHANISMS_PROJECT_DESCRIPTION
+    : topic;
 }
 
 function ProjectsIndexRoute() {
@@ -59,7 +65,7 @@ function ProjectsIndexRoute() {
           ) : projects.length === 0 ? (
             <div className="p-6">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <FolderOpen className="size-4 text-muted-foreground" />
+                <FolderOpen className="size-4 text-muted-foreground" aria-hidden="true" />
                 No projects yet
               </div>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -89,7 +95,7 @@ function ProjectsIndexRoute() {
                     </div>
                   </div>
                   <Link
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                     params={{ projectId: project.id }}
                     to="/projects/$projectId"
                   >
