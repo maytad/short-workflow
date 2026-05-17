@@ -37,6 +37,7 @@
       "!.vite/**",
       "!short-workflow-data",
       "!short-workflow-data/**",
+      "!apps/web/src/routeTree.gen.ts",
       "!.env",
       "!.env.*",
       "!bun.lock",
@@ -77,6 +78,11 @@
   "json": {
     "formatter": {
       "trailingCommas": "none"
+    }
+  },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
     }
   }
 }
