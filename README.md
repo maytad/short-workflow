@@ -8,14 +8,35 @@ Single-user, local-running workflow for creating English 9:16 short-form videos 
 - Node.js for Remotion rendering commands
 - Hosted Supabase Postgres project
 
-## Setup
+## Local MVP Setup
 
 ```bash
-bun install
 cp .env.example .env
 ```
 
-Fill in the Supabase and provider values in `.env`. Generated assets should live under `LOCAL_ASSET_ROOT`, outside committed source files.
+Update `.env`:
+
+1. Set `DATABASE_URL` to the Supabase pooled connection string.
+2. Set `DATABASE_DIRECT_URL` to the Supabase direct connection string.
+3. Set `LOCAL_ASSET_ROOT` to an absolute directory on this machine.
+4. Set provider keys for OpenAI, Google image generation, and Google Text-to-Speech.
+
+Then run:
+
+```bash
+bun install
+bun run db:check
+bun run db:migrate:up
+bun run dev
+```
+
+Notes:
+
+- Hosted Supabase Free Tier is the DB; no local Supabase CLI is required for MVP.
+- `DATABASE_URL` is the runtime pooler URL; `DATABASE_DIRECT_URL` is the direct URL for migrations.
+- Local assets are machine-local under `LOCAL_ASSET_ROOT`; the hosted DB stores relative paths only.
+- Drizzle Studio edits the hosted DB live.
+- Do not use `drizzle-kit push` for normal schema changes; use committed reversible migrations.
 
 ## Development
 
