@@ -55,9 +55,10 @@ generate_scene_audio job
   │     in:  text=narration, voiceId, modelId, voiceSettings,
   │          previousText, nextText, outputFormat="mp3_44100_128"
   │     out: { audioBase64, alignment: { characters, characterStartTimesSeconds, characterEndTimesSeconds } }
-  ├─ derive audioDurationSeconds = max(characterEndTimesSeconds) (alignment is required, see §Audio overflow)
+  ├─ if alignment is null/missing: mark audio asset failed, throw — retry (alignment is required)
   ├─ validate raw alignment (non-empty, equal-length arrays, finite numbers, end > start)
   │     fail audio if not — alignment is malformed
+  ├─ derive audioDurationSeconds = max(characterEndTimesSeconds) (safe now: validation guarantees array is non-empty and finite)
   ├─ if audioDurationSeconds > sceneDurationSeconds + 0.5:
   │     mark audio asset failed, throw — job retries (see §Audio overflow)
   ├─ save audio asset (mp3, kind=audio, provider=elevenlabs)
@@ -138,7 +139,11 @@ export const captionWordSchema = z
     start: z.number().nonnegative(),
     end: z.number().positive(),
   })
-  .strict();
+  .strict()
+  .refine(({ start, end }) => end > start, {
+    message: "caption_word_end_must_exceed_start",
+    path: ["end"],
+  });
 
 export type CaptionWord = z.infer<typeof captionWordSchema>;
 
@@ -486,45 +491,61 @@ Failure policy: never `cancelRender` for caption issues. A bad caption file is a
 Once `doc` is loaded:
 
 - All math uses **local frame**: `const localFrame = useCurrentFrame()` and `t = localFrame / fps`. No `sceneStartFrame` parameter, no global frame.
-- Find `activeIndex` such that `doc.words[i].start <= t < doc.words[i].end`. If none, use `-1`.
-- Build chunks via `chunkWords(doc.words, { target: 5, min: 4, max: 6 })`:
-  - Greedy walk. Start a new chunk after a word ending in `.`, `?`, `!`, or after a comma if chunk size >= `min`.
-  - Force a break after `max` words even without punctuation.
-- Choose the chunk that contains `activeIndex`; if `activeIndex === -1`, choose the first chunk for pre-roll (`t` before the first word) and the last chunk for post-roll (`t` after the last word).
+- Find `activeIndex` such that `doc.words[i].start <= t < doc.words[i].end`. If none, use `-1`. `activeIndex` is the **global** index into `doc.words`.
+- Build chunks via `chunkWords(doc.words, { target: 5, min: 4, max: 6 })`. The chunker preserves the original word index so chunk renders never use a chunk-local index by accident:
+
+  ```ts
+  type ChunkedWord = { word: CaptionWord; index: number };  // index is into doc.words
+  type Chunk = ChunkedWord[];
+
+  function chunkWords(words: CaptionWord[], opts: { target: number; min: number; max: number }): Chunk[];
+  ```
+
+  Greedy walk. Start a new chunk after a word ending in `.`, `?`, `!`, or after a comma if chunk size >= `min`. Force a break after `max` words even without punctuation.
+
+- Choose the chunk that contains `activeIndex` (i.e. some `entry.index === activeIndex`); if `activeIndex === -1`, choose the first chunk for pre-roll (`t` before the first word) and the last chunk for post-roll (`t` after the last word).
 - Render the chunk in one line, white text. The active word is animated via Remotion's deterministic frame interpolation, **not CSS transitions** — Remotion renders frame-by-frame and CSS transitions are not guaranteed to evaluate at frame boundaries (per `remotion-best-practices` skill). Approach:
 
   ```tsx
-  // For each word i in the chunk:
-  const word = doc.words[i];
-  const isActive = i === activeIndex;
+  // Iterate the chunk by destructuring; never use the array index of the chunk itself.
+  // `entry.index` is the original index into doc.words and is what activeIndex refers to.
+  {selectedChunk.map((entry) => {
+    const { word, index } = entry;
+    const isActive = index === activeIndex;
 
-  // All frames are LOCAL to this Sequence — never add a scene offset.
-  const wordStartFrame = Math.round(word.start * fps);
-  const wordEndFrame   = Math.round(word.end   * fps);
-  const wordSpan       = Math.max(1, wordEndFrame - wordStartFrame);
+    // All frames are LOCAL to this Sequence — never add a scene offset.
+    const wordStartFrame = Math.round(word.start * fps);
+    const wordEndFrame   = Math.round(word.end   * fps);
 
-  // Clamp ease durations so the four-stop range stays strictly increasing
-  // even for very short words (interpolate throws otherwise).
-  const desiredEase = Math.round(0.08 * fps);
-  const minSpan     = 2;                       // ensure end > start by at least 2 frames
-  const effectiveEnd = Math.max(wordStartFrame + minSpan, wordEndFrame);
-  const easeFrames   = Math.max(1, Math.min(desiredEase, Math.floor((effectiveEnd - wordStartFrame) / 2)));
-  const easeIn       = wordStartFrame + easeFrames;
-  const easeOut      = effectiveEnd   + easeFrames;
-  // Range stops are now guaranteed strictly increasing:
-  // wordStartFrame < easeIn <= effectiveEnd < easeOut
+    // Clamp ease durations so the four-stop range stays strictly increasing
+    // even for very short words (interpolate throws otherwise).
+    const desiredEase  = Math.round(0.08 * fps);
+    const minSpan      = 2;                       // ensure end > start by at least 2 frames
+    const effectiveEnd = Math.max(wordStartFrame + minSpan, wordEndFrame);
+    const easeFrames   = Math.max(1, Math.min(desiredEase, Math.floor((effectiveEnd - wordStartFrame) / 2)));
+    const easeIn       = wordStartFrame + easeFrames;
+    const easeOut      = effectiveEnd   + easeFrames;
+    // Range stops are now guaranteed strictly increasing:
+    // wordStartFrame < easeIn <= effectiveEnd < easeOut
 
-  const scaleProgress = interpolate(
-    frame,
-    [wordStartFrame, easeIn, effectiveEnd, easeOut],
-    [0, 1, 1, 0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
-  );
+    const scaleProgress = interpolate(
+      frame,
+      [wordStartFrame, easeIn, effectiveEnd, easeOut],
+      [0, 1, 1, 0],
+      { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
+    );
 
-  const scale = 1 + 0.08 * scaleProgress;
-  // Color uses the discrete activeIndex — only the currently-spoken word is yellow.
-  // Past words return to white instead of staying highlighted.
-  const color = isActive ? "#FFD400" : "#FFFFFF";
+    const scale = 1 + 0.08 * scaleProgress;
+    // Color uses the discrete activeIndex — only the currently-spoken word is yellow.
+    // Past words return to white instead of staying highlighted.
+    const color = isActive ? "#FFD400" : "#FFFFFF";
+
+    return (
+      <span key={index} style={{ display: "inline-block", color, transform: `scale(${scale})` }}>
+        {word.text}{" "}
+      </span>
+    );
+  })}
   ```
 
   Each word in the chunk derives `scaleProgress` from `frame`, so the value is the same on every render of the same frame. No CSS transitions, no `requestAnimationFrame`-style timers.
@@ -610,6 +631,8 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 - **Raw alignment validation before audio gate**: `validateAlignment` runs against the response before the overflow gate so empty / malformed arrays cannot bypass it (`Math.max([])` is `-Infinity`, which would silently pass an overflow check). Reason: defense in depth against a malformed-but-non-null alignment response.
 - **Caption timing schema lives in `packages/shared`**: `captionTimingDocSchema` and its types are defined in `packages/shared/src/captionTiming.ts` and consumed by both `packages/ai` (writes) and `apps/render` (reads). Reason: `apps/render` must not import `packages/ai` (render is a separate app). Keeping the schema in `shared` is the only way both sides can validate the same JSON without crossing app boundaries.
 - **Caption-audio pairing**: caption_timing files are named after the audio asset's id (`captions/{audioAssetId}.json`). The renderer pairs by file path, not by scanning recent assets. The JSON also stores `sourceAudioAssetId` for audit but the renderer does not consult it. A narrow DB lookup (`getReadyAssetByPath`) is added so the renderer trusts the DB row's `ready` status, not just the on-disk file. Reason: without pairing, regenerated audio inherits stale caption_timing and karaoke drifts. File-path encoding avoids adding an `assets.metadata` column.
+- **Chunk preserves original word index**: `chunkWords` returns `{ word, index }[]` where `index` is the index into `doc.words`. The renderer compares `index === activeIndex` rather than the chunk's local array index. Reason: a chunk-local index would silently mis-highlight every word in the second chunk onward.
+- **Caption word schema enforces `end > start`**: `captionWordSchema` includes a `.refine` clause so the Zod parse rejects malformed words at the renderer's fetch step too, not just at the worker's writer. Reason: the renderer must defend against a malformed file produced by an older or buggy worker.
 - **Renderer uses local frame, not global**: `KaraokeCaption` is a child of `<Sequence>`, where `useCurrentFrame()` is local (starts at 0 per scene). The component derives word frames from local time only — no `sceneStartFrame` parameter. Reason: passing global frame math into a Sequence-scoped component would make every scene after the first render incorrectly (negative frames, never-active words).
 - **Caption fetch failure handling**: `KaraokeCaption` calls `continueRender(handle)` on fetch/parse error and falls back to `<StaticCaption>`. Never `cancelRender` for caption issues. Reason: a bad caption file is a soft fault — the audio still plays and the static caption is meaningful. `cancelRender` would abort the entire video.
 - **Clamped ease durations in `interpolate`**: `easeFrames = max(1, min(desiredEase, floor(wordSpan / 2)))` so the four-stop range stays strictly increasing for very short words. Reason: `interpolate` throws on a duplicated stop, and very short words (<160ms) are common.
