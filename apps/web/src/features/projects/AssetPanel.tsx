@@ -64,16 +64,17 @@ function AssetStatusRow({
   const jobActive = hasActiveJob(activeJobs, scene, kind);
   const disabled = pending || jobActive;
   const Icon = kind === "image" ? Image : Music2;
+  const actionLabel = asset ? `Regenerate ${kind}` : `Generate ${kind}`;
 
   return (
-    <div className="rounded-md border border-border bg-background p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-sm font-semibold capitalize">
-            <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
-            {kind}
+    <div className="min-w-0 overflow-hidden rounded-md border border-border bg-background p-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2 text-sm font-semibold capitalize">
+            <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="min-w-0 truncate">{kind}</span>
           </div>
-          <p className="mt-1 truncate text-xs text-muted-foreground">
+          <p className="mt-1 min-w-0 truncate text-xs text-muted-foreground" title={asset?.path}>
             {asset?.path ?? "No ready asset yet"}
           </p>
         </div>
@@ -82,17 +83,17 @@ function AssetStatusRow({
         </span>
       </div>
       <button
-        className="mt-3 inline-flex h-8 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+        className="mt-3 inline-flex h-8 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
         disabled={disabled}
         onClick={onGenerate}
         type="button"
       >
         {pending || jobActive ? (
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
         ) : (
-          <RefreshCw className="size-4" aria-hidden="true" />
+          <RefreshCw className="size-4 shrink-0" aria-hidden="true" />
         )}
-        {asset ? `Regenerate ${kind}` : `Generate ${kind}`}
+        <span className="min-w-0 truncate">{actionLabel}</span>
       </button>
     </div>
   );
@@ -104,7 +105,7 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
 
   if (!selectedScene) {
     return (
-      <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
         <h2 className="text-base font-semibold">Assets</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           Select a scene to review image and audio assets.
@@ -125,13 +126,13 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
   });
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+    <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
       <div>
         <h2 className="text-base font-semibold">Assets</h2>
         <p className="text-sm text-muted-foreground">Scene {selectedScene.position}</p>
       </div>
 
-      <div className="mt-4 grid gap-3">
+      <div className="mt-4 grid min-w-0 gap-3">
         <AssetStatusRow
           activeJobs={activeJobs}
           asset={imageAsset}

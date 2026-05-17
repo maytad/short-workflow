@@ -44,8 +44,8 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const scriptJobActive = activeWorkflowJobs.some((job) => job.type === "generate_script");
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
-      <aside className="space-y-4">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(280px,320px)]">
+      <aside className="min-w-0 space-y-4">
         <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <p className="text-sm font-medium text-muted-foreground">Project</p>
           <h1 className="mt-1 break-words text-xl font-semibold">{detail.project.title}</h1>
@@ -195,7 +195,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
         <SceneEditor projectId={projectId} selectedScene={selectedScene} />
       </main>
 
-      <aside className="space-y-4">
+      <aside className="min-w-0 space-y-4">
         <AssetPanel
           activeJobs={activeWorkflowJobs}
           assets={detail.assets}
