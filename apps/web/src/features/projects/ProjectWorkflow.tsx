@@ -7,6 +7,7 @@ import { AssetPanel } from "./AssetPanel";
 import { useGenerateScriptMutation, useProjectJobsQuery } from "./hooks";
 import { RenderPanel } from "./RenderPanel";
 import { SceneEditor } from "./SceneEditor";
+import { YoutubeMetadataPanel } from "./YoutubeMetadataPanel";
 
 type ProjectWorkflowProps = {
   detail: ProjectDetailResponse;
@@ -191,6 +192,10 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
             </div>
           </section>
         )}
+
+        {detail.scenes.length > 0 && detail.youtubeMetadata ? (
+          <YoutubeMetadataPanel metadata={detail.youtubeMetadata} />
+        ) : null}
 
         <SceneEditor projectId={projectId} selectedScene={selectedScene} />
       </main>

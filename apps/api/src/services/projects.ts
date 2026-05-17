@@ -9,8 +9,10 @@ import {
   listProjectScenes,
   type AssetRow,
   type DbClient,
+  type JobRow,
   type SceneRow,
 } from "@short-workflow/db";
+import { youtubeMetadataSchema } from "@short-workflow/shared";
 
 import { parseEnv } from "../env";
 import { listProjectJobs } from "./jobs";
@@ -102,7 +104,32 @@ export async function getProjectDetail(db: DbClient, projectId: string) {
     assets,
     renders,
     jobs,
+    youtubeMetadata: latestYoutubeMetadata(jobs),
   };
+}
+
+function latestYoutubeMetadata(jobs: JobRow[]) {
+  for (const job of jobs) {
+    if (job.type !== "generate_script" || job.status !== "succeeded") {
+      continue;
+    }
+
+    const output = job.output;
+    if (!isJsonRecord(output) || !isJsonRecord(output.metadataDraft)) {
+      continue;
+    }
+
+    const parsed = youtubeMetadataSchema.safeParse(output.metadataDraft);
+    if (parsed.success) {
+      return parsed.data;
+    }
+  }
+
+  return null;
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function buildRenderPreconditionReport(

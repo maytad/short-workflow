@@ -8,6 +8,7 @@ import {
   projectSchema,
   renderSchema,
   sceneSchema,
+  youtubeMetadataSchema,
   uuidSchema,
 } from "./schemas";
 
@@ -49,6 +50,7 @@ export const projectDetailResponseSchema = z
     assets: z.array(assetSchema),
     renders: z.array(renderSchema),
     jobs: z.array(jobSchema),
+    youtubeMetadata: youtubeMetadataSchema.nullable(),
   })
   .strict();
 

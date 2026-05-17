@@ -81,6 +81,7 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
       assets: [],
       renders: [],
       jobs: [],
+      youtubeMetadata: null,
     }),
     updateProject: async () => project,
     assertProjectCanDelete: async () => true,

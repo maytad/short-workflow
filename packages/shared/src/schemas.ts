@@ -119,6 +119,15 @@ export const jobSchema = z
   })
   .strict();
 
+export const youtubeMetadataSchema = z
+  .object({
+    youtubeTitle: z.string().min(1).max(100),
+    description: z.string().min(1),
+    hashtags: z.array(z.string().min(1)).min(1).max(5),
+    disclosureHint: z.string().min(1),
+  })
+  .strict();
+
 export const renderSchema = z
   .object({
     id: uuidSchema,
@@ -142,3 +151,4 @@ export type Scene = z.infer<typeof sceneSchema>;
 export type Asset = z.infer<typeof assetSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type Render = z.infer<typeof renderSchema>;
+export type YoutubeMetadata = z.infer<typeof youtubeMetadataSchema>;

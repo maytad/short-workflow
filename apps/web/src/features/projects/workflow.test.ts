@@ -97,6 +97,7 @@ describe("scene update helpers", () => {
       },
       renders: [],
       scenes: [scene()],
+      youtubeMetadata: null,
     };
 
     const updated = applyOptimisticSceneUpdate(
