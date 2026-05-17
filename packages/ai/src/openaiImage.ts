@@ -69,6 +69,7 @@ export async function generateOpenAIImageWithClient(
       model_id: model,
       created: response.created,
       output_format: response.output_format,
+      prompt_metadata: input.promptMetadata,
       quality: response.quality,
       revised_prompt: image.revised_prompt,
       size: response.size,

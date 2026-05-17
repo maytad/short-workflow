@@ -1,6 +1,14 @@
-import { generateImage, resolveImageProvider } from "@short-workflow/ai";
+import {
+  generateImage,
+  imagePromptTemplate,
+  promptPayload,
+  resolveImageProvider,
+  styleContextFromScriptResponseText,
+} from "@short-workflow/ai";
 import {
   createPendingAsset,
+  getLatestPromptVersion,
+  getProject,
   getScene,
   insertPromptVersion,
   markAssetFailed,
@@ -26,6 +34,18 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
     throw new Error("scene_not_found");
   }
 
+  const project = await getProject(db, scene.projectId);
+  if (!project) {
+    throw new Error("project_not_found");
+  }
+
+  const latestScriptPrompt = await getLatestPromptVersion(db, {
+    projectId: scene.projectId,
+    sceneId: null,
+    purpose: "script",
+  });
+  const styleContext = styleContextFromScriptResponseText(latestScriptPrompt?.responseText);
+
   let asset: AssetRow | null = null;
   let assetReady = false;
   const provider = resolveImageProvider();
@@ -39,7 +59,20 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       provider,
     });
 
-    const generated = await generateImage({ prompt: scene.imagePrompt, provider });
+    const compiledPrompt = imagePromptTemplate.compile({
+      project,
+      scene,
+      provider,
+      ...(styleContext ? { styleContext } : {}),
+    });
+    const generated = await generateImage({
+      prompt: compiledPrompt.prompt,
+      provider,
+      promptMetadata: {
+        templateId: compiledPrompt.templateId,
+        templateVersion: compiledPrompt.templateVersion,
+      },
+    });
     const finalPath = sceneImagePath(scene.projectId, scene.id, asset.id);
     const file = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalPath, generated.bytes);
 
@@ -59,7 +92,11 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       purpose: "image_prompt",
       provider: generated.provider,
       model: generated.model,
-      promptPayload: { prompt: scene.imagePrompt },
+      promptPayload: promptPayload(compiledPrompt, {
+        projectId: project.id,
+        sceneId: scene.id,
+        imagePrompt: scene.imagePrompt,
+      }),
       responseMetadata: generated.responseMetadata,
     });
 

@@ -63,6 +63,7 @@ export async function generateGoogleImageWithClient(
     responseMetadata: {
       model_id: model,
       mime_type: imagePart.mimeType,
+      prompt_metadata: input.promptMetadata,
       finish_reason: data.candidates?.[0]?.finishReason,
       candidate_count: data.candidates?.length ?? 0,
     },
