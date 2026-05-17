@@ -1,4 +1,4 @@
-import { generateImage } from "@short-workflow/ai";
+import { generateImage, resolveImageProvider } from "@short-workflow/ai";
 import {
   createPendingAsset,
   getScene,
@@ -28,6 +28,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
 
   let asset: AssetRow | null = null;
   let assetReady = false;
+  const provider = resolveImageProvider();
 
   try {
     asset = await createPendingAsset(db, {
@@ -35,10 +36,10 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       sceneId: scene.id,
       kind: "image",
       path: sceneImagePath(scene.projectId, scene.id, "pending"),
-      provider: "google_gemini",
+      provider,
     });
 
-    const generated = await generateImage({ prompt: scene.imagePrompt });
+    const generated = await generateImage({ prompt: scene.imagePrompt, provider });
     const finalPath = sceneImagePath(scene.projectId, scene.id, asset.id);
     const file = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalPath, generated.bytes);
 
@@ -47,7 +48,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       mimeType: generated.mimeType,
       sizeBytes: file.sizeBytes,
       checksum: file.checksum,
-      provider: "google_gemini",
+      provider: generated.provider,
       model: generated.model,
     });
     assetReady = true;
@@ -56,7 +57,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       projectId: scene.projectId,
       sceneId: scene.id,
       purpose: "image_prompt",
-      provider: "google_gemini",
+      provider: generated.provider,
       model: generated.model,
       promptPayload: { prompt: scene.imagePrompt },
       responseMetadata: generated.responseMetadata,

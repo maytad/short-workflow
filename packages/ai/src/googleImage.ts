@@ -1,11 +1,6 @@
 import { GoogleGenAI, Modality } from "@google/genai";
 
-import type { GenerateImageOutput } from "./types";
-
-type GenerateImageInput = {
-  prompt: string;
-  model?: string;
-};
+import type { GenerateImageInput, GenerateImageOutput } from "./types";
 
 type GoogleImageClient = {
   models: {
@@ -33,17 +28,17 @@ type GoogleImageResponse = {
   }>;
 };
 
-export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
+export async function generateGoogleImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_API_KEY_missing");
   }
 
   const client = new GoogleGenAI({ apiKey });
-  return generateImageWithClient(client, input);
+  return generateGoogleImageWithClient(client, input);
 }
 
-export async function generateImageWithClient(
+export async function generateGoogleImageWithClient(
   client: GoogleImageClient,
   input: GenerateImageInput,
 ): Promise<GenerateImageOutput> {
@@ -64,6 +59,7 @@ export async function generateImageWithClient(
     bytes: decodeBase64(imagePart.data),
     mimeType: "image/png",
     model,
+    provider: "google_gemini",
     responseMetadata: {
       model_id: model,
       mime_type: imagePart.mimeType,

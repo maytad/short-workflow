@@ -20,10 +20,19 @@ export type GenerateScriptOutput = {
   responseMetadata: Record<string, unknown>;
 };
 
+export type ImageProvider = "openai" | "google_gemini";
+
+export type GenerateImageInput = {
+  prompt: string;
+  model?: string;
+  provider?: ImageProvider;
+};
+
 export type GenerateImageOutput = {
   bytes: Uint8Array;
   mimeType: "image/png";
   model: string;
+  provider: ImageProvider;
   responseMetadata: Record<string, unknown>;
 };
 
