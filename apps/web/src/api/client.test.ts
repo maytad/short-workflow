@@ -28,9 +28,7 @@ describe("apiFetch", () => {
       expect(result).toEqual({ ok: true });
       expect(requests).toHaveLength(1);
       expect(requests[0]?.url).toBe("http://localhost:3001/projects");
-      expect(requests[0]?.headers.get("content-type")).toBe(
-        "application/json",
-      );
+      expect(requests[0]?.headers.get("content-type")).toBe("application/json");
     } finally {
       globalThis.fetch = originalFetch;
     }

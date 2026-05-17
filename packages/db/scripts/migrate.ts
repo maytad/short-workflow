@@ -47,11 +47,10 @@ async function migrationFolders() {
 
 async function applyUp() {
   await ensureMigrationsTable();
-  const applied =
-    await sql<{ name: string; checksum: string }[]>`select name, checksum from app_migrations`;
-  const appliedByName = new Map(
-    applied.map((row) => [row.name, row.checksum]),
-  );
+  const applied = await sql<
+    { name: string; checksum: string }[]
+  >`select name, checksum from app_migrations`;
+  const appliedByName = new Map(applied.map((row) => [row.name, row.checksum]));
 
   for (const name of await migrationFolders()) {
     const filePath = path.join(migrationsDir, name, "migration.sql");

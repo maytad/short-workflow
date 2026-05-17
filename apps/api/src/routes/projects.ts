@@ -20,13 +20,7 @@ import {
 } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
-import {
-  conflict,
-  internalError,
-  jsonError,
-  notFound,
-  validationFailed,
-} from "../http";
+import { conflict, internalError, jsonError, notFound, validationFailed } from "../http";
 import {
   assertProjectCanDelete,
   buildRenderPreconditionReport,
@@ -114,147 +108,136 @@ function hasRenderPreconditionFailures(
   );
 }
 
-export function createProjectRoutes(
-  services: ProjectRouteServices = defaultServices,
-) {
+export function createProjectRoutes(services: ProjectRouteServices = defaultServices) {
   return new Elysia()
     .group("/projects", (projects) =>
       projects
-    .get("/", (context) => {
-      const { db } = withRouteContext(context);
-      return services.listProjects(db);
-    })
-    .post("/", (context) => {
-      const { body, db, set } = withRouteContext(context);
-      const result = createProjectRequestSchema.safeParse(body);
+        .get("/", (context) => {
+          const { db } = withRouteContext(context);
+          return services.listProjects(db);
+        })
+        .post("/", (context) => {
+          const { body, db, set } = withRouteContext(context);
+          const result = createProjectRequestSchema.safeParse(body);
 
-      if (!result.success) {
-        return validationFailed(set, result.error);
-      }
+          if (!result.success) {
+            return validationFailed(set, result.error);
+          }
 
-      return services.createProject(db, result.data);
-    })
-    .get("/:projectId", async (context) => {
-      const { db, params, set } = withRouteContext(context);
-      const detail = await services.getProjectDetail(db, params.projectId!);
+          return services.createProject(db, result.data);
+        })
+        .get("/:projectId", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const detail = await services.getProjectDetail(db, params.projectId!);
 
-      if (!detail) {
-        return notFound(set);
-      }
+          if (!detail) {
+            return notFound(set);
+          }
 
-      return detail;
-    })
-    .patch("/:projectId", (context) => {
-      const { body, db, params, set } = withRouteContext(context);
-      const result = updateProjectRequestSchema.safeParse(body);
+          return detail;
+        })
+        .patch("/:projectId", (context) => {
+          const { body, db, params, set } = withRouteContext(context);
+          const result = updateProjectRequestSchema.safeParse(body);
 
-      if (!result.success) {
-        return validationFailed(set, result.error);
-      }
+          if (!result.success) {
+            return validationFailed(set, result.error);
+          }
 
-      const input: Parameters<typeof updateProject>[2] = {};
+          const input: Parameters<typeof updateProject>[2] = {};
 
-      if (result.data.title !== undefined) {
-        input.title = result.data.title;
-      }
+          if (result.data.title !== undefined) {
+            input.title = result.data.title;
+          }
 
-      if (result.data.topic !== undefined) {
-        input.topic = result.data.topic;
-      }
+          if (result.data.topic !== undefined) {
+            input.topic = result.data.topic;
+          }
 
-      return services
-        .updateProject(db, params.projectId!, input)
-        .then((project) => project ?? notFound(set));
-    })
-    .delete("/:projectId", async (context) => {
-      const { db, params, set } = withRouteContext(context);
-      const canDelete = await services.assertProjectCanDelete(
-        db,
-        params.projectId!,
-      );
+          return services
+            .updateProject(db, params.projectId!, input)
+            .then((project) => project ?? notFound(set));
+        })
+        .delete("/:projectId", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const canDelete = await services.assertProjectCanDelete(db, params.projectId!);
 
-      if (!canDelete) {
-        return conflict(set, "project_has_active_jobs");
-      }
+          if (!canDelete) {
+            return conflict(set, "project_has_active_jobs");
+          }
 
-      const deletedProject = await services.deleteProjectRows(
-        db,
-        params.projectId!,
-      );
+          const deletedProject = await services.deleteProjectRows(db, params.projectId!);
 
-      if (!deletedProject) {
-        return notFound(set);
-      }
+          if (!deletedProject) {
+            return notFound(set);
+          }
 
-      try {
-        await services.deleteProjectLocalFiles(params.projectId!);
-      } catch {
-        // Best-effort local cleanup must not mask successful DB deletion.
-      }
+          try {
+            await services.deleteProjectLocalFiles(params.projectId!);
+          } catch {
+            // Best-effort local cleanup must not mask successful DB deletion.
+          }
 
-      return { deleted: true };
-    })
-    .get("/:projectId/scenes", (context) => {
-      const { db, params } = withRouteContext(context);
-      return services.listProjectScenes(db, params.projectId!);
-    })
-    .get("/:projectId/assets", (context) => {
-      const { db, params } = withRouteContext(context);
-      return services.listProjectAssets(db, params.projectId!);
-    })
-    .get("/:projectId/renders", (context) => {
-      const { db, params } = withRouteContext(context);
-      return services.listProjectRenders(db, params.projectId!);
-    })
-    .get("/:projectId/jobs", (context) => {
-      const { db, params, query } = withRouteContext(context);
-      return services.listProjectJobs(
-        db,
-        params.projectId!,
-        query.status === "active" ? "active" : undefined,
-      );
-    })
-    .post("/:projectId/generate-script", async (context) => {
-      const { db, params, set } = withRouteContext(context);
-      const project = await services.getProject(db, params.projectId!);
+          return { deleted: true };
+        })
+        .get("/:projectId/scenes", (context) => {
+          const { db, params } = withRouteContext(context);
+          return services.listProjectScenes(db, params.projectId!);
+        })
+        .get("/:projectId/assets", (context) => {
+          const { db, params } = withRouteContext(context);
+          return services.listProjectAssets(db, params.projectId!);
+        })
+        .get("/:projectId/renders", (context) => {
+          const { db, params } = withRouteContext(context);
+          return services.listProjectRenders(db, params.projectId!);
+        })
+        .get("/:projectId/jobs", (context) => {
+          const { db, params, query } = withRouteContext(context);
+          return services.listProjectJobs(
+            db,
+            params.projectId!,
+            query.status === "active" ? "active" : undefined,
+          );
+        })
+        .post("/:projectId/generate-script", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const project = await services.getProject(db, params.projectId!);
 
-      if (!project) {
-        return notFound(set);
-      }
+          if (!project) {
+            return notFound(set);
+          }
 
-      return services.createJobIdempotent(db, {
-        projectId: project.id,
-        sceneId: null,
-        type: "generate_script",
-        input: { projectId: project.id },
-      });
-    })
-    .post("/:projectId/render", async (context) => {
-      const { db, params, set } = withRouteContext(context);
-      const project = await services.getProject(db, params.projectId!);
+          return services.createJobIdempotent(db, {
+            projectId: project.id,
+            sceneId: null,
+            type: "generate_script",
+            input: { projectId: project.id },
+          });
+        })
+        .post("/:projectId/render", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const project = await services.getProject(db, params.projectId!);
 
-      if (!project) {
-        return notFound(set);
-      }
+          if (!project) {
+            return notFound(set);
+          }
 
-      const report = await services.buildRenderPreconditionReport(
-        db,
-        project.id,
-      );
+          const report = await services.buildRenderPreconditionReport(db, project.id);
 
-      if (hasRenderPreconditionFailures(report)) {
-        return jsonError(set, 422, "render_preconditions_failed", {
-          details: report,
-        });
-      }
+          if (hasRenderPreconditionFailures(report)) {
+            return jsonError(set, 422, "render_preconditions_failed", {
+              details: report,
+            });
+          }
 
-      return services.createJobIdempotent(db, {
-        projectId: project.id,
-        sceneId: null,
-        type: "render_video",
-        input: { projectId: project.id },
-      });
-    })
+          return services.createJobIdempotent(db, {
+            projectId: project.id,
+            sceneId: null,
+            type: "render_video",
+            input: { projectId: project.id },
+          });
+        }),
     )
     .patch("/scenes/:sceneId", (context) => {
       const { body, db, params, set } = withRouteContext(context);
@@ -326,10 +309,7 @@ export function createProjectRoutes(
       try {
         return await services.retryFailedJob(db, params.jobId!);
       } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message === "retry_requires_failed_job"
-        ) {
+        if (error instanceof Error && error.message === "retry_requires_failed_job") {
           return conflict(set, "retry_requires_failed_job");
         }
 
@@ -338,10 +318,7 @@ export function createProjectRoutes(
     })
     .post("/renders/:renderId/acknowledge", async (context) => {
       const { db, params, set } = withRouteContext(context);
-      const render = await services.acknowledgeRenderDisclosure(
-        db,
-        params.renderId!,
-      );
+      const render = await services.acknowledgeRenderDisclosure(db, params.renderId!);
 
       return render ?? notFound(set);
     })

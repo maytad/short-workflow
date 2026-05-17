@@ -21,13 +21,7 @@ export const projectStatusEnum = pgEnum("project_status", [
   "failed",
 ]);
 export const sceneStatusEnum = pgEnum("scene_status", ["draft", "ready"]);
-export const sceneRoleEnum = pgEnum("scene_role", [
-  "hook",
-  "context",
-  "point",
-  "payoff",
-  "cta",
-]);
+export const sceneRoleEnum = pgEnum("scene_role", ["hook", "context", "point", "payoff", "cta"]);
 export const assetKindEnum = pgEnum("asset_kind", [
   "image",
   "audio",
@@ -35,11 +29,7 @@ export const assetKindEnum = pgEnum("asset_kind", [
   "thumbnail",
   "render_input",
 ]);
-export const assetStatusEnum = pgEnum("asset_status", [
-  "pending",
-  "ready",
-  "failed",
-]);
+export const assetStatusEnum = pgEnum("asset_status", ["pending", "ready", "failed"]);
 export const storageDriverEnum = pgEnum("storage_driver", ["local"]);
 export const assetProviderEnum = pgEnum("asset_provider", [
   "openai",
@@ -54,12 +44,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "generate_scene_audio",
   "render_video",
 ]);
-export const jobStatusEnum = pgEnum("job_status", [
-  "pending",
-  "processing",
-  "succeeded",
-  "failed",
-]);
+export const jobStatusEnum = pgEnum("job_status", ["pending", "processing", "succeeded", "failed"]);
 export const renderStatusEnum = pgEnum("render_status", [
   "pending",
   "processing",
@@ -80,17 +65,11 @@ export const projects = pgTable("projects", {
   title: text("title").notNull(),
   topic: text("topic").notNull(),
   status: projectStatusEnum("status").notNull().default("draft"),
-  targetDurationSeconds: integer("target_duration_seconds")
-    .notNull()
-    .default(45),
+  targetDurationSeconds: integer("target_duration_seconds").notNull().default(45),
   language: text("language").notNull().default("en"),
   format: text("format").notNull().default("vertical_9_16"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .default(now),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .default(now),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
 
 export const scenes = pgTable(
@@ -111,19 +90,10 @@ export const scenes = pgTable(
     contentUpdatedAt: timestamp("content_updated_at", { withTimezone: true })
       .notNull()
       .default(now),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .default(now),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
-  (table) => [
-    uniqueIndex("scenes_one_position_per_project").on(
-      table.projectId,
-      table.position,
-    ),
-  ],
+  (table) => [uniqueIndex("scenes_one_position_per_project").on(table.projectId, table.position)],
 );
 
 export const jobs = pgTable(
@@ -145,14 +115,10 @@ export const jobs = pgTable(
     input: jsonb("input").notNull().default({}),
     output: jsonb("output"),
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
     startedAt: timestamp("started_at", { withTimezone: true }),
     finishedAt: timestamp("finished_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (table) => [
     index("jobs_project_status_created_at_idx").on(
@@ -160,11 +126,7 @@ export const jobs = pgTable(
       table.status,
       table.createdAt.desc(),
     ),
-    index("jobs_retry_claim_idx").on(
-      table.status,
-      table.nextRetryAt,
-      table.createdAt,
-    ),
+    index("jobs_retry_claim_idx").on(table.status, table.nextRetryAt, table.createdAt),
     index("jobs_processing_started_at_idx")
       .on(table.startedAt)
       .where(sql`${table.status} = 'processing'`),
@@ -182,14 +144,10 @@ export const jobs = pgTable(
     ),
     uniqueIndex("jobs_one_active_project_job")
       .on(table.projectId, table.type)
-      .where(
-        sql`${table.sceneId} is null and ${table.status} in ('pending', 'processing')`,
-      ),
+      .where(sql`${table.sceneId} is null and ${table.status} in ('pending', 'processing')`),
     uniqueIndex("jobs_one_active_scene_job")
       .on(table.sceneId, table.type)
-      .where(
-        sql`${table.sceneId} is not null and ${table.status} in ('pending', 'processing')`,
-      ),
+      .where(sql`${table.sceneId} is not null and ${table.status} in ('pending', 'processing')`),
   ],
 );
 
@@ -204,9 +162,7 @@ export const assets = pgTable(
       onDelete: "cascade",
     }),
     kind: assetKindEnum("kind").notNull(),
-    storageDriver: storageDriverEnum("storage_driver")
-      .notNull()
-      .default("local"),
+    storageDriver: storageDriverEnum("storage_driver").notNull().default("local"),
     path: text("path").notNull(),
     mimeType: text("mime_type"),
     sizeBytes: integer("size_bytes"),
@@ -214,12 +170,8 @@ export const assets = pgTable(
     status: assetStatusEnum("status").notNull().default("pending"),
     provider: assetProviderEnum("provider").notNull(),
     model: text("model"),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .default(now),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (table) => [
     index("assets_scene_kind_created_ready_idx")
@@ -244,12 +196,8 @@ export const renders = pgTable("renders", {
     withTimezone: true,
   }),
   errorMessage: text("error_message"),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .default(now),
-  updatedAt: timestamp("updated_at", { withTimezone: true })
-    .notNull()
-    .default(now),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
 
 export const promptVersions = pgTable(
@@ -269,9 +217,7 @@ export const promptVersions = pgTable(
     promptPayload: jsonb("prompt_payload").notNull(),
     responseText: text("response_text"),
     responseMetadata: jsonb("response_metadata").notNull().default({}),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .default(now),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
   },
   (table) => [
     index("prompt_versions_history_idx").on(
@@ -287,9 +233,7 @@ export const appMigrations = pgTable("app_migrations", {
   id: bigserial("id", { mode: "number" }).primaryKey(),
   name: text("name").notNull().unique(),
   checksum: text("checksum").notNull(),
-  appliedAt: timestamp("applied_at", { withTimezone: true })
-    .notNull()
-    .default(now),
+  appliedAt: timestamp("applied_at", { withTimezone: true }).notNull().default(now),
 });
 
 export type ProjectRow = typeof projects.$inferSelect;

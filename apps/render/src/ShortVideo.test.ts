@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  getSceneDurationFrames,
-  getTotalDurationFrames,
-  resolveMediaSrc,
-} from "./ShortVideo";
+import { getSceneDurationFrames, getTotalDurationFrames, resolveMediaSrc } from "./ShortVideo";
 
 describe("ShortVideo helpers", () => {
   test("uses file URLs for absolute media paths", () => {
@@ -18,11 +14,7 @@ describe("ShortVideo helpers", () => {
   });
 
   test("computes scene and total duration in frames", () => {
-    const scenes = [
-      { durationSeconds: 2.5 },
-      { durationSeconds: 1 },
-      { durationSeconds: 0.25 },
-    ];
+    const scenes = [{ durationSeconds: 2.5 }, { durationSeconds: 1 }, { durationSeconds: 0.25 }];
 
     expect(getSceneDurationFrames(scenes[0]!, 30)).toBe(75);
     expect(getTotalDurationFrames(scenes, 30)).toBe(113);

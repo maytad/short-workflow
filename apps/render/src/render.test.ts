@@ -9,9 +9,7 @@ import type { RenderInput } from "./schema";
 const tempDirs: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(
-    tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
-  );
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
 });
 
 const makeInput = (imagePath: string, audioPath: string): RenderInput => ({
@@ -49,10 +47,7 @@ describe("stageRenderInputAssets", () => {
     await writeFile(imagePath, "image");
     await writeFile(audioPath, "audio");
 
-    const staged = await stageRenderInputAssets(
-      makeInput(imagePath, audioPath),
-      publicDir,
-    );
+    const staged = await stageRenderInputAssets(makeInput(imagePath, audioPath), publicDir);
 
     expect(staged.scenes[0]!.imagePath).toBe(
       "assets/00000000-0000-4000-8000-000000000031-image.png",
@@ -60,11 +55,11 @@ describe("stageRenderInputAssets", () => {
     expect(staged.scenes[0]!.audioPath).toBe(
       "assets/00000000-0000-4000-8000-000000000031-audio.wav",
     );
-    await expect(
-      readFile(path.join(publicDir, staged.scenes[0]!.imagePath), "utf8"),
-    ).resolves.toBe("image");
-    await expect(
-      readFile(path.join(publicDir, staged.scenes[0]!.audioPath), "utf8"),
-    ).resolves.toBe("audio");
+    await expect(readFile(path.join(publicDir, staged.scenes[0]!.imagePath), "utf8")).resolves.toBe(
+      "image",
+    );
+    await expect(readFile(path.join(publicDir, staged.scenes[0]!.audioPath), "utf8")).resolves.toBe(
+      "audio",
+    );
   });
 });

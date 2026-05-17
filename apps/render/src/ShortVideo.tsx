@@ -25,19 +25,11 @@ const absolutePathToFileUrl = (src: string) => {
 export const resolveMediaSrc = (src: string) =>
   isAbsoluteOrUrl(src) ? absolutePathToFileUrl(src) : staticFile(src);
 
-export const getSceneDurationFrames = (
-  scene: SceneDuration,
-  fps: number,
-) => Math.round(scene.durationSeconds * fps);
+export const getSceneDurationFrames = (scene: SceneDuration, fps: number) =>
+  Math.round(scene.durationSeconds * fps);
 
-export const getTotalDurationFrames = (
-  scenes: readonly SceneDuration[],
-  fps: number,
-) =>
-  scenes.reduce(
-    (total, scene) => total + getSceneDurationFrames(scene, fps),
-    0,
-  );
+export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: number) =>
+  scenes.reduce((total, scene) => total + getSceneDurationFrames(scene, fps), 0);
 
 export const ShortVideo = (props: RenderInput) => {
   const { width, height } = useVideoConfig();
@@ -53,19 +45,12 @@ export const ShortVideo = (props: RenderInput) => {
       }}
     >
       {props.scenes.map((scene) => {
-        const durationInFrames = getSceneDurationFrames(
-          scene,
-          props.format.fps,
-        );
+        const durationInFrames = getSceneDurationFrames(scene, props.format.fps);
         const sequenceFrom = from;
         from += durationInFrames;
 
         return (
-          <Sequence
-            durationInFrames={durationInFrames}
-            from={sequenceFrom}
-            key={scene.id}
-          >
+          <Sequence durationInFrames={durationInFrames} from={sequenceFrom} key={scene.id}>
             <div
               style={{
                 position: "relative",
@@ -96,8 +81,7 @@ export const ShortVideo = (props: RenderInput) => {
                   fontWeight: 800,
                   lineHeight: 1.12,
                   textAlign: "center",
-                  textShadow:
-                    "0 3px 8px rgba(0,0,0,0.9), 0 0 28px rgba(0,0,0,0.85)",
+                  textShadow: "0 3px 8px rgba(0,0,0,0.9), 0 0 28px rgba(0,0,0,0.85)",
                 }}
               >
                 {scene.caption}

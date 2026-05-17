@@ -99,9 +99,7 @@ export function SceneEditor({ projectId, selectedScene }: SceneEditorProps) {
           <h2 className="truncate text-base font-semibold">
             Scene {selectedScene.position}: {selectedScene.role}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Status: {selectedScene.status}
-          </p>
+          <p className="text-sm text-muted-foreground">Status: {selectedScene.status}</p>
         </div>
         <button
           className="inline-flex h-9 shrink-0 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"

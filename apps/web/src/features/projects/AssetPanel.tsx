@@ -1,10 +1,7 @@
 import type { Asset, Job, Scene } from "@short-workflow/shared";
 import { Image, Loader2, Music2, RefreshCw } from "lucide-react";
 
-import {
-  useGenerateSceneAudioMutation,
-  useGenerateSceneImageMutation,
-} from "./hooks";
+import { useGenerateSceneAudioMutation, useGenerateSceneImageMutation } from "./hooks";
 
 type AssetKind = Extract<Asset["kind"], "image" | "audio">;
 
@@ -29,25 +26,14 @@ const JOB_TYPE_BY_KIND: Record<AssetKind, Job["type"]> = {
 export function isAssetCurrentForScene(asset: Asset | undefined, scene: Scene) {
   return (
     asset?.status === "ready" &&
-    new Date(asset.createdAt).getTime() >=
-      new Date(scene.contentUpdatedAt).getTime()
+    new Date(asset.createdAt).getTime() >= new Date(scene.contentUpdatedAt).getTime()
   );
 }
 
-export function getLatestSceneAsset({
-  assets,
-  kind,
-  sceneId,
-}: LatestSceneAssetInput) {
+export function getLatestSceneAsset({ assets, kind, sceneId }: LatestSceneAssetInput) {
   return assets
-    .filter(
-      (asset) =>
-        asset.sceneId === sceneId && asset.kind === kind && asset.status === "ready",
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    )[0];
+    .filter((asset) => asset.sceneId === sceneId && asset.kind === kind && asset.status === "ready")
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
 }
 
 function hasActiveJob(activeJobs: Job[], scene: Scene, kind: AssetKind) {
@@ -112,20 +98,9 @@ function AssetStatusRow({
   );
 }
 
-export function AssetPanel({
-  activeJobs,
-  assets,
-  projectId,
-  selectedScene,
-}: AssetPanelProps) {
-  const imageMutation = useGenerateSceneImageMutation(
-    projectId,
-    selectedScene?.id ?? "",
-  );
-  const audioMutation = useGenerateSceneAudioMutation(
-    projectId,
-    selectedScene?.id ?? "",
-  );
+export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: AssetPanelProps) {
+  const imageMutation = useGenerateSceneImageMutation(projectId, selectedScene?.id ?? "");
+  const audioMutation = useGenerateSceneAudioMutation(projectId, selectedScene?.id ?? "");
 
   if (!selectedScene) {
     return (
@@ -153,9 +128,7 @@ export function AssetPanel({
     <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
       <div>
         <h2 className="text-base font-semibold">Assets</h2>
-        <p className="text-sm text-muted-foreground">
-          Scene {selectedScene.position}
-        </p>
+        <p className="text-sm text-muted-foreground">Scene {selectedScene.position}</p>
       </div>
 
       <div className="mt-4 grid gap-3">

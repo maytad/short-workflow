@@ -1,28 +1,10 @@
-export const PROJECT_STATUSES = [
-  "draft",
-  "ready",
-  "rendering",
-  "done",
-  "failed",
-] as const;
+export const PROJECT_STATUSES = ["draft", "ready", "rendering", "done", "failed"] as const;
 
 export const SCENE_STATUSES = ["draft", "ready"] as const;
 
-export const SCENE_ROLES = [
-  "hook",
-  "context",
-  "point",
-  "payoff",
-  "cta",
-] as const;
+export const SCENE_ROLES = ["hook", "context", "point", "payoff", "cta"] as const;
 
-export const ASSET_KINDS = [
-  "image",
-  "audio",
-  "render",
-  "thumbnail",
-  "render_input",
-] as const;
+export const ASSET_KINDS = ["image", "audio", "render", "thumbnail", "render_input"] as const;
 
 export const ASSET_STATUSES = ["pending", "ready", "failed"] as const;
 
@@ -43,26 +25,11 @@ export const JOB_TYPES = [
   "render_video",
 ] as const;
 
-export const JOB_STATUSES = [
-  "pending",
-  "processing",
-  "succeeded",
-  "failed",
-] as const;
+export const JOB_STATUSES = ["pending", "processing", "succeeded", "failed"] as const;
 
-export const RENDER_STATUSES = [
-  "pending",
-  "processing",
-  "succeeded",
-  "failed",
-] as const;
+export const RENDER_STATUSES = ["pending", "processing", "succeeded", "failed"] as const;
 
-export const PROMPT_PURPOSES = [
-  "script",
-  "image_prompt",
-  "ssml",
-  "caption",
-] as const;
+export const PROMPT_PURPOSES = ["script", "image_prompt", "ssml", "caption"] as const;
 
 export const DURATION_PRESETS_SECONDS = [30, 45, 60] as const;
 

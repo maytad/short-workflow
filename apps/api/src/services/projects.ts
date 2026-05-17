@@ -15,9 +15,7 @@ import {
 import { parseEnv } from "../env";
 import { listProjectJobs } from "./jobs";
 
-export type ProjectDetail = NonNullable<
-  Awaited<ReturnType<typeof getProjectDetail>>
->;
+export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>;
 
 export type RenderPreconditionReport = {
   projectHasNoScenes: boolean;
@@ -38,10 +36,7 @@ const defaultRenderPreconditionDeps: RenderPreconditionDeps = {
   listProjectAssets,
 };
 
-export async function assertProjectCanDelete(
-  db: DbClient,
-  projectId: string,
-) {
+export async function assertProjectCanDelete(db: DbClient, projectId: string) {
   const activeJobs = await listProjectJobs(db, projectId, "active");
   return activeJobs.length === 0;
 }
@@ -108,22 +103,8 @@ function evaluateRenderPreconditions(
       report.scenesNotReady.push(scene.id);
     }
 
-    addAssetPrecondition(
-      report,
-      scene,
-      assets,
-      "image",
-      "scenesMissingImage",
-      "scenesStaleImage",
-    );
-    addAssetPrecondition(
-      report,
-      scene,
-      assets,
-      "audio",
-      "scenesMissingAudio",
-      "scenesStaleAudio",
-    );
+    addAssetPrecondition(report, scene, assets, "image", "scenesMissingImage", "scenesStaleImage");
+    addAssetPrecondition(report, scene, assets, "audio", "scenesMissingAudio", "scenesStaleAudio");
   }
 
   return report;
@@ -138,10 +119,7 @@ function addAssetPrecondition(
   staleKey: "scenesStaleImage" | "scenesStaleAudio",
 ) {
   const readyAssets = assets.filter(
-    (asset) =>
-      asset.sceneId === scene.id &&
-      asset.kind === kind &&
-      asset.status === "ready",
+    (asset) => asset.sceneId === scene.id && asset.kind === kind && asset.status === "ready",
   );
 
   if (readyAssets.length === 0) {
@@ -149,9 +127,7 @@ function addAssetPrecondition(
     return;
   }
 
-  const hasCurrentAsset = readyAssets.some(
-    (asset) => asset.createdAt >= scene.contentUpdatedAt,
-  );
+  const hasCurrentAsset = readyAssets.some((asset) => asset.createdAt >= scene.contentUpdatedAt);
 
   if (!hasCurrentAsset) {
     report[staleKey].push(scene.id);

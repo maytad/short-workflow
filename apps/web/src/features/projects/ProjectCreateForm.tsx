@@ -45,9 +45,7 @@ export function ProjectCreateForm() {
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold">Create project</h2>
-          <p className="text-sm text-muted-foreground">
-            Start a short-form video workflow.
-          </p>
+          <p className="text-sm text-muted-foreground">Start a short-form video workflow.</p>
         </div>
         <button
           className="inline-flex h-9 items-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
@@ -72,9 +70,7 @@ export function ProjectCreateForm() {
             {...register("title")}
           />
           {errors.title ? (
-            <span className="text-xs text-accent-foreground">
-              {errors.title.message}
-            </span>
+            <span className="text-xs text-accent-foreground">{errors.title.message}</span>
           ) : null}
         </label>
 
@@ -86,9 +82,7 @@ export function ProjectCreateForm() {
             {...register("topic")}
           />
           {errors.topic ? (
-            <span className="text-xs text-accent-foreground">
-              {errors.topic.message}
-            </span>
+            <span className="text-xs text-accent-foreground">{errors.topic.message}</span>
           ) : null}
         </label>
 

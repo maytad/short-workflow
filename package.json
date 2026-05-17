@@ -2,7 +2,10 @@
   "name": "short-workflow",
   "private": true,
   "packageManager": "bun@1.2.0",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo run dev --parallel",
     "dev:web": "turbo run dev --filter=@short-workflow/web",

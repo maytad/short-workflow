@@ -54,9 +54,7 @@ function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
 
-function createServices(
-  overrides: Partial<ProjectRouteServices> = {},
-): ProjectRouteServices {
+function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectRouteServices {
   return {
     listProjects: async () => [project],
     createProject: async () => project,
@@ -110,9 +108,7 @@ describe("createApp", () => {
       }),
     );
 
-    expect(response.headers.get("access-control-allow-origin")).toBe(
-      "http://127.0.0.1:5173",
-    );
+    expect(response.headers.get("access-control-allow-origin")).toBe("http://127.0.0.1:5173");
   });
 
   test("serves health without touching project services", async () => {
@@ -147,10 +143,7 @@ describe("createApp", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({
       error: "validation_failed",
-      issues: [
-        { path: "title" },
-        { path: "topic" },
-      ],
+      issues: [{ path: "title" }, { path: "topic" }],
     });
   });
 
@@ -162,9 +155,7 @@ describe("createApp", () => {
       }),
     });
 
-    const response = await app.handle(
-      request("/projects/11111111-1111-4111-8111-111111111111"),
-    );
+    const response = await app.handle(request("/projects/11111111-1111-4111-8111-111111111111"));
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
@@ -389,9 +380,7 @@ describe("createApp", () => {
       }),
     });
 
-    const response = await app.handle(
-      request(`/jobs/${job.id}/retry`, { method: "POST" }),
-    );
+    const response = await app.handle(request(`/jobs/${job.id}/retry`, { method: "POST" }));
 
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({

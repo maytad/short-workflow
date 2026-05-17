@@ -43,9 +43,7 @@ export async function createJobIdempotent(db: DbClient, input: CreateJobInput) {
     .where(
       and(
         eq(jobs.projectId, input.projectId),
-        input.sceneId === null
-          ? isNull(jobs.sceneId)
-          : eq(jobs.sceneId, input.sceneId),
+        input.sceneId === null ? isNull(jobs.sceneId) : eq(jobs.sceneId, input.sceneId),
         eq(jobs.type, input.type),
         inArray(jobs.status, activeJobStatuses),
       ),
@@ -105,11 +103,7 @@ export async function markJobSucceeded(
   return job ?? null;
 }
 
-export async function markJobFailedOrRetry(
-  db: DbClient,
-  job: JobRow,
-  errorMessage: string,
-) {
+export async function markJobFailedOrRetry(db: DbClient, job: JobRow, errorMessage: string) {
   if (job.attempts < job.maxAttempts) {
     const [retriedJob] = await db
       .update(jobs)
@@ -142,11 +136,7 @@ export async function markJobFailedOrRetry(
 }
 
 export async function retryFailedJob(db: DbClient, jobId: string) {
-  const [failedJob] = await db
-    .select()
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .limit(1);
+  const [failedJob] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
 
   if (!failedJob || failedJob.status !== "failed") {
     throw new Error("retry_requires_failed_job");
@@ -182,29 +172,18 @@ export async function recoverStaleJobs(db: DbClient, olderThanMinutes = 10) {
       startedAt: null,
       updatedAt: sql`now()`,
     })
-    .where(
-      and(
-        eq(jobs.status, "processing"),
-        lt(jobs.startedAt, threshold),
-      ),
-    )
+    .where(and(eq(jobs.status, "processing"), lt(jobs.startedAt, threshold)))
     .returning();
 }
 
-export async function listProjectJobs(
-  db: DbClient,
-  projectId: string,
-  status?: "active",
-) {
+export async function listProjectJobs(db: DbClient, projectId: string, status?: "active") {
   return db
     .select()
     .from(jobs)
     .where(
       and(
         eq(jobs.projectId, projectId),
-        status === "active"
-          ? inArray(jobs.status, activeJobStatuses)
-          : undefined,
+        status === "active" ? inArray(jobs.status, activeJobStatuses) : undefined,
       ),
     )
     .orderBy(desc(jobs.createdAt));

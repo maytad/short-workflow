@@ -32,10 +32,7 @@ function promptVersionScopeWhere(scope: PromptVersionScope) {
   );
 }
 
-export async function nextPromptRevision(
-  db: DbClient,
-  scope: PromptVersionScope,
-) {
+export async function nextPromptRevision(db: DbClient, scope: PromptVersionScope) {
   const [row] = await db
     .select({
       nextRevision: sql<number>`coalesce(max(${promptVersions.revision}), 0) + 1`,
@@ -46,10 +43,7 @@ export async function nextPromptRevision(
   return row?.nextRevision ?? 1;
 }
 
-export async function insertPromptVersion(
-  db: DbClient,
-  input: InsertPromptVersionInput,
-) {
+export async function insertPromptVersion(db: DbClient, input: InsertPromptVersionInput) {
   const revision =
     input.revision ??
     (await nextPromptRevision(db, {

@@ -72,10 +72,7 @@ const stageAsset = async ({
   }
 
   const extension = path.extname(localPath);
-  const stagedPath = path.join(
-    "assets",
-    `${sceneId}-${kind}${extension || ".asset"}`,
-  );
+  const stagedPath = path.join("assets", `${sceneId}-${kind}${extension || ".asset"}`);
   const destinationPath = path.join(publicDir, stagedPath);
 
   await mkdir(path.dirname(destinationPath), { recursive: true });
@@ -114,10 +111,7 @@ const renderProject = async () => {
   const outputPath = path.resolve(output);
   const publicDir = await mkdtemp(path.join(os.tmpdir(), "short-render-"));
   const stagedRenderInput = await stageRenderInputAssets(renderInput, publicDir);
-  const entryPoint = path.join(
-    path.dirname(fileURLToPath(import.meta.url)),
-    "Root.tsx",
-  );
+  const entryPoint = path.join(path.dirname(fileURLToPath(import.meta.url)), "Root.tsx");
 
   await mkdir(path.dirname(outputPath), { recursive: true });
 

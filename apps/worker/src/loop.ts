@@ -47,7 +47,5 @@ export async function runWorker() {
 
   await recoverStaleJobs(db);
 
-  await Promise.all(
-    Array.from({ length: env.WORKER_CONCURRENCY }, () => workerLoop(db)),
-  );
+  await Promise.all(Array.from({ length: env.WORKER_CONCURRENCY }, () => workerLoop(db)));
 }

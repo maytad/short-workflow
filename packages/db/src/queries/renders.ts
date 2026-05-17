@@ -13,10 +13,7 @@ export type CreateRenderAttemptInput = {
   fps: number;
 };
 
-export async function createRenderAttempt(
-  db: DbClient,
-  input: CreateRenderAttemptInput,
-) {
+export async function createRenderAttempt(db: DbClient, input: CreateRenderAttemptInput) {
   const [render] = await db
     .insert(renders)
     .values({
@@ -53,11 +50,7 @@ export async function markRenderSucceeded(
   return render ?? null;
 }
 
-export async function markRenderFailed(
-  db: DbClient,
-  renderId: string,
-  errorMessage: string,
-) {
+export async function markRenderFailed(db: DbClient, renderId: string, errorMessage: string) {
   const [render] = await db
     .update(renders)
     .set({ status: "failed", errorMessage, updatedAt: sql`now()` })
@@ -67,10 +60,7 @@ export async function markRenderFailed(
   return render ?? null;
 }
 
-export async function acknowledgeRenderDisclosure(
-  db: DbClient,
-  renderId: string,
-) {
+export async function acknowledgeRenderDisclosure(db: DbClient, renderId: string) {
   const [render] = await db
     .update(renders)
     .set({

@@ -7,7 +7,10 @@ const sceneRolesByDuration = {
   30: ["hook", "context", "point", "payoff", "cta"],
   45: ["hook", "context", "point", "point", "payoff", "cta"],
   60: ["hook", "context", "point", "point", "point", "payoff", "cta"],
-} as const satisfies Record<GenerateScriptInput["targetDurationSeconds"], readonly ScriptScene["role"][]>;
+} as const satisfies Record<
+  GenerateScriptInput["targetDurationSeconds"],
+  readonly ScriptScene["role"][]
+>;
 
 const sceneSchema = z.object({
   position: z.number().int().positive(),
@@ -100,7 +103,9 @@ function hasExpectedScenePlan(
     return false;
   }
 
-  return scenes.every((scene, index) => scene.position === index + 1 && scene.role === roles[index]);
+  return scenes.every(
+    (scene, index) => scene.position === index + 1 && scene.role === roles[index],
+  );
 }
 
 function extractResponseText(response: OpenAI.Responses.Response): string {

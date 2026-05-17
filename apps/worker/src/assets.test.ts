@@ -17,9 +17,9 @@ describe("asset utilities", () => {
     expect(() => absoluteAssetPath("/asset-root", "../escape.png")).toThrow(
       "asset_path_escapes_root",
     );
-    expect(() =>
-      absoluteAssetPath("/asset-root", "/tmp/outside-root.png"),
-    ).toThrow("asset_path_escapes_root");
+    expect(() => absoluteAssetPath("/asset-root", "/tmp/outside-root.png")).toThrow(
+      "asset_path_escapes_root",
+    );
   });
 
   test("writes bytes and returns file metadata", async () => {
@@ -34,13 +34,9 @@ describe("asset utilities", () => {
       );
 
       expect(result).toEqual({
-        absolutePath: path.join(
-          root,
-          "projects/project-1/scenes/scene-1/images/asset-1.png",
-        ),
+        absolutePath: path.join(root, "projects/project-1/scenes/scene-1/images/asset-1.png"),
         sizeBytes: bytes.byteLength,
-        checksum:
-          "sha256:4678f89204f4480245b8b9c6c0f9728da3fcd5c7485d85fb16c9819093fb5c63",
+        checksum: "sha256:4678f89204f4480245b8b9c6c0f9728da3fcd5c7485d85fb16c9819093fb5c63",
       });
       expect(await readFile(result.absolutePath)).toEqual(Buffer.from(bytes));
     } finally {

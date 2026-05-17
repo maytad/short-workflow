@@ -67,10 +67,7 @@ export function buildRenderInput(input: {
     throw new Error("render_preconditions_failed:no_scenes");
   }
 
-  const durationSeconds = input.scenes.reduce(
-    (total, scene) => total + scene.durationSeconds,
-    0,
-  );
+  const durationSeconds = input.scenes.reduce((total, scene) => total + scene.durationSeconds, 0);
 
   return renderInputSchema.parse({
     projectId: input.project.id,
@@ -83,17 +80,13 @@ export function buildRenderInput(input: {
     },
     scenes: input.scenes.map((scene) => {
       if (scene.status !== "ready") {
-        throw new Error(
-          `render_preconditions_failed:scene_not_ready:${scene.id}`,
-        );
+        throw new Error(`render_preconditions_failed:scene_not_ready:${scene.id}`);
       }
 
       const assets = input.sceneAssets.get(scene.id);
 
       if (!assets?.image || !assets.audio) {
-        throw new Error(
-          `render_preconditions_failed:missing_scene_asset:${scene.id}`,
-        );
+        throw new Error(`render_preconditions_failed:missing_scene_asset:${scene.id}`);
       }
 
       return {
@@ -110,11 +103,7 @@ export function buildRenderInput(input: {
   });
 }
 
-export async function handleRenderVideo(
-  db: DbClient,
-  job: JobRow,
-  env?: HandlerEnv,
-) {
+export async function handleRenderVideo(db: DbClient, job: JobRow, env?: HandlerEnv) {
   const handlerEnv = resolveHandlerEnv(env);
   const project = await getProject(db, job.projectId);
 
@@ -184,10 +173,7 @@ export async function handleRenderVideo(
 
     const outputPath = renderOutputPath(project.id, render.id);
     const absoluteInputPath = inputFile.absolutePath;
-    const absoluteOutputPath = absoluteAssetPath(
-      handlerEnv.LOCAL_ASSET_ROOT,
-      outputPath,
-    );
+    const absoluteOutputPath = absoluteAssetPath(handlerEnv.LOCAL_ASSET_ROOT, outputPath);
 
     await mkdir(path.dirname(absoluteOutputPath), { recursive: true });
     await runRenderCommand({
@@ -195,10 +181,7 @@ export async function handleRenderVideo(
       outputPath: absoluteOutputPath,
     });
 
-    const outputFile = await statAssetFile(
-      handlerEnv.LOCAL_ASSET_ROOT,
-      outputPath,
-    );
+    const outputFile = await statAssetFile(handlerEnv.LOCAL_ASSET_ROOT, outputPath);
 
     outputAsset = await createPendingAsset(db, {
       projectId: project.id,
@@ -245,10 +228,7 @@ export async function handleRenderVideo(
   }
 }
 
-async function runRenderCommand(input: {
-  inputPath: string;
-  outputPath: string;
-}) {
+async function runRenderCommand(input: { inputPath: string; outputPath: string }) {
   const repoRoot = await findWorkspaceRoot(process.cwd());
   const subprocess = Bun.spawn(
     [

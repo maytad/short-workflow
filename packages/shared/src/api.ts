@@ -1,8 +1,6 @@
 import { z } from "zod";
 
-import {
-  DEFAULT_TARGET_DURATION_SECONDS,
-} from "./constants";
+import { DEFAULT_TARGET_DURATION_SECONDS } from "./constants";
 import {
   assetSchema,
   durationPresetSecondsSchema,
@@ -17,9 +15,7 @@ export const createProjectRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(120),
     topic: z.string().trim().min(1).max(1000),
-    targetDurationSeconds: durationPresetSecondsSchema.default(
-      DEFAULT_TARGET_DURATION_SECONDS,
-    ),
+    targetDurationSeconds: durationPresetSecondsSchema.default(DEFAULT_TARGET_DURATION_SECONDS),
   })
   .strict();
 
@@ -69,9 +65,5 @@ export const renderPreconditionErrorSchema = z
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 export type UpdateSceneRequest = z.infer<typeof updateSceneRequestSchema>;
-export type ProjectDetailResponse = z.infer<
-  typeof projectDetailResponseSchema
->;
-export type RenderPreconditionError = z.infer<
-  typeof renderPreconditionErrorSchema
->;
+export type ProjectDetailResponse = z.infer<typeof projectDetailResponseSchema>;
+export type RenderPreconditionError = z.infer<typeof renderPreconditionErrorSchema>;

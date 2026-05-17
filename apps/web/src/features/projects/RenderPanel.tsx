@@ -13,26 +13,14 @@ type RenderPanelProps = {
   renders: Render[];
 };
 
-export function getRenderPreconditionMessages(
-  error: RenderPreconditionError,
-) {
+export function getRenderPreconditionMessages(error: RenderPreconditionError) {
   return [
-    ...(error.details.projectHasNoScenes
-      ? ["Add at least one scene before rendering."]
-      : []),
+    ...(error.details.projectHasNoScenes ? ["Add at least one scene before rendering."] : []),
     ...error.details.scenesNotReady.map((sceneId) => `Scene ${sceneId} is not ready.`),
-    ...error.details.scenesMissingImage.map(
-      (sceneId) => `Scene ${sceneId} is missing image.`,
-    ),
-    ...error.details.scenesMissingAudio.map(
-      (sceneId) => `Scene ${sceneId} is missing audio.`,
-    ),
-    ...error.details.scenesStaleImage.map(
-      (sceneId) => `Scene ${sceneId} has stale image.`,
-    ),
-    ...error.details.scenesStaleAudio.map(
-      (sceneId) => `Scene ${sceneId} has stale audio.`,
-    ),
+    ...error.details.scenesMissingImage.map((sceneId) => `Scene ${sceneId} is missing image.`),
+    ...error.details.scenesMissingAudio.map((sceneId) => `Scene ${sceneId} is missing audio.`),
+    ...error.details.scenesStaleImage.map((sceneId) => `Scene ${sceneId} has stale image.`),
+    ...error.details.scenesStaleAudio.map((sceneId) => `Scene ${sceneId} has stale audio.`),
   ];
 }
 
@@ -59,19 +47,13 @@ function getRenderOutputPath(assets: Asset[], render: Render | undefined) {
   return assets.find((asset) => asset.id === render.outputAssetId)?.path ?? null;
 }
 
-export function RenderPanel({
-  activeJobs,
-  assets,
-  projectId,
-  renders,
-}: RenderPanelProps) {
+export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPanelProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const renderMutation = useRenderProjectMutation(projectId);
   const latestRender = getLatestRender(renders);
   const activeRenderJob = activeJobs.some(
     (job) =>
-      job.type === "render_video" &&
-      (job.status === "pending" || job.status === "processing"),
+      job.type === "render_video" && (job.status === "pending" || job.status === "processing"),
   );
   const preconditionError = parseRenderPrecondition(renderMutation.error);
   const outputPath = getRenderOutputPath(assets, latestRender);
@@ -82,9 +64,7 @@ export function RenderPanel({
         <div>
           <h2 className="text-base font-semibold">Render</h2>
           <p className="text-sm text-muted-foreground">
-            {latestRender
-              ? `Latest: ${latestRender.status}`
-              : "No render requested yet"}
+            {latestRender ? `Latest: ${latestRender.status}` : "No render requested yet"}
           </p>
         </div>
         <Film className="size-5 text-muted-foreground" aria-hidden="true" />
@@ -98,8 +78,7 @@ export function RenderPanel({
           type="checkbox"
         />
         <span>
-          I acknowledge this video uses AI-generated script, image, audio, or
-          render assets.
+          I acknowledge this video uses AI-generated script, image, audio, or render assets.
         </span>
       </label>
 

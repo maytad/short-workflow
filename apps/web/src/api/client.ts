@@ -1,5 +1,4 @@
-export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 
 export class ApiError extends Error {
   readonly payload: unknown;
@@ -41,10 +40,7 @@ async function parseResponseBody(response: Response) {
   return text;
 }
 
-export async function apiFetch<T>(
-  path: string,
-  init: RequestInit = {},
-): Promise<T> {
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
 
   if (hasRequestBody(init) && !headers.has("content-type")) {

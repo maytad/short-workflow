@@ -4,11 +4,7 @@ type StatusSetter = {
   status?: number | string;
 };
 
-export type JsonErrorCode =
-  | "validation_failed"
-  | "not_found"
-  | "conflict"
-  | "internal_error";
+export type JsonErrorCode = "validation_failed" | "not_found" | "conflict" | "internal_error";
 
 export type ValidationIssue = {
   path: string;

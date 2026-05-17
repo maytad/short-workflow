@@ -9,8 +9,6 @@ app.listen({
   port: env.API_PORT,
 });
 
-console.log(
-  `short-workflow-api listening on http://${env.API_HOST}:${env.API_PORT}`,
-);
+console.log(`short-workflow-api listening on http://${env.API_HOST}:${env.API_PORT}`);
 
 export type App = typeof app;

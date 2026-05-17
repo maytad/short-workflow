@@ -22,10 +22,7 @@ export type ReadyAssetInput = {
   model: string | null;
 };
 
-export async function createPendingAsset(
-  db: DbClient,
-  input: CreatePendingAssetInput,
-) {
+export async function createPendingAsset(db: DbClient, input: CreatePendingAssetInput) {
   const [asset] = await db
     .insert(assets)
     .values({
@@ -42,11 +39,7 @@ export async function createPendingAsset(
   return asset;
 }
 
-export async function markAssetReady(
-  db: DbClient,
-  assetId: string,
-  input: ReadyAssetInput,
-) {
+export async function markAssetReady(db: DbClient, assetId: string, input: ReadyAssetInput) {
   const [asset] = await db
     .update(assets)
     .set({
@@ -65,11 +58,7 @@ export async function markAssetReady(
   return asset ?? null;
 }
 
-export async function markAssetFailed(
-  db: DbClient,
-  assetId: string,
-  _errorMessage: string,
-) {
+export async function markAssetFailed(db: DbClient, assetId: string, _errorMessage: string) {
   const [asset] = await db
     .update(assets)
     .set({ status: "failed", updatedAt: sql`now()` })

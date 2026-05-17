@@ -6,11 +6,7 @@ import type {
   Scene,
   UpdateSceneRequest,
 } from "@short-workflow/shared";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
 
 import { apiFetch } from "../../api/client";
@@ -106,15 +102,10 @@ export function applyOptimisticSceneUpdate(
   };
 }
 
-function replaceScene(
-  detail: ProjectDetailResponse,
-  updatedScene: Scene,
-): ProjectDetailResponse {
+function replaceScene(detail: ProjectDetailResponse, updatedScene: Scene): ProjectDetailResponse {
   return {
     ...detail,
-    scenes: detail.scenes.map((scene) =>
-      scene.id === updatedScene.id ? updatedScene : scene,
-    ),
+    scenes: detail.scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)),
   };
 }
 
@@ -133,10 +124,7 @@ export function useProjectQuery(projectId: string) {
   });
 }
 
-export function useProjectJobsQuery(
-  projectId: string,
-  status?: "active",
-) {
+export function useProjectJobsQuery(projectId: string, status?: "active") {
   const queryClient = useQueryClient();
   const previousActiveCount = useRef<number | null>(null);
   const search = status === "active" ? "?status=active" : "";
@@ -203,10 +191,7 @@ export function useGenerateScriptMutation(projectId: string) {
   });
 }
 
-export function useGenerateSceneImageMutation(
-  projectId: string,
-  sceneId: string,
-) {
+export function useGenerateSceneImageMutation(projectId: string, sceneId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -218,10 +203,7 @@ export function useGenerateSceneImageMutation(
   });
 }
 
-export function useGenerateSceneAudioMutation(
-  projectId: string,
-  sceneId: string,
-) {
+export function useGenerateSceneAudioMutation(projectId: string, sceneId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -245,18 +227,12 @@ export function useUpdateSceneMutation(projectId: string, sceneId: string) {
       }),
     onMutate: async (input) => {
       await queryClient.cancelQueries({ queryKey: detailQueryKey });
-      const previousDetail =
-        queryClient.getQueryData<ProjectDetailResponse>(detailQueryKey);
+      const previousDetail = queryClient.getQueryData<ProjectDetailResponse>(detailQueryKey);
 
       if (previousDetail) {
         queryClient.setQueryData<ProjectDetailResponse>(
           detailQueryKey,
-          applyOptimisticSceneUpdate(
-            previousDetail,
-            sceneId,
-            input,
-            new Date().toISOString(),
-          ),
+          applyOptimisticSceneUpdate(previousDetail, sceneId, input, new Date().toISOString()),
         );
       }
 
@@ -268,9 +244,8 @@ export function useUpdateSceneMutation(projectId: string, sceneId: string) {
       }
     },
     onSuccess: (updatedScene) => {
-      queryClient.setQueryData<ProjectDetailResponse>(
-        detailQueryKey,
-        (detail) => (detail ? replaceScene(detail, updatedScene) : detail),
+      queryClient.setQueryData<ProjectDetailResponse>(detailQueryKey, (detail) =>
+        detail ? replaceScene(detail, updatedScene) : detail,
       );
       invalidateProjectWorkflow(queryClient, projectId);
     },

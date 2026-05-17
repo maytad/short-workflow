@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import {
-  createProjectRequestSchema,
-  renderPreconditionErrorSchema,
-} from "./api";
+import { createProjectRequestSchema, renderPreconditionErrorSchema } from "./api";
 
 describe("shared API schemas", () => {
   test("defaults project target duration to 45 seconds", () => {

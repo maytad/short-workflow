@@ -14,11 +14,7 @@ import {
 import { sceneAudioPath, writeAssetFile } from "../assets";
 import { resolveHandlerEnv, type HandlerEnv } from "./types";
 
-export async function handleGenerateSceneAudio(
-  db: DbClient,
-  job: JobRow,
-  env?: HandlerEnv,
-) {
+export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: HandlerEnv) {
   if (!job.sceneId) {
     throw new Error("scene_id_required");
   }
@@ -44,11 +40,7 @@ export async function handleGenerateSceneAudio(
 
     const generated = await generateSpeech({ ssml: scene.ssml });
     const finalPath = sceneAudioPath(scene.projectId, scene.id, asset.id);
-    const file = await writeAssetFile(
-      handlerEnv.LOCAL_ASSET_ROOT,
-      finalPath,
-      generated.bytes,
-    );
+    const file = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalPath, generated.bytes);
 
     await markAssetReady(db, asset.id, {
       path: finalPath,

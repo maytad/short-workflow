@@ -14,9 +14,9 @@ afterEach(() => {
 test("generateScript throws before provider call when OPENAI_API_KEY is missing", async () => {
   delete process.env.OPENAI_API_KEY;
 
-  await expect(generateScript({ topic: "local coffee shop", targetDurationSeconds: 30 })).rejects.toThrow(
-    "OPENAI_API_KEY_missing",
-  );
+  await expect(
+    generateScript({ topic: "local coffee shop", targetDurationSeconds: 30 }),
+  ).rejects.toThrow("OPENAI_API_KEY_missing");
 });
 
 test("generateImage throws before provider call when GOOGLE_API_KEY is missing", async () => {

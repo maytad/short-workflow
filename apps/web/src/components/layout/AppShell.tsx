@@ -18,11 +18,7 @@ export function AppShell({ children }: PropsWithChildren) {
 
           <nav className="flex items-center gap-1" aria-label="Primary">
             <NavLink icon={<Home className="size-4" />} label="Projects" to="/" />
-            <NavLink
-              icon={<Boxes className="size-4" />}
-              label="Queue"
-              to="/"
-            />
+            <NavLink icon={<Boxes className="size-4" />} label="Queue" to="/" />
           </nav>
         </div>
       </header>

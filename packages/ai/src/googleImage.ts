@@ -20,14 +20,19 @@ type GoogleImageResponse = {
   }>;
 };
 
-export async function generateImage(input: { prompt: string; model?: string }): Promise<GenerateImageOutput> {
+export async function generateImage(input: {
+  prompt: string;
+  model?: string;
+}): Promise<GenerateImageOutput> {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_API_KEY_missing");
   }
 
   const model = input.model ?? process.env.GOOGLE_IMAGE_MODEL ?? "gemini-2.5-flash-image-preview";
-  const url = new URL(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`);
+  const url = new URL(
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+  );
   url.searchParams.set("key", apiKey);
 
   const response = await fetch(url, {
@@ -71,7 +76,9 @@ export async function generateImage(input: { prompt: string; model?: string }): 
   };
 }
 
-function findInlineImagePart(data: GoogleImageResponse): { data: string; mimeType: string } | undefined {
+function findInlineImagePart(
+  data: GoogleImageResponse,
+): { data: string; mimeType: string } | undefined {
   for (const candidate of data.candidates ?? []) {
     for (const part of candidate.content?.parts ?? []) {
       const inlineData = part.inlineData;

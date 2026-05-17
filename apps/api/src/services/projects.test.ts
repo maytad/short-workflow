@@ -7,11 +7,7 @@ const currentSceneId = "22222222-2222-4222-8222-222222222222";
 const staleSceneId = "33333333-3333-4333-8333-333333333333";
 const draftSceneId = "44444444-4444-4444-8444-444444444444";
 
-function scene(
-  id: string,
-  status: "draft" | "ready",
-  contentUpdatedAt: string,
-) {
+function scene(id: string, status: "draft" | "ready", contentUpdatedAt: string) {
   return {
     id,
     projectId,

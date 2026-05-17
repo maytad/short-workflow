@@ -13,10 +13,7 @@ export function absoluteAssetPath(root: string, relativePath: string) {
   const target = path.resolve(resolvedRoot, relativePath);
   const relativeToRoot = path.relative(resolvedRoot, target);
 
-  if (
-    relativeToRoot.startsWith("..") ||
-    path.isAbsolute(relativeToRoot)
-  ) {
+  if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
     throw new Error("asset_path_escapes_root");
   }
 
@@ -43,15 +40,9 @@ export async function writeAssetFile(
   };
 }
 
-export async function statAssetFile(
-  root: string,
-  relativePath: string,
-): Promise<WrittenAssetFile> {
+export async function statAssetFile(root: string, relativePath: string): Promise<WrittenAssetFile> {
   const absolutePath = absoluteAssetPath(root, relativePath);
-  const [info, bytes] = await Promise.all([
-    stat(absolutePath),
-    readFile(absolutePath),
-  ]);
+  const [info, bytes] = await Promise.all([stat(absolutePath), readFile(absolutePath)]);
 
   return {
     absolutePath,
@@ -60,34 +51,12 @@ export async function statAssetFile(
   };
 }
 
-export function sceneImagePath(
-  projectId: string,
-  sceneId: string,
-  assetId: string,
-) {
-  return path.join(
-    "projects",
-    projectId,
-    "scenes",
-    sceneId,
-    "images",
-    `${assetId}.png`,
-  );
+export function sceneImagePath(projectId: string, sceneId: string, assetId: string) {
+  return path.join("projects", projectId, "scenes", sceneId, "images", `${assetId}.png`);
 }
 
-export function sceneAudioPath(
-  projectId: string,
-  sceneId: string,
-  assetId: string,
-) {
-  return path.join(
-    "projects",
-    projectId,
-    "scenes",
-    sceneId,
-    "audio",
-    `${assetId}.mp3`,
-  );
+export function sceneAudioPath(projectId: string, sceneId: string, assetId: string) {
+  return path.join("projects", projectId, "scenes", sceneId, "audio", `${assetId}.mp3`);
 }
 
 export function renderInputPath(projectId: string, renderId: string) {

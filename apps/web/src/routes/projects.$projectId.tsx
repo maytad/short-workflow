@@ -24,9 +24,7 @@ function ProjectDetailRoute() {
   if (projectQuery.error || !projectQuery.data) {
     return (
       <section className="rounded-lg border border-border bg-card p-6 shadow-sm">
-        <p className="text-sm font-medium text-accent-foreground">
-          Project could not be loaded.
-        </p>
+        <p className="text-sm font-medium text-accent-foreground">Project could not be loaded.</p>
         <p className="mt-1 text-sm text-muted-foreground">
           Check that the project exists and the API is reachable.
         </p>

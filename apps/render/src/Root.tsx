@@ -1,8 +1,4 @@
-import {
-  RENDER_FPS,
-  RENDER_HEIGHT,
-  RENDER_WIDTH,
-} from "@short-workflow/shared";
+import { RENDER_FPS, RENDER_HEIGHT, RENDER_WIDTH } from "@short-workflow/shared";
 import { Composition, registerRoot } from "remotion";
 
 import { getTotalDurationFrames, ShortVideo } from "./ShortVideo";

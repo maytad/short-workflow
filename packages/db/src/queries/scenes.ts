@@ -4,10 +4,7 @@ import type { DbClient } from "../client";
 import { scenes } from "../schema";
 import type { SceneRow } from "../schema";
 
-type SceneContentFields = Pick<
-  SceneRow,
-  "narration" | "caption" | "imagePrompt" | "ssml"
->;
+type SceneContentFields = Pick<SceneRow, "narration" | "caption" | "imagePrompt" | "ssml">;
 
 export type SceneStatusInput = {
   narration?: string | null;
@@ -17,41 +14,23 @@ export type SceneStatusInput = {
 };
 
 export type UpdateSceneInput = Partial<
-  Pick<
-    SceneRow,
-    "durationSeconds" | "narration" | "caption" | "imagePrompt" | "ssml"
-  >
+  Pick<SceneRow, "durationSeconds" | "narration" | "caption" | "imagePrompt" | "ssml">
 >;
 
 export type ReplaceProjectSceneInput = Pick<
   SceneRow,
-  | "position"
-  | "role"
-  | "durationSeconds"
-  | "narration"
-  | "caption"
-  | "imagePrompt"
-  | "ssml"
+  "position" | "role" | "durationSeconds" | "narration" | "caption" | "imagePrompt" | "ssml"
 >;
 
 type NormalizableSceneInput = Partial<SceneContentFields>;
 
-const contentFieldNames = [
-  "narration",
-  "caption",
-  "imagePrompt",
-  "ssml",
-] as const;
+const contentFieldNames = ["narration", "caption", "imagePrompt", "ssml"] as const;
 
 export function computeSceneStatus(input: SceneStatusInput) {
-  return contentFieldNames.every((field) => input[field]?.trim())
-    ? "ready"
-    : "draft";
+  return contentFieldNames.every((field) => input[field]?.trim()) ? "ready" : "draft";
 }
 
-export function normalizeSceneContent<T extends NormalizableSceneInput>(
-  input: T,
-) {
+export function normalizeSceneContent<T extends NormalizableSceneInput>(input: T) {
   const normalized = { ...input };
 
   for (const field of contentFieldNames) {
@@ -72,20 +51,12 @@ export async function listProjectScenes(db: DbClient, projectId: string) {
 }
 
 export async function getScene(db: DbClient, sceneId: string) {
-  const [scene] = await db
-    .select()
-    .from(scenes)
-    .where(eq(scenes.id, sceneId))
-    .limit(1);
+  const [scene] = await db.select().from(scenes).where(eq(scenes.id, sceneId)).limit(1);
 
   return scene ?? null;
 }
 
-export async function updateScene(
-  db: DbClient,
-  sceneId: string,
-  input: UpdateSceneInput,
-) {
+export async function updateScene(db: DbClient, sceneId: string, input: UpdateSceneInput) {
   const existing = await getScene(db, sceneId);
 
   if (!existing) {
@@ -95,12 +66,7 @@ export async function updateScene(
   const normalized = normalizeSceneContent(input);
   const next: Pick<
     SceneRow,
-    | "durationSeconds"
-    | "narration"
-    | "caption"
-    | "imagePrompt"
-    | "ssml"
-    | "status"
+    "durationSeconds" | "narration" | "caption" | "imagePrompt" | "ssml" | "status"
   > = {
     durationSeconds: normalized.durationSeconds ?? existing.durationSeconds,
     narration: normalized.narration ?? existing.narration,
@@ -160,18 +126,12 @@ export async function replaceProjectScenes(
   replacementScenes: ReplaceProjectSceneInput[],
 ) {
   const dbWithTransaction = db as DbClient & {
-    transaction?: (
-      callback: (tx: DbClient) => Promise<SceneRow[]>,
-    ) => Promise<SceneRow[]>;
+    transaction?: (callback: (tx: DbClient) => Promise<SceneRow[]>) => Promise<SceneRow[]>;
   };
 
   if (typeof dbWithTransaction.transaction === "function") {
     return dbWithTransaction.transaction((tx) =>
-      replaceProjectScenesInTransaction(
-        tx as unknown as DbClient,
-        projectId,
-        replacementScenes,
-      ),
+      replaceProjectScenesInTransaction(tx as unknown as DbClient, projectId, replacementScenes),
     );
   }
 
@@ -184,21 +144,14 @@ async function replaceProjectScenesInTransaction(
   replacementScenes: ReplaceProjectSceneInput[],
 ) {
   const existingScenes = await listProjectScenes(db, projectId);
-  const existingByPosition = new Map(
-    existingScenes.map((scene) => [scene.position, scene]),
-  );
+  const existingByPosition = new Map(existingScenes.map((scene) => [scene.position, scene]));
   const result: SceneRow[] = [];
   const positions = replacementScenes.map((scene) => scene.position);
 
   if (positions.length > 0) {
     await db
       .delete(scenes)
-      .where(
-        and(
-          eq(scenes.projectId, projectId),
-          not(inArray(scenes.position, positions)),
-        ),
-      );
+      .where(and(eq(scenes.projectId, projectId), not(inArray(scenes.position, positions))));
   } else {
     await db.delete(scenes).where(eq(scenes.projectId, projectId));
   }

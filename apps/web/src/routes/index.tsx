@@ -26,9 +26,7 @@ function ProjectsIndexRoute() {
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium text-muted-foreground">Projects</p>
-          <h1 className="text-2xl font-semibold tracking-normal">
-            Short video workflow
-          </h1>
+          <h1 className="text-2xl font-semibold tracking-normal">Short video workflow</h1>
         </div>
         {projectsQuery.isFetching ? (
           <span className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
@@ -73,9 +71,7 @@ function ProjectsIndexRoute() {
                 >
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="min-w-0 truncate text-base font-semibold">
-                        {project.title}
-                      </h2>
+                      <h2 className="min-w-0 truncate text-base font-semibold">{project.title}</h2>
                       <span className="rounded bg-muted px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
                         {project.status}
                       </span>

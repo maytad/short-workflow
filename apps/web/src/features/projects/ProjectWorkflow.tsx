@@ -1,19 +1,10 @@
 import type { Job, ProjectDetailResponse, Scene } from "@short-workflow/shared";
-import {
-  AlertCircle,
-  Clapperboard,
-  FileText,
-  Loader2,
-  Play,
-} from "lucide-react";
+import { AlertCircle, Clapperboard, FileText, Loader2, Play } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
 import { AssetPanel } from "./AssetPanel";
-import {
-  useGenerateScriptMutation,
-  useProjectJobsQuery,
-} from "./hooks";
+import { useGenerateScriptMutation, useProjectJobsQuery } from "./hooks";
 import { RenderPanel } from "./RenderPanel";
 import { SceneEditor } from "./SceneEditor";
 
@@ -48,24 +39,16 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
       return null;
     }
 
-    return (
-      detail.scenes.find((scene) => scene.id === selectedSceneId) ??
-      detail.scenes[0] ??
-      null
-    );
+    return detail.scenes.find((scene) => scene.id === selectedSceneId) ?? detail.scenes[0] ?? null;
   }, [detail.scenes, selectedSceneId]);
-  const scriptJobActive = activeWorkflowJobs.some(
-    (job) => job.type === "generate_script",
-  );
+  const scriptJobActive = activeWorkflowJobs.some((job) => job.type === "generate_script");
 
   return (
     <div className="grid gap-4 xl:grid-cols-[220px_minmax(0,1fr)_320px]">
       <aside className="space-y-4">
         <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
           <p className="text-sm font-medium text-muted-foreground">Project</p>
-          <h1 className="mt-1 break-words text-xl font-semibold">
-            {detail.project.title}
-          </h1>
+          <h1 className="mt-1 break-words text-xl font-semibold">{detail.project.title}</h1>
           <dl className="mt-4 grid gap-2 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">Status</dt>
@@ -73,15 +56,11 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
             </div>
             <div className="flex justify-between gap-3">
               <dt className="text-muted-foreground">Duration</dt>
-              <dd className="font-medium">
-                {detail.project.targetDurationSeconds}s
-              </dd>
+              <dd className="font-medium">{detail.project.targetDurationSeconds}s</dd>
             </div>
             <div className="grid gap-1">
               <dt className="text-muted-foreground">Updated</dt>
-              <dd className="font-medium">
-                {formatDateTime(detail.project.updatedAt)}
-              </dd>
+              <dd className="font-medium">{formatDateTime(detail.project.updatedAt)}</dd>
             </div>
           </dl>
         </section>
@@ -123,12 +102,8 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
                   key={job.id}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate capitalize">
-                      {activeJobLabel(job)}
-                    </span>
-                    <span className="shrink-0 capitalize text-muted-foreground">
-                      {job.status}
-                    </span>
+                    <span className="truncate capitalize">{activeJobLabel(job)}</span>
+                    <span className="shrink-0 capitalize text-muted-foreground">{job.status}</span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded bg-muted">
                     <div

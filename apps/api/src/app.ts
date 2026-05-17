@@ -1,16 +1,10 @@
 import cors from "@elysiajs/cors";
-import {
-  createDbClient,
-  type DbClient,
-} from "@short-workflow/db";
+import { createDbClient, type DbClient } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
 import { internalError, notFound } from "./http";
 import { healthRoutes } from "./routes/health";
-import {
-  createProjectRoutes,
-  type ProjectRouteServices,
-} from "./routes/projects";
+import { createProjectRoutes, type ProjectRouteServices } from "./routes/projects";
 
 type CreateAppOptions = {
   db?: DbClient;
