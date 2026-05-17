@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 
-import { generateImage } from "./googleImage";
+import { generateImage, generateImageWithClient } from "./googleImage";
 import { generateScript } from "./openai";
 
 const originalOpenAiKey = process.env.OPENAI_API_KEY;
@@ -25,6 +25,60 @@ test("generateImage throws before provider call when GOOGLE_API_KEY is missing",
   await expect(generateImage({ prompt: "A vertical photo of a desk setup" })).rejects.toThrow(
     "GOOGLE_API_KEY_missing",
   );
+});
+
+test("generateImageWithClient requests image content through Google GenAI client", async () => {
+  const requests: unknown[] = [];
+  const imageBytes = Buffer.from("fake-image").toString("base64");
+  const client = {
+    models: {
+      generateContent: async (request: unknown) => {
+        requests.push(request);
+
+        return {
+          candidates: [
+            {
+              finishReason: "STOP",
+              content: {
+                parts: [
+                  {
+                    inlineData: {
+                      mimeType: "image/png",
+                      data: imageBytes,
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        };
+      },
+    },
+  };
+
+  const result = await generateImageWithClient(client, {
+    prompt: "A vertical photo of a desk setup",
+    model: "gemini-2.5-flash-image",
+  });
+
+  expect(requests).toEqual([
+    {
+      model: "gemini-2.5-flash-image",
+      contents: "A vertical photo of a desk setup",
+      config: {
+        responseModalities: ["IMAGE"],
+      },
+    },
+  ]);
+  expect(result.bytes).toEqual(Uint8Array.from(Buffer.from("fake-image")));
+  expect(result.mimeType).toBe("image/png");
+  expect(result.model).toBe("gemini-2.5-flash-image");
+  expect(result.responseMetadata).toEqual({
+    model_id: "gemini-2.5-flash-image",
+    mime_type: "image/png",
+    finish_reason: "STOP",
+    candidate_count: 1,
+  });
 });
 
 function restoreEnv(key: string, value: string | undefined): void {

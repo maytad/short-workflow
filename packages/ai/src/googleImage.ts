@@ -1,13 +1,21 @@
+import { GoogleGenAI, Modality } from "@google/genai";
+
 import type { GenerateImageOutput } from "./types";
 
-type GoogleImagePart = {
-  inlineData?: {
-    mimeType?: string;
-    data?: string;
-  };
-  inline_data?: {
-    mime_type?: string;
-    data?: string;
+type GenerateImageInput = {
+  prompt: string;
+  model?: string;
+};
+
+type GoogleImageClient = {
+  models: {
+    generateContent(input: {
+      model: string;
+      contents: string;
+      config: {
+        responseModalities: Modality[];
+      };
+    }): Promise<GoogleImageResponse>;
   };
 };
 
@@ -15,49 +23,38 @@ type GoogleImageResponse = {
   candidates?: Array<{
     finishReason?: string;
     content?: {
-      parts?: GoogleImagePart[];
+      parts?: Array<{
+        inlineData?: {
+          mimeType?: string;
+          data?: string;
+        };
+      }>;
     };
   }>;
 };
 
-export async function generateImage(input: {
-  prompt: string;
-  model?: string;
-}): Promise<GenerateImageOutput> {
+export async function generateImage(input: GenerateImageInput): Promise<GenerateImageOutput> {
   const apiKey = process.env.GOOGLE_API_KEY;
   if (!apiKey) {
     throw new Error("GOOGLE_API_KEY_missing");
   }
 
-  const model = input.model ?? process.env.GOOGLE_IMAGE_MODEL ?? "gemini-2.5-flash-image-preview";
-  const url = new URL(
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-  );
-  url.searchParams.set("key", apiKey);
+  const client = new GoogleGenAI({ apiKey });
+  return generateImageWithClient(client, input);
+}
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
+export async function generateImageWithClient(
+  client: GoogleImageClient,
+  input: GenerateImageInput,
+): Promise<GenerateImageOutput> {
+  const model = input.model ?? process.env.GOOGLE_IMAGE_MODEL ?? "gemini-2.5-flash-image";
+  const data = await client.models.generateContent({
+    model,
+    contents: input.prompt,
+    config: {
+      responseModalities: [Modality.IMAGE],
     },
-    body: JSON.stringify({
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: input.prompt }],
-        },
-      ],
-      generationConfig: {
-        responseModalities: ["IMAGE"],
-      },
-    }),
   });
-
-  if (!response.ok) {
-    throw new Error(`google_image_request_failed:${response.status}`);
-  }
-
-  const data = (await response.json()) as GoogleImageResponse;
   const imagePart = findInlineImagePart(data);
   if (!imagePart) {
     throw new Error("google_image_response_invalid");
@@ -84,11 +81,6 @@ function findInlineImagePart(
       const inlineData = part.inlineData;
       if (inlineData?.data && inlineData.mimeType?.startsWith("image/")) {
         return { data: inlineData.data, mimeType: inlineData.mimeType };
-      }
-
-      const inlineDataSnake = part.inline_data;
-      if (inlineDataSnake?.data && inlineDataSnake.mime_type?.startsWith("image/")) {
-        return { data: inlineDataSnake.data, mimeType: inlineDataSnake.mime_type };
       }
     }
   }
