@@ -2,11 +2,27 @@
   "name": "@short-workflow/render",
   "private": true,
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./src/Root.tsx",
   "scripts": {
-    "dev": "bun --watch src/index.ts",
-    "render:project": "bun src/index.ts",
+    "dev": "remotion studio src/Root.tsx",
+    "render:project": "node --loader tsx src/render.ts",
     "check": "bun test",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@remotion/bundler": "latest",
+    "@remotion/cli": "latest",
+    "@remotion/renderer": "latest",
+    "@short-workflow/shared": "workspace:*",
+    "react": "latest",
+    "react-dom": "latest",
+    "remotion": "latest",
+    "tsx": "3.12.5",
+    "zod": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "typescript": "latest"
   }
 }
