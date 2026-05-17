@@ -1,5 +1,6 @@
 import {
   createProjectRequestSchema,
+  createTinyMechanismsProjectRequestSchema,
   updateProjectRequestSchema,
   updateSceneRequestSchema,
 } from "@short-workflow/shared";
@@ -140,6 +141,20 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
           }
 
           return services.createProject(db, result.data);
+        })
+        .post("/tiny-mechanisms", (context) => {
+          const { body, db, set } = withRouteContext(context);
+          const result = createTinyMechanismsProjectRequestSchema.safeParse(body ?? {});
+
+          if (!result.success) {
+            return validationFailed(set, result.error);
+          }
+
+          return services.createProject(db, {
+            title: "Tiny Mechanisms Episode",
+            topic: "tiny_mechanisms:pending",
+            targetDurationSeconds: result.data.targetDurationSeconds,
+          });
         })
         .get("/:projectId", async (context) => {
           const { db, params, set } = withRouteContext(context);

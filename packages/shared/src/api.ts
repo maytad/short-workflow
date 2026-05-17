@@ -19,6 +19,12 @@ export const createProjectRequestSchema = z
   })
   .strict();
 
+export const createTinyMechanismsProjectRequestSchema = z
+  .object({
+    targetDurationSeconds: durationPresetSecondsSchema.default(DEFAULT_TARGET_DURATION_SECONDS),
+  })
+  .strict();
+
 export const updateProjectRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(120).optional(),
@@ -63,6 +69,9 @@ export const renderPreconditionErrorSchema = z
   .strict();
 
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
+export type CreateTinyMechanismsProjectRequest = z.infer<
+  typeof createTinyMechanismsProjectRequestSchema
+>;
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 export type UpdateSceneRequest = z.infer<typeof updateSceneRequestSchema>;
 export type ProjectDetailResponse = z.infer<typeof projectDetailResponseSchema>;

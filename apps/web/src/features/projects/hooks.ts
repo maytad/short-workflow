@@ -1,5 +1,6 @@
 import type {
   CreateProjectRequest,
+  CreateTinyMechanismsProjectRequest,
   Job,
   Project,
   ProjectDetailResponse,
@@ -170,6 +171,21 @@ export function useCreateProjectMutation() {
   return useMutation({
     mutationFn: (input: CreateProjectRequest) =>
       apiFetch<Project>("/projects", {
+        body: JSON.stringify(input),
+        method: "POST",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+    },
+  });
+}
+
+export function useCreateTinyMechanismsProjectMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (input: CreateTinyMechanismsProjectRequest) =>
+      apiFetch<Project>("/projects/tiny-mechanisms", {
         body: JSON.stringify(input),
         method: "POST",
       }),

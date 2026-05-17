@@ -15,6 +15,10 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
+function projectDescription(topic: string) {
+  return topic.startsWith("tiny_mechanisms:") ? "Tiny Mechanisms episode" : topic;
+}
+
 function ProjectsIndexRoute() {
   const projectsQuery = useProjectsQuery();
   const projects = projectsQuery.data ?? [];
@@ -77,7 +81,7 @@ function ProjectsIndexRoute() {
                       </span>
                     </div>
                     <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                      {project.topic}
+                      {projectDescription(project.topic)}
                     </p>
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
                       <span>{project.targetDurationSeconds}s</span>
