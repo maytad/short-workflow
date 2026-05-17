@@ -458,39 +458,61 @@ function SceneCaption({ scene }: { scene: RenderInput["scenes"][number] }) {
 
 `StaticCaption` is the current caption block.
 
-`KaraokeCaption` does data fetching via Remotion's `delayRender` / `continueRender` pattern, with explicit failure handling so the renderer is never left hanging:
+`KaraokeCaption` does data fetching via Remotion's `delayRender` / `continueRender` pattern, with explicit failure handling so the renderer is never left hanging.
+
+**Hook ordering rule**: every React hook (`useCurrentFrame`, `useVideoConfig`, `useState`, `useRef`, `useEffect`) is called unconditionally at the top of the component, before any early `return`. The conditional render to `<StaticCaption>` happens **after** all hooks are declared. Calling a hook only on the post-load branch would change the hook count between renders and React would throw "Rendered fewer hooks than expected" the first time `doc` flips from `null` to a value.
+
+**Delay handle release rule**: `continueRender(handle)` MUST be called exactly once for every `delayRender` handle, regardless of how the fetch resolves (success, parse error, network error, or component unmount before resolution). The implementation uses a `continuedRef` guard so the release is idempotent, and releases the handle in **both** the promise's `.finally` and the effect's cleanup function. Otherwise an unmount-before-resolve sequence leaves the handle dangling and Remotion hangs the render.
 
 ```tsx
-const [handle] = useState(() => delayRender("caption_timing_load"));
-const [doc, setDoc] = useState<CaptionTimingDoc | null>(null);
-const [failed, setFailed] = useState(false);
+function KaraokeCaption({ timingSrc, staticFallback }: { timingSrc: string; staticFallback: string }) {
+  // ── All hooks declared up front, never inside a conditional ──
+  const localFrame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const [handle] = useState(() => delayRender("caption_timing_load"));
+  const [doc, setDoc] = useState<CaptionTimingDoc | null>(null);
+  const [failed, setFailed] = useState(false);
+  const continuedRef = useRef(false);
 
-useEffect(() => {
-  let cancelled = false;
-  fetch(timingSrc)
-    .then((r) => { if (!r.ok) throw new Error(`fetch_status_${r.status}`); return r.json(); })
-    .then((json) => captionTimingDocSchema.parse(json))     // Zod parse
-    .then((parsed) => { if (!cancelled) { setDoc(parsed); continueRender(handle); } })
-    .catch(() => {
-      if (cancelled) return;
-      setFailed(true);
-      continueRender(handle);                               // never call cancelRender — fall back to static
-    });
-  return () => { cancelled = true; };
-}, [timingSrc, handle]);
+  useEffect(() => {
+    let cancelled = false;
 
-if (failed || !doc) {
-  // While loading we render the static fallback so a frame screenshot is never blank.
-  // After failure we keep the static fallback for the rest of the scene.
-  return <StaticCaption text={staticFallback} />;
+    // Idempotent release — safe to call from .finally and from cleanup.
+    const releaseHandle = () => {
+      if (continuedRef.current) return;
+      continuedRef.current = true;
+      continueRender(handle);
+    };
+
+    fetch(timingSrc)
+      .then((r) => { if (!r.ok) throw new Error(`fetch_status_${r.status}`); return r.json(); })
+      .then((json) => captionTimingDocSchema.parse(json))     // Zod parse
+      .then((parsed) => { if (!cancelled) setDoc(parsed); })
+      .catch(() => { if (!cancelled) setFailed(true); })       // never call cancelRender — fall back to static
+      .finally(() => { releaseHandle(); });                    // release on every resolution path
+
+    return () => {
+      cancelled = true;
+      releaseHandle();                                         // unmount-before-resolve also releases
+    };
+  }, [timingSrc, handle]);
+
+  if (failed || !doc) {
+    // While loading we render the static fallback so a frame screenshot is never blank.
+    // After failure we keep the static fallback for the rest of the scene.
+    return <StaticCaption text={staticFallback} />;
+  }
+
+  // ── Post-load render uses doc + localFrame (already declared above) ──
+  return renderKaraoke({ doc, localFrame, fps, staticFallback });
 }
 ```
 
 Failure policy: never `cancelRender` for caption issues. A bad caption file is a soft fault — the audio still plays and the static caption is meaningful. `cancelRender` would abort the entire video render, which is far worse than losing karaoke on one scene.
 
-Once `doc` is loaded:
+Inside `renderKaraoke({ doc, localFrame, fps, staticFallback })`:
 
-- All math uses **local frame**: `const localFrame = useCurrentFrame()` and `t = localFrame / fps`. No `sceneStartFrame` parameter, no global frame.
+- All math uses **local frame**: `const t = localFrame / fps`. No `sceneStartFrame` parameter, no global frame. `localFrame` is passed in as a prop, not re-fetched (so this helper is not a component and does not call hooks).
 - Find `activeIndex` such that `doc.words[i].start <= t < doc.words[i].end`. If none, use `-1`. `activeIndex` is the **global** index into `doc.words`.
 - Build chunks via `chunkWords(doc.words, { target: 5, min: 4, max: 6 })`. The chunker preserves the original word index so chunk renders never use a chunk-local index by accident:
 
@@ -529,7 +551,7 @@ Once `doc` is loaded:
     // wordStartFrame < easeIn <= effectiveEnd < easeOut
 
     const scaleProgress = interpolate(
-      frame,
+      localFrame,
       [wordStartFrame, easeIn, effectiveEnd, easeOut],
       [0, 1, 1, 0],
       { extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic) },
@@ -548,7 +570,7 @@ Once `doc` is loaded:
   })}
   ```
 
-  Each word in the chunk derives `scaleProgress` from `frame`, so the value is the same on every render of the same frame. No CSS transitions, no `requestAnimationFrame`-style timers.
+  Each word in the chunk derives `scaleProgress` from `localFrame`, so the value is the same on every render of the same frame. No CSS transitions, no `requestAnimationFrame`-style timers.
 
 - Font, weight, position, and shadow remain identical to the current `StaticCaption` so the visual baseline does not jump between scenes that have or lack timing.
 
