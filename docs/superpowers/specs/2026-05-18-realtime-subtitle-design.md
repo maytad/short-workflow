@@ -35,6 +35,7 @@ Files that change:
 - `apps/worker/src/handlers/generateSceneAudio.ts` — replace TTS provider, save second asset
 - `apps/worker/src/assets.ts` — add `sceneCaptionTimingPath` helper
 - `apps/worker/src/handlers/renderVideo.ts` — attach `captionTimingPath` when ready asset exists
+- `apps/worker/src/assets.test.ts` — update `sceneAudioPath` test for new extension parameter (existing test at line 53 expects 3-arg signature and `.wav` output; update to pass `"mp3"` and assert `.mp3` path, plus add a case for `"wav"` to keep coverage of the legacy extension)
 - `apps/render/src/render.ts` — stage caption timing into Remotion `publicDir`
 - `apps/render/src/ShortVideo.tsx` — split into `KaraokeCaption` and `StaticCaption`
 - `apps/worker/.env.example` — add ElevenLabs env vars
@@ -123,6 +124,10 @@ Implementation:
 - `outputFormat` is `"mp3_44100_128"` (compatible with all ElevenLabs tiers).
 - Decode `audioBase64` to `Uint8Array`.
 - Return `alignment` as-is when present, else `null`.
+
+**Env contract**: this module **does not** read `voiceId` or `modelId` itself. Both are passed in via `ElevenLabsTtsInput` so the function stays a pure provider wrapper. Reading and validating those env vars is the **handler's** responsibility (see §`generateSceneAudio.ts` step 5a). The only env var this module touches is `ELEVENLABS_API_KEY`.
+
+This pattern intentionally mirrors the existing Gemini handler (`apps/worker/src/handlers/generateSceneAudio.ts:54` reads `process.env.GEMINI_TTS_VOICE` directly inside the handler, not through `apps/worker/src/env.ts`). Provider-specific configuration is read at use-site, while `env.ts` stays focused on infra config (`DATABASE_URL`, `LOCAL_ASSET_ROOT`, `WORKER_CONCURRENCY`). Do **not** add `ELEVENLABS_*` keys to `apps/worker/src/env.ts`.
 
 ⚠️ Implementation flag: the request body type (`BodyTextToSpeechFull`) is confirmed camelCase via Context7. The response type is referenced but not dumped — when implementing, read the SDK type for `convertWithTimestamps` return value to confirm the exact field names (`audioBase64` and `alignment` with `characters`, `characterStartTimesSeconds`, `characterEndTimesSeconds`). Update parser if SDK uses different casing.
 
@@ -373,28 +378,33 @@ Replace the Gemini TTS call with ElevenLabs. Steps:
 2. Load all project scenes via `listProjectScenes` to find neighbors by position.
 3. Load latest script `prompt_version` and derive `styleContext` (existing).
 4. Create pending `audio` asset (provider `"elevenlabs"`).
-5. Call `generateSpeechWithTimestamps`.
-6. **Alignment required**: if `alignment` is `null` / missing → mark audio asset failed with `elevenlabs_alignment_missing`, throw the same error. The endpoint is documented to always return alignment; an absent alignment is a malformed response, not a normal case. Retry via existing backoff.
-7. **Validate raw alignment** via `validateAlignment(alignment)` (see §`captionTiming.ts`). Catches empty arrays, length mismatch, NaN, and `end <= start`. If invalid → mark audio asset failed with `elevenlabs_alignment_invalid:<reason>`, throw, retry. This step **must** run before step 8, otherwise `Math.max(...[])` returns `-Infinity` and bypasses the audio overflow gate.
-8. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)`.
-9. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
-10. Write audio bytes to `sceneAudioPath(projectId, sceneId, audioAsset.id, "mp3")`.
-11. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: ELEVENLABS_MODEL_ID`).
-12. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc` (timing-shape only):
-    - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 13.
+5. **Read provider env directly via `process.env`** (mirroring the existing `GEMINI_TTS_VOICE` pattern at `apps/worker/src/handlers/generateSceneAudio.ts:54`). Do **not** route this through `apps/worker/src/env.ts`:
+    - `voiceId = process.env.ELEVENLABS_VOICE_ID` — throw `ELEVENLABS_VOICE_ID_missing` if absent.
+    - `modelId = process.env.ELEVENLABS_MODEL_ID ?? "eleven_multilingual_v2"` — default applied here, not in `elevenLabsTts.ts`.
+    - These reads happen **before** marking any asset failed, so a missing env var fails fast as a configuration error and the pending audio asset created in step 4 is marked failed before throw.
+6. Call `generateSpeechWithTimestamps({ narration, previousText, nextText, voiceId, modelId })`.
+7. **Alignment required**: if `alignment` is `null` / missing → mark audio asset failed with `elevenlabs_alignment_missing`, throw the same error. The endpoint is documented to always return alignment; an absent alignment is a malformed response, not a normal case. Retry via existing backoff.
+8. **Validate raw alignment** via `validateAlignment(alignment)` (see §`captionTiming.ts`). Catches empty arrays, length mismatch, NaN, and `end <= start`. If invalid → mark audio asset failed with `elevenlabs_alignment_invalid:<reason>`, throw, retry. This step **must** run before step 9, otherwise `Math.max(...[])` returns `-Infinity` and bypasses the audio overflow gate.
+9. Compute `audioDurationSeconds = max(alignment.characterEndTimesSeconds)`.
+10. **Audio overflow gate** (see §Audio overflow): if `audioDurationSeconds > scene.durationSeconds + 0.5` → mark audio asset failed with `audio_exceeds_scene_duration:<actual>s>${scene.durationSeconds}s`, throw the same error, do not write the file. Job retries via existing backoff.
+11. Write audio bytes to `sceneAudioPath(projectId, sceneId, audioAsset.id, "mp3")`.
+12. Mark audio asset ready (`mimeType: "audio/mpeg"`, `provider: "elevenlabs"`, `model: modelId`).
+13. Build `CaptionTimingDoc` with `sourceAudioAssetId = audioAsset.id`. Run `validateCaptionTimingDoc` (timing-shape only):
+    - If invalid: log structured warning `caption_timing_invalid: <reason>`. Do **not** create a caption_timing asset. Continue to step 14.
     - If valid: create pending `caption_timing` asset (path = `sceneCaptionTimingPath(projectId, sceneId, audioAsset.id)`). Wrap the file write + mark-ready in a `try`:
       - On success: caption asset is `ready`. Continue.
-      - On any failure during file write or mark-ready: call `markAssetFailed(captionAsset.id, message)`. If that **also** fails, log both errors at `error` level (`caption_mark_failed_twice`) and continue — this is the rare double-failure case. The audio asset and job still succeed regardless. The renderer's `getReadyAssetByPath` lookup will not return a `pending`/`failed` row, so it falls back to static caption.
-13. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
-14. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
+      - On any failure during file write or mark-ready: best-effort `markAssetFailed(captionAsset.id, message)`. If that **also** fails, log both errors at `error` level (`caption_mark_failed_twice`) and continue — accept the rare stranded `pending` row (see §Error handling). The audio asset and job still succeed regardless. The renderer's `getReadyAssetByPath` lookup filters by `status = ready`, so a stranded row is invisible.
+14. Insert `prompt_version` (purpose `"ssml"`, provider `"elevenlabs"`) recording `voiceSettings`, `modelId`, and `audioAssetId` for audit.
+15. Mark job succeeded with `{ assetId, captionTimingAssetId, promptVersionId }` (`captionTimingAssetId` is `null` when caption was skipped or failed).
 
 Error handling:
 
+- Missing `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` → throw config error (`ELEVENLABS_API_KEY_missing` / `ELEVENLABS_VOICE_ID_missing`). The pending audio asset created in step 4 is marked failed before the throw bubbles up. Job retries are useless for config errors but they don't cause harm; max attempts surfaces the failure in the UI.
 - ElevenLabs call throws → audio asset marked failed, caption asset never created, error bubbles up to existing retry logic.
 - Alignment missing or `validateAlignment` fails → audio asset marked failed (malformed response), error bubbles up, retry.
 - Audio overflow gate fails → audio asset marked failed, error bubbles up. Treated as a real failure because the audio cannot be shown in the scene as-designed.
 - File write fails after audio call → audio asset marked failed.
-- `caption_timing` asset failure (file write or mark-ready) → mark the caption asset failed when possible, log, continue. Audio asset and job still succeed. The renderer fallback path covers this case. **Never** leave a caption asset in `pending` state.
+- `caption_timing` asset failure (file write or mark-ready) → best-effort `markAssetFailed` on the caption asset, log, continue. Audio asset and job still succeed. If `markAssetFailed` itself also fails (rare double-failure), log `caption_mark_failed_twice` at `error` level and continue — the caption row stays stranded in `pending`. This is acceptable because the renderer pairs by audio-asset-id via `getReadyAssetByPath` (status filter = `ready`), so a stranded `pending` row is invisible to the renderer and falls back to static caption. We accept the stranded row as a known cost; never bubble the caption-mark failure up because that would also fail the audio job and discard a valid audio asset.
 
 ### Audio overflow
 
@@ -597,6 +607,10 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
   - `end <= start` for some character → `validateAlignment` rejects
   - whitespace at start of `characters` → first word still has correct start time
   - overflow audio duration → caller's overflow gate fires (the unit test asserts `validateCaptionTimingDoc` does **not** mask overflow as a caption issue)
+- `apps/worker/src/assets.test.ts` (existing, **must update**): the existing test at line 53 (`builds scene audio paths as wav files`) calls `sceneAudioPath("project-1", "scene-1", "asset-1")` with 3 args and expects `.wav`. After the signature change to `sceneAudioPath(projectId, sceneId, assetId, extension)`, update this test:
+  - Replace the existing case with `sceneAudioPath("project-1", "scene-1", "asset-1", "mp3")` → expect `.mp3`.
+  - Add a second case with `extension: "wav"` so the legacy extension stays covered.
+  - Add a case for `sceneCaptionTimingPath("project-1", "scene-1", "audio-asset-1")` → expect `path.join("projects", "project-1", "scenes", "scene-1", "captions", "audio-asset-1.json")`.
 - Manual: run `generate_scene_audio` for one scene of an existing tiny-mechanisms project. Verify on disk:
   - `audio/<audioAssetId>.mp3` exists, plays back.
   - `captions/<audioAssetId>.json` exists (same id as the audio file), schema matches §Components, `sourceAudioAssetId` matches the audio asset.
@@ -660,4 +674,6 @@ Per AGENTS.md MVP testing policy: lightweight checks only.
 - **Clamped ease durations in `interpolate`**: `easeFrames = max(1, min(desiredEase, floor(wordSpan / 2)))` so the four-stop range stays strictly increasing for very short words. Reason: `interpolate` throws on a duplicated stop, and very short words (<160ms) are common.
 - **Audio file extension**: `sceneAudioPath` takes the extension as a parameter. Reason: ElevenLabs returns MP3 while the old helper hard-coded `.wav`; mislabeled extensions break the renderer and debug tooling.
 - **Migration shape**: `ALTER TYPE ... ADD VALUE` for the existing Postgres enums (`asset_kind`, `asset_provider`). Reason: that's how the schema actually stores these — confirmed via `packages/db/src/schema.ts` and `packages/db/migrations/0001_init/migration.sql`.
+- **Provider env read at handler, not in `env.ts`**: `ELEVENLABS_VOICE_ID` and `ELEVENLABS_MODEL_ID` are read directly via `process.env` inside `generateSceneAudio.ts`, mirroring the existing `GEMINI_TTS_VOICE` pattern. `apps/worker/src/env.ts` keeps only infra config (`DATABASE_URL`, `LOCAL_ASSET_ROOT`, `WORKER_CONCURRENCY`). Reason: provider-specific configuration belongs at the call site so swapping providers (or adding a per-project override later) does not require touching the worker's central env contract.
+- **Caption mark-failed is best-effort**: in the rare case where `markAssetFailed` itself fails, we log `caption_mark_failed_twice` and continue rather than bubbling the error. The pending row is accepted as stranded. Reason: the renderer's `getReadyAssetByPath` filters to `status = ready`, so a stranded `pending` row is invisible. Bubbling the error would also fail the audio job and discard a valid audio asset, which is worse than a stranded row that gets cleaned up by the next regeneration.
 - **Static caption fallback in renderer**: kept. Reason: lets old projects render without re-generating audio; required by append-only constraint.
