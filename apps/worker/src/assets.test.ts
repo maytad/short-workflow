@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { absoluteAssetPath, writeAssetFile } from "./assets";
+import { absoluteAssetPath, renderInputPath, writeAssetFile } from "./assets";
 
 describe("asset utilities", () => {
   test("joins the asset root and relative path", () => {
@@ -37,5 +37,11 @@ describe("asset utilities", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
+  });
+
+  test("builds render input paths under the project input directory", () => {
+    expect(renderInputPath("project-1", "render-1")).toBe(
+      path.join("projects", "project-1", "input", "render-1.json"),
+    );
   });
 });

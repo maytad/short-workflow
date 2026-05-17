@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type WrittenAssetFile = {
@@ -29,6 +29,23 @@ export async function writeAssetFile(
     absolutePath,
     sizeBytes: info.size,
     checksum,
+  };
+}
+
+export async function statAssetFile(
+  root: string,
+  relativePath: string,
+): Promise<WrittenAssetFile> {
+  const absolutePath = absoluteAssetPath(root, relativePath);
+  const [info, bytes] = await Promise.all([
+    stat(absolutePath),
+    readFile(absolutePath),
+  ]);
+
+  return {
+    absolutePath,
+    sizeBytes: info.size,
+    checksum: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
   };
 }
 
@@ -63,7 +80,7 @@ export function sceneAudioPath(
 }
 
 export function renderInputPath(projectId: string, renderId: string) {
-  return path.join("projects", projectId, "renders", `${renderId}.input.json`);
+  return path.join("projects", projectId, "input", `${renderId}.json`);
 }
 
 export function renderOutputPath(projectId: string, renderId: string) {
