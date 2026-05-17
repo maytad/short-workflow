@@ -9,6 +9,11 @@
     "dev:api": "turbo run dev --filter=@short-workflow/api",
     "dev:worker": "turbo run dev --filter=@short-workflow/worker",
     "dev:render": "turbo run dev --filter=@short-workflow/render",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "quality": "bun run format:check && bun run lint && bun run check && bun run typecheck",
     "check": "turbo run check",
     "typecheck": "turbo run typecheck",
     "db:generate": "bun run --cwd packages/db generate",
@@ -19,6 +24,7 @@
     "render:project": "bun run --cwd apps/render render:project"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.15",
     "@types/bun": "latest",
     "turbo": "latest",
     "typescript": "latest"
