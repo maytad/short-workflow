@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
     "dev:web": "turbo run dev --filter=@short-workflow/web",
     "dev:api": "turbo run dev --filter=@short-workflow/api",
     "dev:worker": "turbo run dev --filter=@short-workflow/worker",
