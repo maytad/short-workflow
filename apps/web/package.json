@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --envDir ../..",
+    "dev": "vite",
     "check": "bun test",
     "typecheck": "tsc --noEmit"
   },

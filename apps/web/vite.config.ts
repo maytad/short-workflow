@@ -4,6 +4,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  envDir: "../..",
   plugins: [
     tanstackRouter({
       generatedRouteTree: "./src/routeTree.gen.ts",
