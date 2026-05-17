@@ -76,6 +76,12 @@ export async function listProjectAssets(db: DbClient, projectId: string) {
     .orderBy(desc(assets.createdAt));
 }
 
+export async function getAsset(db: DbClient, assetId: string) {
+  const [asset] = await db.select().from(assets).where(eq(assets.id, assetId)).limit(1);
+
+  return asset ?? null;
+}
+
 export async function getCurrentReadySceneAsset(
   db: DbClient,
   input: { sceneId: string; kind: AssetRow["kind"] },

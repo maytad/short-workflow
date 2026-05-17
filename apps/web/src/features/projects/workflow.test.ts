@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Asset, ProjectDetailResponse, Scene } from "@short-workflow/shared";
 
-import { getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
+import { assetPreviewUrl, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
 import { applyOptimisticSceneUpdate } from "./hooks";
 import { getRenderPreconditionMessages } from "./RenderPanel";
 
@@ -45,6 +45,12 @@ function asset(overrides: Partial<Asset> = {}): Asset {
 }
 
 describe("workflow asset helpers", () => {
+  test("builds browser-safe preview URLs from asset ids", () => {
+    expect(assetPreviewUrl(asset())).toBe(
+      "http://localhost:3001/assets/33333333-3333-4333-8333-333333333333/file",
+    );
+  });
+
   test("treats ready assets created after scene content as current", () => {
     expect(isAssetCurrentForScene(asset(), scene())).toBe(true);
     expect(isAssetCurrentForScene(asset({ createdAt: "2026-05-16T09:59:59.000Z" }), scene())).toBe(

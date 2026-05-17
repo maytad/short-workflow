@@ -50,6 +50,23 @@ const scene = {
   updatedAt: new Date("2026-05-17T00:00:00.000Z"),
 } as const;
 
+const asset = {
+  id: "44444444-4444-4444-8444-444444444444",
+  projectId: project.id,
+  sceneId: scene.id,
+  kind: "image",
+  storageDriver: "local",
+  path: "projects/test/scenes/scene/images/asset.png",
+  mimeType: "image/png",
+  sizeBytes: 7,
+  checksum: null,
+  status: "ready",
+  provider: "openai",
+  model: "gpt-image-2",
+  createdAt: new Date("2026-05-17T00:00:00.000Z"),
+  updatedAt: new Date("2026-05-17T00:00:00.000Z"),
+} as const;
+
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
@@ -159,6 +176,31 @@ describe("createApp", () => {
 
     expect(response.status).toBe(404);
     expect(await response.json()).toEqual({ error: "not_found" });
+  });
+
+  test("serves ready asset files with their stored content type", async () => {
+    const bytes = new TextEncoder().encode("png");
+    const services = {
+      ...createServices(),
+      getAsset: async () => asset,
+      readAssetFile: async () => ({
+        bytes,
+        mimeType: "image/png",
+      }),
+    } as ProjectRouteServices & {
+      getAsset: () => Promise<typeof asset>;
+      readAssetFile: () => Promise<{ bytes: Uint8Array; mimeType: string }>;
+    };
+    const app = createApp({
+      db: {} as never,
+      projectServices: services,
+    });
+
+    const response = await app.handle(request(`/assets/${asset.id}/file`));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("image/png");
+    expect(await response.text()).toBe("png");
   });
 
   test("returns active jobs conflict when deleting a busy project", async () => {

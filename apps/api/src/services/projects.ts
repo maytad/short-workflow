@@ -1,5 +1,5 @@
-import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { readFile, rm } from "node:fs/promises";
+import path, { join } from "node:path";
 
 import {
   deleteProjectRows,
@@ -16,6 +16,11 @@ import { parseEnv } from "../env";
 import { listProjectJobs } from "./jobs";
 
 export type ProjectDetail = NonNullable<Awaited<ReturnType<typeof getProjectDetail>>>;
+
+export type AssetFile = {
+  bytes: Uint8Array;
+  mimeType: string;
+};
 
 export type RenderPreconditionReport = {
   projectHasNoScenes: boolean;
@@ -47,6 +52,34 @@ export async function deleteProjectLocalFiles(projectId: string) {
     recursive: true,
     force: true,
   });
+}
+
+export async function readAssetFile(
+  asset: Pick<AssetRow, "mimeType" | "path">,
+): Promise<AssetFile> {
+  if (!asset.mimeType) {
+    throw new Error("asset_mime_type_missing");
+  }
+
+  const assetRoot = parseEnv().LOCAL_ASSET_ROOT;
+  const bytes = await readFile(resolveLocalAssetPath(assetRoot, asset.path));
+
+  return {
+    bytes,
+    mimeType: asset.mimeType,
+  };
+}
+
+function resolveLocalAssetPath(root: string, relativePath: string) {
+  const resolvedRoot = path.resolve(root);
+  const target = path.resolve(resolvedRoot, relativePath);
+  const relativeToRoot = path.relative(resolvedRoot, target);
+
+  if (relativeToRoot.startsWith("..") || path.isAbsolute(relativeToRoot)) {
+    throw new Error("asset_path_escapes_root");
+  }
+
+  return target;
 }
 
 export async function getProjectDetail(db: DbClient, projectId: string) {

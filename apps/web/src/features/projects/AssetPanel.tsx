@@ -1,6 +1,7 @@
 import type { Asset, Job, Scene } from "@short-workflow/shared";
 import { Image, Loader2, Music2, RefreshCw } from "lucide-react";
 
+import { API_BASE_URL } from "../../api/client";
 import { useGenerateSceneAudioMutation, useGenerateSceneImageMutation } from "./hooks";
 
 type AssetKind = Extract<Asset["kind"], "image" | "audio">;
@@ -34,6 +35,14 @@ export function getLatestSceneAsset({ assets, kind, sceneId }: LatestSceneAssetI
   return assets
     .filter((asset) => asset.sceneId === sceneId && asset.kind === kind && asset.status === "ready")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+}
+
+export function assetPreviewUrl(asset: Pick<Asset, "id">) {
+  return new URL(`/assets/${asset.id}/file`, API_BASE_URL).toString();
+}
+
+function currentSceneAsset(asset: Asset | undefined, scene: Scene) {
+  return isAssetCurrentForScene(asset, scene) ? asset : undefined;
 }
 
 function hasActiveJob(activeJobs: Job[], scene: Scene, kind: AssetKind) {
@@ -99,6 +108,65 @@ function AssetStatusRow({
   );
 }
 
+function AssetPreviewSection({
+  audioAsset,
+  imageAsset,
+  scene,
+}: {
+  audioAsset: Asset | undefined;
+  imageAsset: Asset | undefined;
+  scene: Scene;
+}) {
+  if (!imageAsset && !audioAsset) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Preview</h3>
+        <span className="rounded bg-muted px-2 py-1 text-xs text-muted-foreground">
+          Scene {scene.position}
+        </span>
+      </div>
+
+      <div className="mt-3 grid min-w-0 gap-3">
+        {imageAsset ? (
+          <figure className="min-w-0 overflow-hidden rounded-md border border-border bg-background">
+            <div className="aspect-[9/16] max-h-[420px] bg-muted">
+              <img
+                alt={`Scene ${scene.position} generated preview`}
+                className="h-full w-full object-cover"
+                loading="lazy"
+                src={assetPreviewUrl(imageAsset)}
+              />
+            </div>
+            <figcaption className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
+              {scene.caption}
+            </figcaption>
+          </figure>
+        ) : null}
+
+        {audioAsset ? (
+          <div className="min-w-0 rounded-md border border-border bg-background p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+              <Music2 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              Audio preview
+            </div>
+            <audio
+              aria-label={`Scene ${scene.position} generated audio preview`}
+              className="w-full"
+              controls
+              preload="metadata"
+              src={assetPreviewUrl(audioAsset)}
+            />
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: AssetPanelProps) {
   const imageMutation = useGenerateSceneImageMutation(projectId, selectedScene?.id ?? "");
   const audioMutation = useGenerateSceneAudioMutation(projectId, selectedScene?.id ?? "");
@@ -124,6 +192,8 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
     kind: "audio",
     sceneId: selectedScene.id,
   });
+  const currentImageAsset = currentSceneAsset(imageAsset, selectedScene);
+  const currentAudioAsset = currentSceneAsset(audioAsset, selectedScene);
 
   return (
     <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -150,6 +220,12 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
           scene={selectedScene}
         />
       </div>
+
+      <AssetPreviewSection
+        audioAsset={currentAudioAsset}
+        imageAsset={currentImageAsset}
+        scene={selectedScene}
+      />
 
       {imageMutation.error || audioMutation.error ? (
         <p className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">

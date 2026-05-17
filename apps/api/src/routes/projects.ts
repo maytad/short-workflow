@@ -7,6 +7,7 @@ import {
   acknowledgeRenderDisclosure,
   createJobIdempotent,
   createProject,
+  getAsset,
   getProject,
   getScene,
   listProjectAssets,
@@ -27,6 +28,7 @@ import {
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
+  readAssetFile,
 } from "../services/projects";
 import { listProjectJobs } from "../services/jobs";
 
@@ -43,6 +45,7 @@ type RouteContext = {
     sceneId?: string;
     jobId?: string;
     renderId?: string;
+    assetId?: string;
   };
   query: {
     status?: string;
@@ -80,6 +83,8 @@ export type ProjectRouteServices = {
   retryFailedJob: typeof retryFailedJob;
   acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
   buildRenderPreconditionReport: typeof buildRenderPreconditionReport;
+  getAsset?: typeof getAsset;
+  readAssetFile?: typeof readAssetFile;
 };
 
 const defaultServices: ProjectRouteServices = {
@@ -101,6 +106,8 @@ const defaultServices: ProjectRouteServices = {
   retryFailedJob,
   acknowledgeRenderDisclosure,
   buildRenderPreconditionReport,
+  getAsset,
+  readAssetFile,
 };
 
 function hasRenderPreconditionFailures(
@@ -256,6 +263,28 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
           });
         }),
     )
+    .get("/assets/:assetId/file", async (context) => {
+      const { db, params, set } = withRouteContext(context);
+      const assetId = requireRouteParam(params.assetId, "assetId");
+      const asset = await (services.getAsset ?? getAsset)(db, assetId);
+
+      if (!asset || asset.status !== "ready" || asset.storageDriver !== "local") {
+        return notFound(set);
+      }
+
+      try {
+        const file = await (services.readAssetFile ?? readAssetFile)(asset);
+
+        return new Response(file.bytes.slice().buffer, {
+          headers: {
+            "cache-control": "no-store",
+            "content-type": file.mimeType,
+          },
+        });
+      } catch {
+        return notFound(set);
+      }
+    })
     .patch("/scenes/:sceneId", (context) => {
       const { body, db, params, set } = withRouteContext(context);
       const sceneId = requireRouteParam(params.sceneId, "sceneId");

@@ -106,6 +106,8 @@ Design/image skills such as `high-end-visual-design`, `imagegen-frontend-web`, `
 
 The MVP does not require a full automated test suite before the first working local flow. Still run the lightest relevant verification for the area changed:
 
+Current MVP note: do not add new automated tests or run test suites by default while the first local flow is still being built. Prefer manual verification for UI/API behavior unless the user explicitly asks for tests.
+
 - Shared schemas: run a small schema check or unit test when created.
 - Database changes: run `bun run db:check`, apply with `bun run db:migrate:up`, verify core query functions, and keep rollback covered with `down.sql`.
 - API changes: manually verify `GET /health`.
