@@ -79,8 +79,24 @@ export async function claimNextJob(db: DbClient) {
       updated_at as "updatedAt"
     from claim_next_job()
   `);
+  const job = rows[0];
 
-  return rows[0] ?? null;
+  if (!isClaimedJobRow(job)) {
+    return null;
+  }
+
+  return job;
+}
+
+export function isClaimedJobRow(row: unknown): row is JobRow {
+  return (
+    typeof row === "object" &&
+    row !== null &&
+    "id" in row &&
+    typeof row.id === "string" &&
+    "type" in row &&
+    typeof row.type === "string"
+  );
 }
 
 export async function markJobSucceeded(

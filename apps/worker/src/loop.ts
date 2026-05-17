@@ -9,6 +9,7 @@ import {
 
 import { parseEnv } from "./env";
 import { handleJob } from "./handlers";
+import { logWorkerError, logWorkerInfo, type WorkerLogFields } from "./logger";
 
 const emptyQueueSleepMs = 2_000;
 
@@ -24,7 +25,22 @@ function errorMessage(error: unknown) {
   return String(error);
 }
 
-async function workerLoop(db: DbClient) {
+function jobLogFields(job: JobRow, workerIndex: number, extra?: WorkerLogFields): WorkerLogFields {
+  return {
+    workerIndex,
+    jobId: job.id,
+    projectId: job.projectId,
+    sceneId: job.sceneId,
+    type: job.type,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    ...extra,
+  };
+}
+
+async function workerLoop(db: DbClient, workerIndex: number) {
+  logWorkerInfo("worker_loop_started", { workerIndex });
+
   while (true) {
     const job = (await claimNextJob(db)) as JobRow | null;
 
@@ -33,10 +49,32 @@ async function workerLoop(db: DbClient) {
       continue;
     }
 
+    const startedAt = Date.now();
+    logWorkerInfo("job_claimed", jobLogFields(job, workerIndex));
+
     try {
       await handleJob(db, job);
+      logWorkerInfo(
+        "job_succeeded",
+        jobLogFields(job, workerIndex, {
+          durationMs: Date.now() - startedAt,
+        }),
+      );
     } catch (error) {
-      await markJobFailedOrRetry(db, job, errorMessage(error));
+      const message = errorMessage(error);
+      const updatedJob = await markJobFailedOrRetry(db, job, message);
+      const status = updatedJob?.status ?? "failed";
+      const event = status === "pending" ? "job_retry_scheduled" : "job_failed";
+
+      logWorkerError(
+        event,
+        jobLogFields(job, workerIndex, {
+          durationMs: Date.now() - startedAt,
+          errorMessage: message,
+          nextRetryAt: updatedJob?.nextRetryAt?.toISOString() ?? null,
+          status,
+        }),
+      );
     }
   }
 }
@@ -44,8 +82,14 @@ async function workerLoop(db: DbClient) {
 export async function runWorker() {
   const env = parseEnv();
   const { db } = createDbClient(env.DATABASE_URL);
+  logWorkerInfo("worker_starting", { concurrency: env.WORKER_CONCURRENCY });
 
-  await recoverStaleJobs(db);
+  const recoveredJobs = await recoverStaleJobs(db);
+  if (recoveredJobs.length > 0) {
+    logWorkerInfo("stale_jobs_recovered", { count: recoveredJobs.length });
+  }
 
-  await Promise.all(Array.from({ length: env.WORKER_CONCURRENCY }, () => workerLoop(db)));
+  await Promise.all(
+    Array.from({ length: env.WORKER_CONCURRENCY }, (_, workerIndex) => workerLoop(db, workerIndex)),
+  );
 }
