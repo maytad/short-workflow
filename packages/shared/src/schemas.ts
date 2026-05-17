@@ -18,8 +18,8 @@ import {
   STORAGE_DRIVERS,
 } from "./constants";
 
-export const uuidSchema = z.string().uuid();
-export const isoDateSchema = z.string().datetime();
+export const uuidSchema = z.uuid();
+export const isoDateSchema = z.iso.datetime();
 export const nullableIsoDateSchema = isoDateSchema.nullable();
 
 export const projectStatusSchema = z.enum(PROJECT_STATUSES);

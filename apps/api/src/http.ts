@@ -1,4 +1,4 @@
-import type { ZodError, ZodIssue } from "zod";
+import type { ZodError } from "zod";
 
 type StatusSetter = {
   status?: number | string;
@@ -15,7 +15,7 @@ export type ValidationIssue = {
   message: string;
 };
 
-function conciseIssue(issue: ZodIssue): ValidationIssue {
+function conciseIssue(issue: ZodError["issues"][number]): ValidationIssue {
   return {
     path: issue.path.map(String).join("."),
     message: issue.message,

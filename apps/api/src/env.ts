@@ -1,13 +1,12 @@
 import { z } from "zod";
 
 export const envSchema = z
-  .object({
-    DATABASE_URL: z.string().url(),
+  .looseObject({
+    DATABASE_URL: z.url(),
     LOCAL_ASSET_ROOT: z.string().min(1),
     API_HOST: z.string().default("127.0.0.1"),
     API_PORT: z.coerce.number().positive().default(3001),
-  })
-  .passthrough();
+  });
 
 export type Env = Pick<
   z.infer<typeof envSchema>,
