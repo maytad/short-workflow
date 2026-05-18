@@ -80,6 +80,19 @@ export type SceneMotionStyleInput = {
 
 const deterministicDirection = (position: number) => (position % 2 === 0 ? -1 : 1);
 
+const smoothPulseProgress = (beatPosition: number, pulseFrames: number) => {
+  const pulseDuration = Math.max(2, pulseFrames);
+  if (beatPosition < 0 || beatPosition > pulseDuration) {
+    return 0;
+  }
+
+  return interpolate(beatPosition, [0, pulseDuration / 2, pulseDuration], [0, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.cubic),
+  });
+};
+
 export function sceneMotionProfile(
   role: SceneMotionRole,
   position: number,
@@ -99,8 +112,8 @@ export function sceneMotionProfile(
         panY: -20,
         beatEveryFrames: twoSeconds,
         beatOffsetFrames: Math.round(0.25 * fps),
-        pulseScale: 0.028,
-        pulseFrames: Math.round(0.32 * fps),
+        pulseScale: 0.018,
+        pulseFrames: Math.round(0.55 * fps),
         entranceScale: 0.035,
         overlayMaxOpacity: 0.18,
         captionScrimOpacity: 0.32,
@@ -113,8 +126,8 @@ export function sceneMotionProfile(
         panY: 10,
         beatEveryFrames: fourSeconds,
         beatOffsetFrames: Math.round(0.75 * fps),
-        pulseScale: 0.012,
-        pulseFrames: Math.round(0.28 * fps),
+        pulseScale: 0.008,
+        pulseFrames: Math.round(0.45 * fps),
         entranceScale: 0.018,
         overlayMaxOpacity: 0.1,
         captionScrimOpacity: 0.28,
@@ -127,8 +140,8 @@ export function sceneMotionProfile(
         panY: -14,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.45 * fps),
-        pulseScale: 0.022,
-        pulseFrames: Math.round(0.34 * fps),
+        pulseScale: 0.015,
+        pulseFrames: Math.round(0.55 * fps),
         entranceScale: 0.024,
         overlayMaxOpacity: 0.22,
         captionScrimOpacity: 0.34,
@@ -141,8 +154,8 @@ export function sceneMotionProfile(
         panY: -8,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.65 * fps),
-        pulseScale: 0.018,
-        pulseFrames: Math.round(0.3 * fps),
+        pulseScale: 0.012,
+        pulseFrames: Math.round(0.5 * fps),
         entranceScale: 0.02,
         overlayMaxOpacity: 0.14,
         captionScrimOpacity: 0.32,
@@ -155,8 +168,8 @@ export function sceneMotionProfile(
         panY: 12,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.35 * fps),
-        pulseScale: 0.016,
-        pulseFrames: Math.round(0.28 * fps),
+        pulseScale: 0.01,
+        pulseFrames: Math.round(0.45 * fps),
         entranceScale: 0.018,
         overlayMaxOpacity: 0.12,
         captionScrimOpacity: 0.32,
@@ -192,13 +205,7 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
   const beatPosition =
     profile.beatEveryFrames > 0 ? beatFrame % profile.beatEveryFrames : beatFrame;
   const pulseProgress =
-    rawBeatFrame >= 0 && beatPosition <= profile.pulseFrames
-      ? interpolate(beatPosition, [0, profile.pulseFrames], [1, 0], {
-          extrapolateLeft: "clamp",
-          extrapolateRight: "clamp",
-          easing: Easing.out(Easing.cubic),
-        })
-      : 0;
+    rawBeatFrame >= 0 ? smoothPulseProgress(beatPosition, profile.pulseFrames) : 0;
 
   const scale =
     baseScale +
@@ -479,6 +486,7 @@ function SceneVisual({
           objectFit: "cover",
           transform: `translate3d(${motion.translateX}px, ${motion.translateY}px, 0) scale(${motion.scale})`,
           transformOrigin: "center",
+          willChange: "transform",
           width: "100%",
         }}
       />

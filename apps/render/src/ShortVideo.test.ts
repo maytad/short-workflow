@@ -159,16 +159,65 @@ describe("scene motion", () => {
   });
 
   test("clamps pulsed overlay opacity to the role maximum", () => {
-    const maxOpacity = sceneMotionProfile("point", 3, 30).overlayMaxOpacity;
+    const profile = sceneMotionProfile("point", 3, 30);
+    const maxOpacity = profile.overlayMaxOpacity;
     const style = getSceneMotionStyle({
       durationInFrames: 210,
       fps: 30,
-      frame: 14,
+      frame: profile.beatOffsetFrames + Math.round(profile.pulseFrames / 2),
       position: 3,
       role: "point",
     });
 
     expect(style.overlayOpacity).toBeCloseTo(maxOpacity, 5);
+  });
+
+  test("ramps beat punch-ins without a visible scale jump", () => {
+    const fps = 30;
+    const profile = sceneMotionProfile("hook", 1, fps);
+    const beforeBeat = getSceneMotionStyle({
+      durationInFrames: 180,
+      fps,
+      frame: profile.beatOffsetFrames - 1,
+      position: 1,
+      role: "hook",
+    });
+    const beatStart = getSceneMotionStyle({
+      durationInFrames: 180,
+      fps,
+      frame: profile.beatOffsetFrames,
+      position: 1,
+      role: "hook",
+    });
+
+    expect(Math.abs(beatStart.scale - beforeBeat.scale)).toBeLessThan(0.01);
+  });
+
+  test("keeps frame-to-frame zoom changes subtle across scene roles", () => {
+    const roles = ["hook", "context", "point", "payoff", "cta"] as const;
+
+    for (const role of roles) {
+      let previous = getSceneMotionStyle({
+        durationInFrames: 210,
+        fps: 30,
+        frame: 0,
+        position: 1,
+        role,
+      });
+
+      for (let frame = 1; frame < 210; frame += 1) {
+        const current = getSceneMotionStyle({
+          durationInFrames: 210,
+          fps: 30,
+          frame,
+          position: 1,
+          role,
+        });
+
+        expect(Math.abs(current.scale - previous.scale)).toBeLessThan(0.01);
+        previous = current;
+      }
+    }
   });
 
   test("keeps enough image bleed to cover horizontal pan", () => {
