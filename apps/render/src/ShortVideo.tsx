@@ -55,9 +55,7 @@ export type SceneMotionProfile = {
   panY: number;
   beatEveryFrames: number;
   beatOffsetFrames: number;
-  pulseScale: number;
   pulseFrames: number;
-  entranceScale: number;
   overlayMaxOpacity: number;
   captionScrimOpacity: number;
 };
@@ -112,9 +110,7 @@ export function sceneMotionProfile(
         panY: -20,
         beatEveryFrames: twoSeconds,
         beatOffsetFrames: Math.round(0.25 * fps),
-        pulseScale: 0.018,
         pulseFrames: Math.round(0.55 * fps),
-        entranceScale: 0.035,
         overlayMaxOpacity: 0.18,
         captionScrimOpacity: 0.32,
       };
@@ -126,9 +122,7 @@ export function sceneMotionProfile(
         panY: 10,
         beatEveryFrames: fourSeconds,
         beatOffsetFrames: Math.round(0.75 * fps),
-        pulseScale: 0.008,
         pulseFrames: Math.round(0.45 * fps),
-        entranceScale: 0.018,
         overlayMaxOpacity: 0.1,
         captionScrimOpacity: 0.28,
       };
@@ -140,9 +134,7 @@ export function sceneMotionProfile(
         panY: -14,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.45 * fps),
-        pulseScale: 0.015,
         pulseFrames: Math.round(0.55 * fps),
-        entranceScale: 0.024,
         overlayMaxOpacity: 0.22,
         captionScrimOpacity: 0.34,
       };
@@ -154,9 +146,7 @@ export function sceneMotionProfile(
         panY: -8,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.65 * fps),
-        pulseScale: 0.012,
         pulseFrames: Math.round(0.5 * fps),
-        entranceScale: 0.02,
         overlayMaxOpacity: 0.14,
         captionScrimOpacity: 0.32,
       };
@@ -168,9 +158,7 @@ export function sceneMotionProfile(
         panY: 12,
         beatEveryFrames: threeSeconds,
         beatOffsetFrames: Math.round(0.35 * fps),
-        pulseScale: 0.01,
         pulseFrames: Math.round(0.45 * fps),
-        entranceScale: 0.018,
         overlayMaxOpacity: 0.12,
         captionScrimOpacity: 0.32,
       };
@@ -194,12 +182,6 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
     },
   );
 
-  const entranceProgress = interpolate(frame, [0, Math.round(0.45 * input.fps)], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-    easing: Easing.out(Easing.cubic),
-  });
-
   const rawBeatFrame = frame - profile.beatOffsetFrames;
   const beatFrame = Math.max(0, rawBeatFrame);
   const beatPosition =
@@ -207,10 +189,7 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
   const pulseProgress =
     rawBeatFrame >= 0 ? smoothPulseProgress(beatPosition, profile.pulseFrames) : 0;
 
-  const scale =
-    baseScale +
-    profile.entranceScale * entranceProgress * (1 - progress) +
-    profile.pulseScale * pulseProgress;
+  const scale = baseScale;
 
   const overlayOpacity = Math.min(
     profile.overlayMaxOpacity,

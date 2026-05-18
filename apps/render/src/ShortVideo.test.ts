@@ -109,7 +109,7 @@ describe("scene motion", () => {
     const context = sceneMotionProfile("context", 2, 30);
 
     expect(hook.beatEveryFrames).toBeLessThan(context.beatEveryFrames);
-    expect(hook.pulseScale).toBeGreaterThan(context.pulseScale);
+    expect(hook.overlayMaxOpacity).toBeGreaterThan(context.overlayMaxOpacity);
     expect(hook.baseScaleEnd).toBeGreaterThan(hook.baseScaleStart);
   });
 
@@ -172,7 +172,7 @@ describe("scene motion", () => {
     expect(style.overlayOpacity).toBeCloseTo(maxOpacity, 5);
   });
 
-  test("ramps beat punch-ins without a visible scale jump", () => {
+  test("keeps beat emphasis from creating a visible scale jump", () => {
     const fps = 30;
     const profile = sceneMotionProfile("hook", 1, fps);
     const beforeBeat = getSceneMotionStyle({
@@ -215,6 +215,33 @@ describe("scene motion", () => {
         });
 
         expect(Math.abs(current.scale - previous.scale)).toBeLessThan(0.01);
+        previous = current;
+      }
+    }
+  });
+
+  test("uses one-direction scene zoom without zoom-out pulses", () => {
+    const roles = ["hook", "context", "point", "payoff", "cta"] as const;
+
+    for (const role of roles) {
+      let previous = getSceneMotionStyle({
+        durationInFrames: 210,
+        fps: 30,
+        frame: 0,
+        position: 1,
+        role,
+      });
+
+      for (let frame = 1; frame < 210; frame += 1) {
+        const current = getSceneMotionStyle({
+          durationInFrames: 210,
+          fps: 30,
+          frame,
+          position: 1,
+          role,
+        });
+
+        expect(current.scale).toBeGreaterThanOrEqual(previous.scale);
         previous = current;
       }
     }
