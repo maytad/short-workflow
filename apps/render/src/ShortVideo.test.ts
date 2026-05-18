@@ -1,13 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SUBSCRIBE_LOWER_THIRD,
   chunkWords,
   getSceneDurationFrames,
   getSceneMotionStyle,
+  getSubscribeLowerThirdState,
+  getSubscribeLowerThirdWindow,
   getTotalDurationFrames,
   pickActiveIndex,
   resolveMediaSrc,
   sceneMotionProfile,
+  shouldShowSubscribeLowerThird,
 } from "./ShortVideo";
 
 describe("ShortVideo helpers", () => {
@@ -290,5 +294,96 @@ describe("scene motion", () => {
     expect(Number.isFinite(after.translateX)).toBe(true);
     expect(Number.isFinite(after.translateY)).toBe(true);
     expect(before.captionScrimOpacity).toBe(after.captionScrimOpacity);
+  });
+});
+
+describe("subscribe lower third", () => {
+  test("uses Tiny Mechanisms hardcoded branding", () => {
+    expect(SUBSCRIBE_LOWER_THIRD.channelName).toBe("Tiny Mechanisms");
+    expect(SUBSCRIBE_LOWER_THIRD.logoPath).toBe("logo/logo.png");
+    expect(SUBSCRIBE_LOWER_THIRD.durationSeconds).toBe(4.5);
+  });
+
+  test("renders only for cta scenes", () => {
+    expect(shouldShowSubscribeLowerThird("cta")).toBe(true);
+
+    for (const role of ["hook", "context", "point", "payoff"] as const) {
+      expect(shouldShowSubscribeLowerThird(role)).toBe(false);
+    }
+  });
+
+  test("uses the last 4.5 seconds for longer cta scenes", () => {
+    const window = getSubscribeLowerThirdWindow({
+      fps: 30,
+      sceneDurationInFrames: 180,
+    });
+
+    expect(window).toEqual({
+      durationInFrames: 135,
+      endFrame: 180,
+      startFrame: 45,
+    });
+  });
+
+  test("clamps the lower third to short cta scenes", () => {
+    const window = getSubscribeLowerThirdWindow({
+      fps: 30,
+      sceneDurationInFrames: 72,
+    });
+
+    expect(window).toEqual({
+      durationInFrames: 72,
+      endFrame: 72,
+      startFrame: 0,
+    });
+  });
+
+  test("returns deterministic frame states", () => {
+    const hiddenBefore = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 44,
+      sceneDurationInFrames: 180,
+    });
+    const entering = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 45,
+      sceneDurationInFrames: 180,
+    });
+    const holding = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 90,
+      sceneDurationInFrames: 180,
+    });
+    const subscribed = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 108,
+      sceneDurationInFrames: 180,
+    });
+    const exiting = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 178,
+      sceneDurationInFrames: 180,
+    });
+    const hiddenAfter = getSubscribeLowerThirdState({
+      fps: 30,
+      frame: 180,
+      sceneDurationInFrames: 180,
+    });
+
+    expect(hiddenBefore.visible).toBe(false);
+    expect(hiddenBefore.opacity).toBe(0);
+    expect(entering.visible).toBe(true);
+    expect(entering.opacity).toBe(0);
+    expect(entering.scale).toBeCloseTo(0.96, 5);
+    expect(holding.visible).toBe(true);
+    expect(holding.opacity).toBeGreaterThan(0.95);
+    expect(holding.subscribed).toBe(false);
+    expect(subscribed.visible).toBe(true);
+    expect(subscribed.subscribed).toBe(true);
+    expect(exiting.visible).toBe(true);
+    expect(exiting.opacity).toBeLessThan(0.5);
+    expect(exiting.translateY).toBeGreaterThan(0);
+    expect(hiddenAfter.visible).toBe(false);
+    expect(hiddenAfter.opacity).toBe(0);
   });
 });

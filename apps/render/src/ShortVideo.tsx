@@ -214,6 +214,147 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
   };
 }
 
+export const SUBSCRIBE_LOWER_THIRD = {
+  channelName: "Tiny Mechanisms",
+  durationSeconds: 4.5,
+  logoPath: "logo/logo.png",
+} as const;
+
+export type SubscribeLowerThirdWindow = {
+  durationInFrames: number;
+  endFrame: number;
+  startFrame: number;
+};
+
+export type SubscribeLowerThirdState = {
+  buttonScale: number;
+  localFrame: number;
+  opacity: number;
+  scale: number;
+  subscribed: boolean;
+  translateY: number;
+  visible: boolean;
+};
+
+const hiddenSubscribeLowerThirdState: SubscribeLowerThirdState = {
+  buttonScale: 1,
+  localFrame: -1,
+  opacity: 0,
+  scale: 0.96,
+  subscribed: false,
+  translateY: 24,
+  visible: false,
+};
+
+export function shouldShowSubscribeLowerThird(role: SceneMotionRole) {
+  return role === "cta";
+}
+
+export function getSubscribeLowerThirdWindow(input: {
+  fps: number;
+  sceneDurationInFrames: number;
+}): SubscribeLowerThirdWindow {
+  const sceneDurationInFrames = Math.max(0, Math.round(input.sceneDurationInFrames));
+
+  if (sceneDurationInFrames === 0) {
+    return {
+      durationInFrames: 0,
+      endFrame: 0,
+      startFrame: 0,
+    };
+  }
+
+  const targetDurationInFrames = Math.max(
+    1,
+    Math.round(SUBSCRIBE_LOWER_THIRD.durationSeconds * input.fps),
+  );
+  const durationInFrames = Math.min(sceneDurationInFrames, targetDurationInFrames);
+  const startFrame = Math.max(0, sceneDurationInFrames - durationInFrames);
+
+  return {
+    durationInFrames,
+    endFrame: startFrame + durationInFrames,
+    startFrame,
+  };
+}
+
+export function getSubscribeLowerThirdState(input: {
+  fps: number;
+  frame: number;
+  sceneDurationInFrames: number;
+}): SubscribeLowerThirdState {
+  const window = getSubscribeLowerThirdWindow({
+    fps: input.fps,
+    sceneDurationInFrames: input.sceneDurationInFrames,
+  });
+
+  if (
+    window.durationInFrames === 0 ||
+    input.frame < window.startFrame ||
+    input.frame >= window.endFrame
+  ) {
+    return hiddenSubscribeLowerThirdState;
+  }
+
+  const localFrame = input.frame - window.startFrame;
+  const entranceFrames = Math.max(
+    1,
+    Math.min(Math.round(0.4 * input.fps), Math.floor(window.durationInFrames / 3)),
+  );
+  const exitFrames = Math.max(
+    1,
+    Math.min(Math.round(0.36 * input.fps), Math.floor(window.durationInFrames / 3)),
+  );
+  const pressFrames = Math.max(
+    1,
+    Math.min(Math.round(0.24 * input.fps), Math.floor(window.durationInFrames / 4)),
+  );
+  const pressStartFrame = Math.min(
+    Math.round(1.65 * input.fps),
+    Math.max(0, window.durationInFrames - exitFrames - pressFrames - 1),
+  );
+
+  const entranceProgress = interpolate(localFrame, [0, entranceFrames], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const exitStartFrame = Math.max(0, window.durationInFrames - exitFrames);
+  const exitProgress = interpolate(
+    localFrame,
+    [exitStartFrame, Math.max(exitStartFrame + 1, window.durationInFrames - 1)],
+    [1, 0],
+    {
+      easing: Easing.in(Easing.cubic),
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+    },
+  );
+  const pressProgress =
+    localFrame >= pressStartFrame && localFrame <= pressStartFrame + pressFrames
+      ? interpolate(
+          localFrame,
+          [pressStartFrame, pressStartFrame + pressFrames / 2, pressStartFrame + pressFrames],
+          [0, 1, 0],
+          {
+            easing: Easing.out(Easing.cubic),
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          },
+        )
+      : 0;
+
+  return {
+    buttonScale: 1 - 0.08 * pressProgress,
+    localFrame,
+    opacity: Math.min(entranceProgress, exitProgress),
+    scale: 0.96 + 0.04 * entranceProgress,
+    subscribed: localFrame >= pressStartFrame + pressFrames,
+    translateY: 28 * (1 - entranceProgress) + 20 * (1 - exitProgress),
+    visible: true,
+  };
+}
+
 /**
  * Returns the index of the active word at time t. A word is active from its
  * own start until the next word starts (or until its end if it is the last
