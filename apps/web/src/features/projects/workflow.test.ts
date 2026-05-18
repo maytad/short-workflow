@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { Asset, ProjectDetailResponse, Scene } from "@short-workflow/shared";
+import type { Asset, Job, ProjectDetailResponse, Render, Scene } from "@short-workflow/shared";
 
-import { assetPreviewUrl, assetRevealUrl } from "./assetUrls";
+import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
 import { getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
 import { applyOptimisticSceneUpdate } from "./hooks";
-import { getRenderPreconditionMessages } from "./RenderPanel";
+import { canUploadYoutube, getRenderPreconditionMessages } from "./RenderPanel";
 
 function scene(overrides: Partial<Scene> = {}): Scene {
   return {
@@ -45,6 +45,47 @@ function asset(overrides: Partial<Asset> = {}): Asset {
   };
 }
 
+function render(overrides: Partial<Render> = {}): Render {
+  return {
+    aiDisclosureAcknowledgedAt: "2026-05-16T10:15:00.000Z",
+    createdAt: "2026-05-16T10:15:00.000Z",
+    durationSeconds: 45,
+    errorMessage: null,
+    fps: 30,
+    height: 1920,
+    id: "55555555-5555-4555-8555-555555555555",
+    inputAssetId: null,
+    outputAssetId: "66666666-6666-4666-8666-666666666666",
+    projectId: "22222222-2222-4222-8222-222222222222",
+    status: "succeeded",
+    updatedAt: "2026-05-16T10:15:00.000Z",
+    width: 1080,
+    ...overrides,
+  };
+}
+
+function job(overrides: Partial<Job> = {}): Job {
+  return {
+    attempts: 0,
+    createdAt: "2026-05-16T10:20:00.000Z",
+    errorMessage: null,
+    finishedAt: null,
+    id: "77777777-7777-4777-8777-777777777777",
+    input: {},
+    maxAttempts: 5,
+    nextRetryAt: null,
+    output: null,
+    parentJobId: null,
+    projectId: "22222222-2222-4222-8222-222222222222",
+    sceneId: null,
+    startedAt: null,
+    status: "pending",
+    type: "upload_youtube",
+    updatedAt: "2026-05-16T10:20:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("workflow asset helpers", () => {
   test("builds browser-safe preview URLs from asset ids", () => {
     expect(assetPreviewUrl(asset())).toBe(
@@ -55,6 +96,12 @@ describe("workflow asset helpers", () => {
   test("builds browser-safe reveal URLs from asset ids", () => {
     expect(assetRevealUrl(asset())).toBe(
       "http://localhost:3001/assets/33333333-3333-4333-8333-333333333333/reveal",
+    );
+  });
+
+  test("builds YouTube Studio URLs with encoded video ids", () => {
+    expect(youtubeStudioUrl("video id/with?chars")).toBe(
+      "https://studio.youtube.com/video/video%20id%2Fwith%3Fchars/edit",
     );
   });
 
@@ -105,6 +152,7 @@ describe("scene update helpers", () => {
       renders: [],
       scenes: [scene()],
       youtubeMetadata: null,
+      youtubeUpload: null,
     };
 
     const updated = applyOptimisticSceneUpdate(
@@ -152,5 +200,66 @@ describe("render precondition helpers", () => {
       "Scene scene-e has stale image.",
       "Scene scene-d has stale audio.",
     ]);
+  });
+});
+
+describe("YouTube upload helpers", () => {
+  const metadata = {
+    description: "Description",
+    disclosureHint: "AI generated.",
+    hashtags: ["#shorts"],
+    youtubeTitle: "Title",
+  };
+  const outputAsset = asset({
+    id: "66666666-6666-4666-8666-666666666666",
+    kind: "render",
+    path: "projects/demo/render.mp4",
+    provider: "remotion",
+  });
+
+  test("allows upload when render output and metadata are ready", () => {
+    expect(
+      canUploadYoutube({
+        activeUploadJob: null,
+        latestRender: render(),
+        outputAsset,
+        youtubeMetadata: metadata,
+      }),
+    ).toBe(true);
+  });
+
+  test("blocks upload without succeeded render, output asset, metadata, or while upload is active", () => {
+    expect(
+      canUploadYoutube({
+        activeUploadJob: null,
+        latestRender: render({ status: "failed" }),
+        outputAsset,
+        youtubeMetadata: metadata,
+      }),
+    ).toBe(false);
+    expect(
+      canUploadYoutube({
+        activeUploadJob: null,
+        latestRender: render(),
+        outputAsset: null,
+        youtubeMetadata: metadata,
+      }),
+    ).toBe(false);
+    expect(
+      canUploadYoutube({
+        activeUploadJob: null,
+        latestRender: render(),
+        outputAsset,
+        youtubeMetadata: null,
+      }),
+    ).toBe(false);
+    expect(
+      canUploadYoutube({
+        activeUploadJob: job(),
+        latestRender: render(),
+        outputAsset,
+        youtubeMetadata: metadata,
+      }),
+    ).toBe(false);
   });
 });

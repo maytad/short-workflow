@@ -6,6 +6,8 @@ import type {
   ProjectDetailResponse,
   Scene,
   UpdateSceneRequest,
+  YoutubeAuthStartResponse,
+  YoutubeAuthStatus,
 } from "@short-workflow/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -165,6 +167,42 @@ export function useProjectJobsQuery(projectId: string, status?: "active") {
   return query;
 }
 
+export function useYoutubeAuthStatusQuery(enabled = true) {
+  return useQuery({
+    enabled,
+    queryFn: () => apiFetch<YoutubeAuthStatus>("/youtube/auth/status"),
+    queryKey: queryKeys.youtube.authStatus,
+  });
+}
+
+export function useStartYoutubeAuthMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<YoutubeAuthStartResponse>("/youtube/auth/start", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.youtube.authStatus });
+    },
+  });
+}
+
+export function useDisconnectYoutubeMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<{ disconnected: true }>("/youtube/auth/disconnect", {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.youtube.authStatus });
+    },
+  });
+}
+
 export function useCreateProjectMutation() {
   const queryClient = useQueryClient();
 
@@ -274,6 +312,18 @@ export function useRenderProjectMutation(projectId: string) {
   return useMutation({
     mutationFn: () =>
       apiFetch<Job>(`/projects/${projectId}/render`, {
+        method: "POST",
+      }),
+    onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
+  });
+}
+
+export function useUploadYoutubeMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Job>(`/projects/${projectId}/youtube-upload`, {
         method: "POST",
       }),
     onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),

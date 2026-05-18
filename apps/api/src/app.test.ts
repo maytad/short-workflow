@@ -77,6 +77,22 @@ const renderAsset = {
   sceneId: null,
 } as const;
 
+const youtubeJob = {
+  ...job,
+  id: "66666666-6666-4666-8666-666666666666",
+  type: "upload_youtube",
+  input: {
+    renderId: "77777777-7777-4777-8777-777777777777",
+    outputAssetId: renderAsset.id,
+    title: "Test title",
+    description: "Test description",
+    tags: ["TinyMechanisms"] as string[],
+    privacyStatus: "private",
+    selfDeclaredMadeForKids: false,
+    containsSyntheticMedia: true,
+  },
+} as const;
+
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
@@ -92,6 +108,7 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
       renders: [],
       jobs: [],
       youtubeMetadata: null,
+      youtubeUpload: null,
     }),
     updateProject: async () => project,
     assertProjectCanDelete: async () => true,
@@ -115,6 +132,8 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
       scenesStaleImage: [],
       scenesStaleAudio: [],
     }),
+    buildYoutubeUploadJobInput: async () => youtubeJob.input,
+    getYoutubeAuthStatus: async () => ({ connected: true }),
     ...overrides,
   };
 }
@@ -152,6 +171,90 @@ describe("createApp", () => {
       ok: true,
       service: "short-workflow-api",
     });
+  });
+
+  test("returns YouTube auth status without exposing tokens", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+      youtubeServices: {
+        getYoutubeAuthStatus: async () => ({ connected: true }),
+        createYoutubeAuthUrl: async () => ({
+          authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        }),
+        handleYoutubeOAuthCallback: async () => {},
+        disconnectYoutube: async () => ({ disconnected: true }),
+      },
+    });
+
+    const response = await app.handle(request("/youtube/auth/status"));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: true });
+  });
+
+  test("creates a YouTube auth URL", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+      youtubeServices: {
+        getYoutubeAuthStatus: async () => ({ connected: false }),
+        createYoutubeAuthUrl: async () => ({
+          authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=abc",
+        }),
+        handleYoutubeOAuthCallback: async () => {},
+        disconnectYoutube: async () => ({ disconnected: true }),
+      },
+    });
+
+    const response = await app.handle(request("/youtube/auth/start", { method: "POST" }));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=abc",
+    });
+  });
+
+  test("maps missing YouTube OAuth env to conflict", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+      youtubeServices: {
+        getYoutubeAuthStatus: async () => ({ connected: false }),
+        createYoutubeAuthUrl: async () => {
+          throw new Error("youtube_oauth_not_configured");
+        },
+        handleYoutubeOAuthCallback: async () => {},
+        disconnectYoutube: async () => ({ disconnected: true }),
+      },
+    });
+
+    const response = await app.handle(request("/youtube/auth/start", { method: "POST" }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "youtube_oauth_not_configured" });
+  });
+
+  test("maps YouTube OAuth callback failure to bad request", async () => {
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices(),
+      youtubeServices: {
+        getYoutubeAuthStatus: async () => ({ connected: false }),
+        createYoutubeAuthUrl: async () => ({
+          authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+        }),
+        handleYoutubeOAuthCallback: async () => {
+          throw new Error("youtube_oauth_state_invalid");
+        },
+        disconnectYoutube: async () => ({ disconnected: true }),
+      },
+    });
+
+    const response = await app.handle(request("/youtube/oauth/callback?code=abc&state=bad"));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "youtube_oauth_callback_failed" });
   });
 
   test("returns concise validation issues for invalid project creation", async () => {
@@ -395,6 +498,123 @@ describe("createApp", () => {
       error: "render_preconditions_failed",
       details: report,
     });
+    expect(createdJob).toBe(false);
+  });
+
+  test("returns conflict when YouTube is not connected", async () => {
+    let createdJob = false;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({ connected: false }),
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "youtube_not_connected" });
+    expect(createdJob).toBe(false);
+  });
+
+  test("returns an existing active YouTube upload before auth and precondition checks", async () => {
+    let checkedAuth = false;
+    let builtInput = false;
+    let createdJob = false;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        listProjectJobs: async () => [youtubeJob],
+        getYoutubeAuthStatus: async () => {
+          checkedAuth = true;
+          return { connected: false };
+        },
+        buildYoutubeUploadJobInput: async () => {
+          builtInput = true;
+          return youtubeJob.input;
+        },
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: youtubeJob.id,
+      type: "upload_youtube",
+    });
+    expect(checkedAuth).toBe(false);
+    expect(builtInput).toBe(false);
+    expect(createdJob).toBe(false);
+  });
+
+  test("queues a private YouTube upload job", async () => {
+    let receivedInput: unknown;
+    const uploadInput = youtubeJob.input;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({ connected: true }),
+        buildYoutubeUploadJobInput: async () => uploadInput,
+        createJobIdempotent: async (_db, input) => {
+          receivedInput = input;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: youtubeJob.id,
+      type: "upload_youtube",
+    });
+    expect(receivedInput).toEqual({
+      projectId: project.id,
+      sceneId: null,
+      type: "upload_youtube",
+      input: uploadInput,
+      maxAttempts: 1,
+    });
+  });
+
+  test("returns upload precondition errors before queueing YouTube upload", async () => {
+    let createdJob = false;
+    const app = createApp({
+      db: {} as never,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({ connected: true }),
+        buildYoutubeUploadJobInput: async () => {
+          throw new Error("youtube_upload_preconditions_failed:render");
+        },
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "youtube_upload_preconditions_failed" });
     expect(createdJob).toBe(false);
   });
 

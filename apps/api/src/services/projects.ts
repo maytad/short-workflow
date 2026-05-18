@@ -14,7 +14,7 @@ import {
   type JobRow,
   type SceneRow,
 } from "@short-workflow/db";
-import { youtubeMetadataSchema } from "@short-workflow/shared";
+import { youtubeMetadataSchema, youtubeUploadJobOutputSchema } from "@short-workflow/shared";
 
 import { parseEnv } from "../env";
 import { listProjectJobs } from "./jobs";
@@ -120,6 +120,7 @@ export async function getProjectDetail(db: DbClient, projectId: string) {
     renders,
     jobs,
     youtubeMetadata: latestYoutubeMetadata(jobs),
+    youtubeUpload: latestYoutubeUpload(jobs),
   };
 }
 
@@ -143,8 +144,69 @@ function latestYoutubeMetadata(jobs: JobRow[]) {
   return null;
 }
 
+function latestYoutubeUpload(jobs: JobRow[]) {
+  const job = jobs.find((candidate) => candidate.type === "upload_youtube");
+  if (!job) {
+    return null;
+  }
+
+  const parsedOutput = youtubeUploadJobOutputSchema.safeParse(job.output);
+
+  return {
+    jobId: job.id,
+    status: job.status,
+    youtubeVideoId: parsedOutput.success ? parsedOutput.data.youtubeVideoId : null,
+    youtubeStudioUrl: parsedOutput.success ? parsedOutput.data.youtubeStudioUrl : null,
+    privacyStatus: parsedOutput.success ? parsedOutput.data.privacyStatus : null,
+    uploadedAt: parsedOutput.success ? parsedOutput.data.uploadedAt : null,
+    errorMessage: job.errorMessage,
+    createdAt: job.createdAt.toISOString(),
+    updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
 function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export async function buildYoutubeUploadJobInput(db: DbClient, projectId: string) {
+  const [renders, assets, jobs] = await Promise.all([
+    listProjectRenders(db, projectId),
+    listProjectAssets(db, projectId),
+    listProjectJobs(db, projectId),
+  ]);
+
+  const metadata = latestYoutubeMetadata(jobs);
+  if (!metadata) {
+    throw new Error("youtube_upload_preconditions_failed:metadata");
+  }
+
+  const latestSucceededRender = renders.find((render) => render.status === "succeeded");
+  if (!latestSucceededRender?.outputAssetId) {
+    throw new Error("youtube_upload_preconditions_failed:render");
+  }
+
+  const outputAsset = assets.find(
+    (asset) =>
+      asset.id === latestSucceededRender.outputAssetId &&
+      asset.kind === "render" &&
+      asset.status === "ready" &&
+      asset.storageDriver === "local",
+  );
+  if (!outputAsset) {
+    throw new Error("youtube_upload_preconditions_failed:render_asset");
+  }
+
+  return {
+    renderId: latestSucceededRender.id,
+    outputAssetId: outputAsset.id,
+    title: metadata.youtubeTitle,
+    description: metadata.description,
+    tags: metadata.hashtags.map((tag) => tag.replace(/^#+/, "")),
+    privacyStatus: "private" as const,
+    selfDeclaredMadeForKids: false as const,
+    containsSyntheticMedia: true as const,
+  };
 }
 
 export async function buildRenderPreconditionReport(

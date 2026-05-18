@@ -128,6 +128,54 @@ export const youtubeMetadataSchema = z
   })
   .strict();
 
+export const youtubeAuthStatusSchema = z
+  .object({
+    connected: z.boolean(),
+  })
+  .strict();
+
+export const youtubeAuthStartResponseSchema = z
+  .object({
+    authUrl: z.url(),
+  })
+  .strict();
+
+export const youtubeUploadJobInputSchema = z
+  .object({
+    renderId: uuidSchema,
+    outputAssetId: uuidSchema,
+    title: z.string().trim().min(1).max(100),
+    description: z.string().trim().min(1),
+    tags: z.array(z.string().trim().min(1)).max(20),
+    privacyStatus: z.literal("private"),
+    selfDeclaredMadeForKids: z.literal(false),
+    containsSyntheticMedia: z.literal(true),
+  })
+  .strict();
+
+export const youtubeUploadJobOutputSchema = z
+  .object({
+    youtubeVideoId: z.string().min(1),
+    youtubeStudioUrl: z.url(),
+    privacyStatus: z.literal("private"),
+    uploadedAt: isoDateSchema,
+  })
+  .strict();
+
+export const youtubeUploadSummarySchema = z
+  .object({
+    jobId: uuidSchema,
+    status: jobStatusSchema,
+    youtubeVideoId: z.string().min(1).nullable(),
+    youtubeStudioUrl: z.url().nullable(),
+    privacyStatus: z.literal("private").nullable(),
+    uploadedAt: nullableIsoDateSchema,
+    errorMessage: nullableStringSchema,
+    createdAt: isoDateSchema,
+    updatedAt: isoDateSchema,
+  })
+  .strict();
+
 export const renderSchema = z
   .object({
     id: uuidSchema,
@@ -152,3 +200,8 @@ export type Asset = z.infer<typeof assetSchema>;
 export type Job = z.infer<typeof jobSchema>;
 export type Render = z.infer<typeof renderSchema>;
 export type YoutubeMetadata = z.infer<typeof youtubeMetadataSchema>;
+export type YoutubeAuthStatus = z.infer<typeof youtubeAuthStatusSchema>;
+export type YoutubeAuthStartResponse = z.infer<typeof youtubeAuthStartResponseSchema>;
+export type YoutubeUploadJobInput = z.infer<typeof youtubeUploadJobInputSchema>;
+export type YoutubeUploadJobOutput = z.infer<typeof youtubeUploadJobOutputSchema>;
+export type YoutubeUploadSummary = z.infer<typeof youtubeUploadSummarySchema>;

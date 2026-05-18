@@ -4,6 +4,7 @@ import { handleGenerateSceneAudio } from "./generateSceneAudio";
 import { handleGenerateSceneImage } from "./generateSceneImage";
 import { handleGenerateScript } from "./generateScript";
 import { handleRenderVideo } from "./renderVideo";
+import { handleUploadYoutube } from "./uploadYoutube";
 
 export async function handleJob(db: DbClient, job: JobRow): Promise<void> {
   switch (job.type) {
@@ -18,6 +19,9 @@ export async function handleJob(db: DbClient, job: JobRow): Promise<void> {
       break;
     case "render_video":
       await handleRenderVideo(db, job);
+      break;
+    case "upload_youtube":
+      await handleUploadYoutube(db, job);
       break;
     default: {
       const exhaustiveJobType: never = job.type;

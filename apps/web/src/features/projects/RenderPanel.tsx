@@ -1,17 +1,34 @@
-import type { Asset, Job, Render, RenderPreconditionError } from "@short-workflow/shared";
+import type {
+  Asset,
+  Job,
+  Render,
+  RenderPreconditionError,
+  YoutubeMetadata,
+  YoutubeUploadSummary,
+} from "@short-workflow/shared";
 import { renderPreconditionErrorSchema } from "@short-workflow/shared";
-import { AlertTriangle, Check, Film, FolderOpen, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, ExternalLink, Film, FolderOpen, Loader2, Youtube } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "../../api/client";
 import { assetPreviewUrl } from "./assetUrls";
 import { useRenderProjectMutation, useRevealAssetMutation } from "./hooks";
+import { YoutubeUploadDialog } from "./YoutubeUploadDialog";
 
 type RenderPanelProps = {
   activeJobs: Job[];
   assets: Asset[];
   projectId: string;
   renders: Render[];
+  youtubeMetadata: YoutubeMetadata | null;
+  youtubeUpload: YoutubeUploadSummary | null;
+};
+
+type CanUploadYoutubeInput = {
+  activeUploadJob: Job | null | undefined;
+  latestRender: Render | null | undefined;
+  outputAsset: Asset | null | undefined;
+  youtubeMetadata: YoutubeMetadata | null | undefined;
 };
 
 export function getRenderPreconditionMessages(error: RenderPreconditionError) {
@@ -56,8 +73,32 @@ function getRenderOutputAsset(assets: Asset[], render: Render | undefined) {
   );
 }
 
-export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPanelProps) {
+export function canUploadYoutube({
+  activeUploadJob,
+  latestRender,
+  outputAsset,
+  youtubeMetadata,
+}: CanUploadYoutubeInput) {
+  return (
+    latestRender?.status === "succeeded" &&
+    outputAsset !== null &&
+    outputAsset !== undefined &&
+    youtubeMetadata !== null &&
+    youtubeMetadata !== undefined &&
+    !activeUploadJob
+  );
+}
+
+export function RenderPanel({
+  activeJobs,
+  assets,
+  projectId,
+  renders,
+  youtubeMetadata,
+  youtubeUpload,
+}: RenderPanelProps) {
   const [acknowledged, setAcknowledged] = useState(false);
+  const [youtubeDialogOpen, setYoutubeDialogOpen] = useState(false);
   const renderMutation = useRenderProjectMutation(projectId);
   const revealAsset = useRevealAssetMutation();
   const latestRender = getLatestRender(renders);
@@ -65,8 +106,19 @@ export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPa
     (job) =>
       job.type === "render_video" && (job.status === "pending" || job.status === "processing"),
   );
+  const activeUploadJob =
+    activeJobs.find(
+      (job) =>
+        job.type === "upload_youtube" && (job.status === "pending" || job.status === "processing"),
+    ) ?? null;
   const preconditionError = parseRenderPrecondition(renderMutation.error);
   const outputAsset = getRenderOutputAsset(assets, latestRender);
+  const uploadAllowed = canUploadYoutube({
+    activeUploadJob,
+    latestRender,
+    outputAsset,
+    youtubeMetadata,
+  });
 
   return (
     <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -158,19 +210,37 @@ export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPa
             <p className="min-w-0 break-words text-xs text-muted-foreground">
               Output: <span className="font-medium text-foreground">{outputAsset.path}</span>
             </p>
-            <button
-              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={revealAsset.isPending}
-              onClick={() => revealAsset.mutate(outputAsset.id)}
-              type="button"
-            >
-              {revealAsset.isPending ? (
-                <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
-              ) : (
-                <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
-              )}
-              Open folder
-            </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={revealAsset.isPending}
+                onClick={() => revealAsset.mutate(outputAsset.id)}
+                type="button"
+              >
+                {revealAsset.isPending ? (
+                  <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                ) : (
+                  <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
+                )}
+                Open folder
+              </button>
+
+              {youtubeMetadata ? (
+                <button
+                  className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!uploadAllowed}
+                  onClick={() => setYoutubeDialogOpen(true)}
+                  type="button"
+                >
+                  {activeUploadJob ? (
+                    <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Youtube className="size-4 shrink-0" aria-hidden="true" />
+                  )}
+                  {activeUploadJob ? "Uploading to YouTube" : "Upload to YouTube"}
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {revealAsset.error ? (
@@ -178,7 +248,39 @@ export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPa
               Folder could not be opened.
             </p>
           ) : null}
+
+          {youtubeUpload?.youtubeVideoId && youtubeUpload.youtubeStudioUrl ? (
+            <div className="mt-3 rounded-md border border-border bg-background p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate font-medium">Uploaded privately to YouTube</span>
+                <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs capitalize text-muted-foreground">
+                  {youtubeUpload.privacyStatus ?? "private"}
+                </span>
+              </div>
+              <p className="mt-1 break-words text-xs text-muted-foreground">
+                Video ID: {youtubeUpload.youtubeVideoId}
+              </p>
+              <a
+                className="mt-2 inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                href={youtubeUpload.youtubeStudioUrl}
+                rel="noreferrer"
+                target="_blank"
+              >
+                <span className="truncate">Open in YouTube Studio</span>
+                <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+              </a>
+            </div>
+          ) : null}
         </div>
+      ) : null}
+
+      {youtubeDialogOpen && outputAsset && youtubeMetadata ? (
+        <YoutubeUploadDialog
+          metadata={youtubeMetadata}
+          onClose={() => setYoutubeDialogOpen(false)}
+          outputAsset={outputAsset}
+          projectId={projectId}
+        />
       ) : null}
     </section>
   );

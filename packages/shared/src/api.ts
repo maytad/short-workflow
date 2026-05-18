@@ -9,6 +9,7 @@ import {
   renderSchema,
   sceneSchema,
   youtubeMetadataSchema,
+  youtubeUploadSummarySchema,
   uuidSchema,
 } from "./schemas";
 
@@ -51,6 +52,7 @@ export const projectDetailResponseSchema = z
     renders: z.array(renderSchema),
     jobs: z.array(jobSchema),
     youtubeMetadata: youtubeMetadataSchema.nullable(),
+    youtubeUpload: youtubeUploadSummarySchema.nullable(),
   })
   .strict();
 

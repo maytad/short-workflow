@@ -12,4 +12,7 @@ export const queryKeys = {
     renders: (projectId: string) => [...queryKeys.projects.detail(projectId), "renders"] as const,
     scenes: (projectId: string) => [...queryKeys.projects.detail(projectId), "scenes"] as const,
   },
+  youtube: {
+    authStatus: ["youtube", "auth-status"] as const,
+  },
 };

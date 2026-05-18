@@ -28,6 +28,7 @@ import { conflict, internalError, jsonError, notFound, validationFailed } from "
 import {
   assertProjectCanDelete,
   buildRenderPreconditionReport,
+  buildYoutubeUploadJobInput,
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
@@ -35,6 +36,7 @@ import {
   revealAssetFile,
 } from "../services/projects";
 import { listProjectJobs } from "../services/jobs";
+import { createYoutubeAuthServices } from "../services/youtubeAuth";
 
 type StatusSetter = {
   status?: number | string;
@@ -87,10 +89,16 @@ export type ProjectRouteServices = {
   retryFailedJob: typeof retryFailedJob;
   acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
   buildRenderPreconditionReport: typeof buildRenderPreconditionReport;
+  buildYoutubeUploadJobInput: typeof buildYoutubeUploadJobInput;
+  getYoutubeAuthStatus?: ReturnType<typeof createYoutubeAuthServices>["getYoutubeAuthStatus"];
   getAsset?: typeof getAsset;
   readAssetFile?: typeof readAssetFile;
   revealAssetFile?: typeof revealAssetFile;
 };
+
+async function defaultYoutubeAuthStatus() {
+  return createYoutubeAuthServices().getYoutubeAuthStatus();
+}
 
 const defaultServices: ProjectRouteServices = {
   listProjects,
@@ -111,6 +119,8 @@ const defaultServices: ProjectRouteServices = {
   retryFailedJob,
   acknowledgeRenderDisclosure,
   buildRenderPreconditionReport,
+  buildYoutubeUploadJobInput,
+  getYoutubeAuthStatus: defaultYoutubeAuthStatus,
   getAsset,
   readAssetFile,
   revealAssetFile,
@@ -281,6 +291,47 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
             type: "render_video",
             input: { projectId: project.id },
           });
+        })
+        .post("/:projectId/youtube-upload", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const project = await services.getProject(db, projectId);
+
+          if (!project) {
+            return notFound(set);
+          }
+
+          const activeUploadJob = (
+            await services.listProjectJobs(db, project.id, "active")
+          ).find((job) => job.type === "upload_youtube");
+          if (activeUploadJob) {
+            return activeUploadJob;
+          }
+
+          const authStatus = await (services.getYoutubeAuthStatus ?? defaultYoutubeAuthStatus)();
+          if (!authStatus.connected) {
+            return conflict(set, "youtube_not_connected");
+          }
+
+          try {
+            const input = await services.buildYoutubeUploadJobInput(db, project.id);
+            return services.createJobIdempotent(db, {
+              projectId: project.id,
+              sceneId: null,
+              type: "upload_youtube",
+              input,
+              maxAttempts: 1,
+            });
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              error.message.startsWith("youtube_upload_preconditions_failed")
+            ) {
+              return jsonError(set, 422, "youtube_upload_preconditions_failed");
+            }
+
+            throw error;
+          }
         }),
     )
     .get("/assets/:assetId/file", async (context) => {

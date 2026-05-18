@@ -214,6 +214,8 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
           assets={detail.assets}
           projectId={projectId}
           renders={detail.renders}
+          youtubeMetadata={detail.youtubeMetadata}
+          youtubeUpload={detail.youtubeUpload}
         />
       </aside>
     </div>

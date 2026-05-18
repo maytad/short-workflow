@@ -11,3 +11,7 @@ export function assetPreviewUrl(asset: AssetRef) {
 export function assetRevealUrl(asset: AssetRef) {
   return new URL(`/assets/${asset.id}/reveal`, API_BASE_URL).toString();
 }
+
+export function youtubeStudioUrl(videoId: string) {
+  return `https://studio.youtube.com/video/${encodeURIComponent(videoId)}/edit`;
+}
