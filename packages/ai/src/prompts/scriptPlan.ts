@@ -224,7 +224,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 5,
+  version: 6,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -262,14 +262,20 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "Create one focused micro-documentary episode from the selected seed. The final script should feel specific, concrete, and immediately understandable to a curious general audience.",
             "Every scene must earn its time with either curiosity, mechanism clarity, visual evidence, payoff, or a loop-back ending.",
+            "Start from the viewer-facing behavior before naming the mechanism.",
+            "Write for people who recognize the everyday object, not for engineers, repair technicians, or tool collectors.",
+            "Use the selected audienceContext, nativeSetting, hookEmotion, and avoidVisualSetting as creative constraints.",
+            "Do not default to a workshop, repair bench, dark tabletop, or tool tutorial unless the selected nativeSetting explicitly requires it.",
+            "When the seed is a tool, frame the hook around sound, surprise, resistance, speed, snap, or one-way behavior rather than repair steps.",
+            "The hook should create a small emotional reason to keep watching: surprise, tension, disbelief, relief, or satisfying completion.",
             "Use the selected mechanical episode concept fields directly. Do not drift into a broad everyday-science explainer.",
             "Open with the misconception, impossible-looking behavior, or satisfying action already happening.",
-            "Do not use a generic \"inside this object\" opening unless the selected title angle requires it.",
+            'Do not use a generic "inside this object" opening unless the selected title angle requires it.',
             "The hook and payoff must be connected by the selected loopPayoff.",
             "At least one point scene must reveal the named mechanism through the selected visualReveal.",
             "Narration should include the selected satisfyingMotion as concrete verbs where natural.",
             "Do not over-explain the entire object. Explain the selected mechanism only.",
-            "Avoid repeating generic sentence shapes such as \"This works because\" and \"Inside, there is\".",
+            'Avoid repeating generic sentence shapes such as "This works because" and "Inside, there is".',
             "",
             "# Pacing Rules",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
@@ -286,6 +292,8 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Hook image prompts must show the phenomenon already happening, not a calm setup before it happens.",
             "Point scene image prompts must show the mechanism through macro detail, object cutaway, cause/effect, frozen motion, scale shock, or a physical metaphor.",
             "Prefer real-world objects, hands, silhouettes, tabletop demonstrations, macro textures, and physically readable cause/effect over abstract floating diagrams.",
+            "Prefer the selected nativeSetting over generic tabletop demonstrations.",
+            "If the selected avoidVisualSetting names a workbench, repair bench, tutorial, or tool catalog shot, avoid that framing in every scene imagePrompt and visualBrief.",
             "",
             "# Safety and Scope",
             "Do not invent a new topic. Use the selected seed exactly.",
@@ -307,6 +315,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             `<seed_id>${seed.seedId}</seed_id>`,
             `<central_question>${seed.centralQuestion}</central_question>`,
             `<mechanism_family>${seed.mechanismFamily}</mechanism_family>`,
+            `<appeal_tier>${seed.appealTier}</appeal_tier>`,
             `<object_or_mechanism>${seed.objectOrMechanism}</object_or_mechanism>`,
             `<title_angle>${seed.titleAngle}</title_angle>`,
             `<viewer_misconception>${seed.viewerMisconception}</viewer_misconception>`,
@@ -315,6 +324,10 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             `<visual_reveal>${seed.visualReveal}</visual_reveal>`,
             `<loop_payoff>${seed.loopPayoff}</loop_payoff>`,
             `<visual_metaphor>${seed.visualMetaphor}</visual_metaphor>`,
+            `<audience_context>${seed.audienceContext}</audience_context>`,
+            `<native_setting>${seed.nativeSetting}</native_setting>`,
+            `<hook_emotion>${seed.hookEmotion}</hook_emotion>`,
+            `<avoid_visual_setting>${seed.avoidVisualSetting}</avoid_visual_setting>`,
             `Return exactly ${roles.length} scenes in this role order.`,
           ].join("\n"),
         },
@@ -359,13 +372,13 @@ function hasExpectedScenePlan(
 export function defaultProjectStyleContext(): ProjectStyleContext {
   return {
     visualStyle:
-      "social-native vertical macro mechanism frames with real objects, cutaways, transparent housings, springs, cams, latches, gears, pawls, tracks, levers, valves, and tactile material texture",
+      "social-native vertical hidden-mechanism frames with familiar everyday objects, native settings, clear motion, selective macro cutaways, transparent housings only when useful, and tactile material texture",
     tone: "clear, curious, precise, lightly dramatic, and never generic",
     pacing: "brisk but intelligible short-form narration with a satisfying mechanical reveal",
     colorAndLighting:
       "high contrast, bright mobile-readable subject separation, tactile real-world texture, metallic and plastic detail, and clean caption-safe negative space",
     imageContinuity:
-      "consistent mechanical micro-documentary language with one dominant object, one readable mechanism, and one satisfying motion beat per scene",
+      "consistent audience-first micro-documentary language with one familiar object, one strange behavior, one readable mechanism, and one satisfying motion beat per scene",
     voiceDirection: "warm documentary narrator with crisp articulation and a clean loop payoff",
   };
 }

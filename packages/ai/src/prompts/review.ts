@@ -3,7 +3,11 @@ import { getTinyMechanismsSeed, TINY_MECHANISMS_PRESET_ID } from "./presets/tiny
 import { scriptPlanPrompt } from "./scriptPlan";
 import { ttsPromptTemplate } from "./ttsPrompt";
 
-const reviewSeedIds = ["click_pen_cam_lock", "watch_escapement_ticks", "spray_bottle_check_valves"];
+const reviewSeedIds = [
+  "spray_bottle_check_valves",
+  "pullback_toy_spring_motor",
+  "ratchet_screwdriver_pawl",
+];
 
 const reviews = reviewSeedIds.map((seedId, index) => {
   const seed = getTinyMechanismsSeed(seedId);
@@ -49,6 +53,13 @@ const reviews = reviewSeedIds.map((seedId, index) => {
 
   return {
     seed,
+    editorial: {
+      appealTier: seed.appealTier,
+      audienceContext: seed.audienceContext,
+      nativeSetting: seed.nativeSetting,
+      hookEmotion: seed.hookEmotion,
+      avoidVisualSetting: seed.avoidVisualSetting,
+    },
     script,
     image,
     tts,

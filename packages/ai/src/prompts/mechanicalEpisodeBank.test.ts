@@ -64,15 +64,42 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(5);
+    expect(compiled.templateVersion).toBe(6);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
-    expect(developerMessage).toContain("Do not use a generic \"inside this object\" opening");
+    expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
     expect(userMessage).toContain("<mechanism_family>spring_locking</mechanism_family>");
-    expect(userMessage).toContain("<object_or_mechanism>click pen cam and spring</object_or_mechanism>");
-    expect(userMessage).toContain("<viewer_misconception>The spring is doing all the clever work.</viewer_misconception>");
-    expect(userMessage).toContain("<satisfying_motion>press, rotate, lock, release</satisfying_motion>");
-    expect(userMessage).toContain("<visual_reveal>macro cutaway of the cam track stepping into the next notch</visual_reveal>");
-    expect(userMessage).toContain("<loop_payoff>That click is not just a button. It remembers the last press.</loop_payoff>");
+    expect(userMessage).toContain("<appeal_tier>mass_appeal</appeal_tier>");
+    expect(userMessage).toContain(
+      "<object_or_mechanism>click pen cam and spring</object_or_mechanism>",
+    );
+    expect(userMessage).toContain(
+      "<viewer_misconception>The spring is doing all the clever work.</viewer_misconception>",
+    );
+    expect(userMessage).toContain(
+      "<satisfying_motion>press, rotate, lock, release</satisfying_motion>",
+    );
+    expect(userMessage).toContain(
+      "<visual_reveal>macro cutaway of the cam track stepping into the next notch</visual_reveal>",
+    );
+    expect(userMessage).toContain(
+      "<loop_payoff>That click is not just a button. It remembers the last press.</loop_payoff>",
+    );
+    expect(userMessage).toContain("<audience_context>Anyone who has clicked a pen");
+    expect(userMessage).toContain(
+      "<native_setting>a desk, notebook, pocket, or hand-held writing moment</native_setting>",
+    );
+    expect(userMessage).toContain(
+      "<hook_emotion>surprise that the same press has mechanical memory</hook_emotion>",
+    );
+    expect(userMessage).toContain(
+      "<avoid_visual_setting>dark repair workbench or generic tool demonstration</avoid_visual_setting>",
+    );
+    expect(developerMessage).toContain(
+      "Start from the viewer-facing behavior before naming the mechanism",
+    );
+    expect(developerMessage).toContain(
+      "Do not default to a workshop, repair bench, dark tabletop, or tool tutorial",
+    );
   });
 
   test("compiled image prompt emphasizes physical mechanism materiality", () => {
@@ -91,14 +118,18 @@ describe("mechanical episode bank", () => {
         narration: "One click locks the pen. The next click unlocks it.",
         caption: "One click remembers.",
         imagePrompt: "a click pen split open to reveal a rotating cam, spring, and refill",
-        visualBrief: "The viewer sees that the click is caused by a cam stepping into a new locked position.",
+        visualBrief:
+          "The viewer sees that the click is caused by a cam stepping into a new locked position.",
         visualHookArchetype: "reveal_cutaway",
       },
     });
 
-    expect(compiled.templateVersion).toBe(4);
+    expect(compiled.templateVersion).toBe(5);
     expect(compiled.prompt).toContain("MECHANICAL MATERIALITY");
-    expect(compiled.prompt).toContain("springs, pins, gears, pawls, ratchets, cams, levers, tracks, valves");
+    expect(compiled.prompt).toContain("Prefer the natural everyday setting implied by the scene");
+    expect(compiled.prompt).toContain(
+      "Do not default to a workshop, repair bench, dark tabletop, tool catalog shot, or teardown layout",
+    );
     expect(compiled.prompt).toContain("Show one readable mechanism per frame");
   });
 });

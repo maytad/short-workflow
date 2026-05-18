@@ -36,7 +36,7 @@ export type CompiledImagePrompt = CompiledPrompt & {
 
 export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImagePrompt> = {
   id: "tiny_mechanisms_scene_image_prompt",
-  version: 4,
+  version: 5,
   purpose: "image_prompt",
   provider: "openai",
   compile(input) {
@@ -81,17 +81,19 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       "Use a clear vertical hierarchy: hook subject in the upper/middle frame, caption-safe negative space in the lower 25-30%.",
       "Keep critical details away from the top, bottom, and right-side platform UI areas.",
       "Use strong foreground/midground/background separation, but keep the image simple enough to read at thumbnail size.",
-      "Prefer hands interacting with objects, macro close-ups, cutaways, before/after contrast, frozen motion, or scale-shock compositions when they clarify the mechanism.",
+      "Prefer hands interacting with the object in its natural everyday setting, macro close-ups, selective cutaways, before/after contrast, frozen motion, or scale-shock compositions when they clarify the mechanism.",
       "",
       "MECHANICAL MATERIALITY",
-      "Show one readable mechanism per frame, not a general object collage.",
-      "Prefer macro cutaways, transparent housings, exploded-but-physically-plausible views, tabletop demonstrations, and frozen motion when they clarify how the mechanism works.",
-      "Use tactile materials and parts when relevant: steel, brass, plastic, rubber, springs, pins, gears, pawls, ratchets, cams, levers, tracks, valves, screws, hinges, bearings, and textured surfaces.",
-      "Make the mechanism feel small, precise, and physically possible.",
+      "Show one readable mechanism per frame, anchored to a familiar object or setting.",
+      "Prefer the natural everyday setting implied by the scene before using a tabletop demonstration.",
+      "Use macro cutaways, transparent housings, exploded-but-physically-plausible views, and frozen motion only when they clarify how the mechanism works.",
+      "Use tactile materials and parts when relevant: plastic, rubber, fabric, paper, water, springs, pins, gears, pawls, ratchets, cams, levers, tracks, valves, screws, hinges, bearings, and textured surfaces.",
+      "Make the mechanism feel small, precise, physically possible, and connected to a recognizable everyday moment.",
+      "Do not default to a workshop, repair bench, dark tabletop, tool catalog shot, or teardown layout unless those are explicitly part of the scene.",
       "Avoid abstract floating science diagrams when a real physical mechanism can be shown.",
       "",
       "CAMERA AND LIGHT",
-      "Use a specific camera viewpoint: extreme macro, close-up, low-angle detail, top-down tabletop demo, or clean cutaway view.",
+      "Use a specific camera viewpoint: extreme macro, close-up, low-angle detail, native-setting detail shot, or clean cutaway view.",
       "Use bright high-contrast lighting, sharp focus on the key object, tactile real-world texture, and readable silhouettes.",
       "",
       "STYLE",
@@ -103,7 +105,7 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       "",
       "CONSTRAINTS",
       "No embedded text, captions, labels, arrows with words, watermarks, logos, UI, fake screenshots, public figures, or deceptive real-event imagery.",
-      "Do not create abstract floating concept art or generic sci-fi machinery when the selected mechanism can be shown with a real object, cutaway, transparent housing, or tabletop demonstration.",
+      "Do not create abstract floating concept art or generic sci-fi machinery when the selected mechanism can be shown with a real object, native setting, cutaway, or transparent housing.",
     ].join("\n");
 
     return {
