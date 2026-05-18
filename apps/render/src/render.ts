@@ -58,7 +58,7 @@ const stageAsset = async ({
   sceneId,
 }: {
   assetPath: string;
-  kind: "audio" | "image";
+  kind: "audio" | "image" | "caption_timing";
   publicDir: string;
   sceneId: string;
 }) => {
@@ -87,21 +87,37 @@ export const stageRenderInputAssets = async (
 ): Promise<RenderInput> => ({
   ...renderInput,
   scenes: await Promise.all(
-    renderInput.scenes.map(async (scene) => ({
-      ...scene,
-      audioPath: await stageAsset({
-        assetPath: scene.audioPath,
-        kind: "audio",
-        publicDir,
-        sceneId: scene.id,
-      }),
-      imagePath: await stageAsset({
-        assetPath: scene.imagePath,
-        kind: "image",
-        publicDir,
-        sceneId: scene.id,
-      }),
-    })),
+    renderInput.scenes.map(async (scene) => {
+      const stagedScene = {
+        ...scene,
+        audioPath: await stageAsset({
+          assetPath: scene.audioPath,
+          kind: "audio",
+          publicDir,
+          sceneId: scene.id,
+        }),
+        imagePath: await stageAsset({
+          assetPath: scene.imagePath,
+          kind: "image",
+          publicDir,
+          sceneId: scene.id,
+        }),
+      };
+
+      if (scene.captionTimingPath) {
+        return {
+          ...stagedScene,
+          captionTimingPath: await stageAsset({
+            assetPath: scene.captionTimingPath,
+            kind: "caption_timing",
+            publicDir,
+            sceneId: scene.id,
+          }),
+        };
+      }
+
+      return stagedScene;
+    }),
   ),
 });
 

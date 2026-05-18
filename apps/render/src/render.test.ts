@@ -12,7 +12,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })));
 });
 
-const makeInput = (imagePath: string, audioPath: string): RenderInput => ({
+const makeInput = (imagePath: string, audioPath: string, captionTimingPath?: string): RenderInput => ({
   projectId: "00000000-0000-4000-8000-000000000030",
   title: "Stage Test",
   format: {
@@ -31,6 +31,7 @@ const makeInput = (imagePath: string, audioPath: string): RenderInput => ({
       caption: "Stage test",
       imagePath,
       audioPath,
+      ...(captionTimingPath !== undefined ? { captionTimingPath } : {}),
     },
   ],
 });
@@ -63,5 +64,59 @@ describe("stageRenderInputAssets", () => {
     await expect(readFile(path.join(publicDir, stagedScene.audioPath), "utf8")).resolves.toBe(
       "audio",
     );
+  });
+
+  test("stages caption timing JSON and rewrites captionTimingPath", async () => {
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "render-source-"));
+    const publicDir = await mkdtemp(path.join(os.tmpdir(), "render-public-"));
+    tempDirs.push(sourceDir, publicDir);
+
+    const imagePath = path.join(sourceDir, "scene.png");
+    const audioPath = path.join(sourceDir, "scene.mp3");
+    const captionTimingPath = path.join(sourceDir, "scene.json");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(imagePath, "image");
+    await writeFile(audioPath, "audio");
+    await writeFile(captionTimingPath, '{"version":1}');
+
+    const staged = await stageRenderInputAssets(
+      makeInput(imagePath, audioPath, captionTimingPath),
+      publicDir,
+    );
+    const stagedScene = staged.scenes[0];
+
+    expect(stagedScene).toBeDefined();
+    if (!stagedScene) {
+      throw new Error("Expected staged scene");
+    }
+
+    expect(stagedScene.captionTimingPath).toBe(
+      "assets/00000000-0000-4000-8000-000000000031-caption_timing.json",
+    );
+    await expect(
+      readFile(path.join(publicDir, stagedScene.captionTimingPath), "utf8"),
+    ).resolves.toBe('{"version":1}');
+  });
+
+  test("omits captionTimingPath when not provided", async () => {
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "render-source-"));
+    const publicDir = await mkdtemp(path.join(os.tmpdir(), "render-public-"));
+    tempDirs.push(sourceDir, publicDir);
+
+    const imagePath = path.join(sourceDir, "scene.png");
+    const audioPath = path.join(sourceDir, "scene.wav");
+    await mkdir(sourceDir, { recursive: true });
+    await writeFile(imagePath, "image");
+    await writeFile(audioPath, "audio");
+
+    const staged = await stageRenderInputAssets(makeInput(imagePath, audioPath), publicDir);
+    const stagedScene = staged.scenes[0];
+
+    expect(stagedScene).toBeDefined();
+    if (!stagedScene) {
+      throw new Error("Expected staged scene");
+    }
+
+    expect(stagedScene.captionTimingPath).toBeUndefined();
   });
 });
