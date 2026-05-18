@@ -845,60 +845,62 @@ function SceneVisual({
   );
 }
 
-function SceneVisualLayer({
-  durationInFrames,
-  previousDurationInFrames,
-  previousScene,
-  scene,
-  transitionInFrames,
-}: {
+type SceneTiming = {
   durationInFrames: number;
-  previousDurationInFrames?: number | undefined;
-  previousScene?: RenderInput["scenes"][number] | undefined;
   scene: RenderInput["scenes"][number];
-  transitionInFrames: number;
+  sequenceFrom: number;
+};
+
+function SceneVisualTrack({
+  sceneTimings,
+  transitionInFramesByScene,
+}: {
+  sceneTimings: readonly SceneTiming[];
+  transitionInFramesByScene: readonly number[];
 }) {
-  const frame = useCurrentFrame();
-  const opacity = getSceneVisualOpacity({ frame, transitionInFrames });
-  const shouldRenderPreviousVisual =
-    previousScene !== undefined &&
-    previousDurationInFrames !== undefined &&
-    transitionInFrames > 0 &&
-    frame <= transitionInFrames;
+  const absoluteFrame = useCurrentFrame();
 
   return (
     <div
       style={{
         backgroundColor: "#050505",
-        height: "100%",
-        opacity,
-        position: "relative",
-        width: "100%",
+        inset: 0,
+        position: "absolute",
       }}
     >
-      {shouldRenderPreviousVisual ? (
-        <div
-          style={{
-            inset: 0,
-            position: "absolute",
-          }}
-        >
-          <SceneVisual
-            durationInFrames={previousDurationInFrames}
-            frameOverride={Math.max(0, previousDurationInFrames - 1)}
-            scene={previousScene}
-          />
-        </div>
-      ) : null}
-      <div
-        style={{
-          inset: 0,
-          opacity,
-          position: "absolute",
-        }}
-      >
-        <SceneVisual durationInFrames={durationInFrames} scene={scene} />
-      </div>
+      {sceneTimings.map((timing, index) => {
+        const requestedTransitionFrames = transitionInFramesByScene[index] ?? 0;
+        const visualStartFrame = Math.max(0, timing.sequenceFrom - requestedTransitionFrames);
+        const transitionInFrames = timing.sequenceFrom - visualStartFrame;
+        const visualEndFrame = timing.sequenceFrom + timing.durationInFrames;
+
+        if (absoluteFrame < visualStartFrame || absoluteFrame >= visualEndFrame) {
+          return null;
+        }
+
+        const localFrame = Math.max(0, absoluteFrame - timing.sequenceFrom);
+        const opacity = getSceneVisualOpacity({
+          frame: absoluteFrame - visualStartFrame,
+          transitionInFrames,
+        });
+
+        return (
+          <div
+            key={`${timing.scene.id}-visual`}
+            style={{
+              inset: 0,
+              opacity,
+              position: "absolute",
+            }}
+          >
+            <SceneVisual
+              durationInFrames={timing.durationInFrames}
+              frameOverride={localFrame}
+              scene={timing.scene}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -938,37 +940,13 @@ export const ShortVideo = (props: RenderInput) => {
         height,
         backgroundColor: "#050505",
         overflow: "hidden",
+        position: "relative",
       }}
     >
-      {sceneTimings.map((timing, index) => {
-        const previousTiming = sceneTimings[index - 1];
-
-        return (
-          <Sequence
-            durationInFrames={timing.durationInFrames}
-            from={timing.sequenceFrom}
-            key={`${timing.scene.id}-visual`}
-            premountFor={transitionInFramesByScene[index] ?? 0}
-          >
-            <div
-              style={{
-                position: "relative",
-                width: "100%",
-                height: "100%",
-                backgroundColor: "#050505",
-              }}
-            >
-              <SceneVisualLayer
-                durationInFrames={timing.durationInFrames}
-                previousDurationInFrames={previousTiming?.durationInFrames}
-                previousScene={previousTiming?.scene}
-                scene={timing.scene}
-                transitionInFrames={transitionInFramesByScene[index] ?? 0}
-              />
-            </div>
-          </Sequence>
-        );
-      })}
+      <SceneVisualTrack
+        sceneTimings={sceneTimings}
+        transitionInFramesByScene={transitionInFramesByScene}
+      />
       {sceneTimings.map((timing) => (
         <Sequence
           durationInFrames={timing.durationInFrames}

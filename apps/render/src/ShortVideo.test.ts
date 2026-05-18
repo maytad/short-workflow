@@ -5,6 +5,8 @@ import {
   chunkWords,
   getSceneDurationFrames,
   getSceneMotionStyle,
+  getSceneVisualOpacity,
+  getSceneVisualTransitionFrames,
   getSubscribeLowerThirdState,
   getSubscribeLowerThirdWindow,
   getTotalDurationFrames,
@@ -104,6 +106,44 @@ describe("chunkWords", () => {
     const chunks = chunkWords(words, { target: 5, min: 4, max: 6 });
     expect(chunks[0]?.map((e) => e.index)).toEqual([0, 1, 2]);
     expect(chunks[1]?.map((e) => e.index)).toEqual([3]);
+  });
+});
+
+describe("scene visual transitions", () => {
+  test("uses a short visual crossfade without changing scene duration math", () => {
+    const transitionFrames = getSceneVisualTransitionFrames({
+      fps: 30,
+      nextDurationInFrames: 180,
+      previousDurationInFrames: 180,
+    });
+
+    expect(transitionFrames).toBe(9);
+    expect(getTotalDurationFrames([{ durationSeconds: 6 }, { durationSeconds: 6 }], 30)).toBe(360);
+  });
+
+  test("caps visual crossfade for short adjacent scenes", () => {
+    expect(
+      getSceneVisualTransitionFrames({
+        fps: 30,
+        nextDurationInFrames: 12,
+        previousDurationInFrames: 15,
+      }),
+    ).toBe(4);
+  });
+
+  test("fades incoming visuals over the transition window", () => {
+    expect(getSceneVisualOpacity({ frame: 0, transitionInFrames: 9 })).toBe(0);
+
+    const middle = getSceneVisualOpacity({ frame: 4, transitionInFrames: 9 });
+    expect(middle).toBeGreaterThan(0);
+    expect(middle).toBeLessThan(1);
+
+    expect(getSceneVisualOpacity({ frame: 9, transitionInFrames: 9 })).toBe(1);
+    expect(getSceneVisualOpacity({ frame: 20, transitionInFrames: 9 })).toBe(1);
+  });
+
+  test("keeps first-scene visuals fully opaque", () => {
+    expect(getSceneVisualOpacity({ frame: 0, transitionInFrames: 0 })).toBe(1);
   });
 });
 
