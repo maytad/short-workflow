@@ -32,12 +32,13 @@ describe("findActiveWord", () => {
     { text: "Hello", start: 0.0, end: 0.4 },
     { text: "world", start: 0.4, end: 0.9 },
     { text: "today", start: 0.9, end: 1.5 },
-  ];
+  ] as const;
+  const [hello, world, today] = words;
 
   test("returns the word whose window contains the current time", () => {
-    expect(findActiveWord(words, 0.2)).toEqual(words[0]);
-    expect(findActiveWord(words, 0.5)).toEqual(words[1]);
-    expect(findActiveWord(words, 1.0)).toEqual(words[2]);
+    expect(findActiveWord(words, 0.2)).toEqual(hello);
+    expect(findActiveWord(words, 0.5)).toEqual(world);
+    expect(findActiveWord(words, 1.0)).toEqual(today);
   });
 
   test("returns null when no word is active", () => {
@@ -45,8 +46,8 @@ describe("findActiveWord", () => {
   });
 
   test("treats start as inclusive and end as exclusive", () => {
-    expect(findActiveWord(words, 0.4)).toEqual(words[1]);
-    expect(findActiveWord(words, 0.0)).toEqual(words[0]);
+    expect(findActiveWord(words, 0.4)).toEqual(world);
+    expect(findActiveWord(words, 0.0)).toEqual(hello);
   });
 
   test("returns null for an empty word list", () => {

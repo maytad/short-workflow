@@ -49,7 +49,7 @@ export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: nu
  * no word is active at that moment. Uses a linear scan — word arrays are small.
  */
 export function findActiveWord(
-  words: CaptionWord[],
+  words: readonly CaptionWord[],
   currentTimeSeconds: number,
 ): CaptionWord | null {
   for (const word of words) {
