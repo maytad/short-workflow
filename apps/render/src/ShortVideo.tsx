@@ -614,19 +614,19 @@ function SubscribeAvatar() {
     background: "linear-gradient(135deg, #151515, #2a2a2a)",
     border: "3px solid rgba(255,255,255,0.92)",
     borderRadius: "50%",
-    boxShadow: "0 14px 34px rgba(0,0,0,0.34)",
+    boxShadow: "0 10px 24px rgba(0,0,0,0.3)",
     color: "#ffffff",
     display: "flex",
     flex: "0 0 auto",
     fontFamily:
       "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-    fontSize: 30,
+    fontSize: 24,
     fontWeight: 900,
-    height: 86,
+    height: 68,
     justifyContent: "center",
     lineHeight: 1,
     overflow: "hidden",
-    width: 86,
+    width: 68,
   };
 
   if (logoFailed) {
@@ -695,19 +695,19 @@ function SubscribeLowerThird({ durationInFrames }: { durationInFrames: number })
         alignItems: "center",
         background: "rgba(255,255,255,0.96)",
         border: "1px solid rgba(255,255,255,0.72)",
-        borderRadius: 28,
-        bottom: 76,
-        boxShadow: "0 28px 70px rgba(0,0,0,0.34)",
+        borderRadius: 22,
+        bottom: 34,
+        boxShadow: "0 18px 48px rgba(0,0,0,0.3)",
         display: "flex",
-        gap: 22,
-        height: 128,
+        gap: 18,
+        height: 88,
         left: 64,
         opacity: state.opacity,
-        padding: "20px 22px",
+        padding: "12px 16px",
         position: "absolute",
         transform: `translate3d(0, ${state.translateY}px, 0) scale(${state.scale})`,
         transformOrigin: "left bottom",
-        width: 640,
+        width: 560,
         willChange: "opacity, transform",
       }}
     >
@@ -726,7 +726,7 @@ function SubscribeLowerThird({ durationInFrames }: { durationInFrames: number })
             color: "#111111",
             fontFamily:
               "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-            fontSize: 32,
+            fontSize: 27,
             fontWeight: 850,
             letterSpacing: 0,
             lineHeight: 1,
@@ -742,7 +742,7 @@ function SubscribeLowerThird({ durationInFrames }: { durationInFrames: number })
             color: "#666666",
             fontFamily:
               "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-            fontSize: 22,
+            fontSize: 17,
             fontWeight: 650,
             letterSpacing: 0,
             lineHeight: 1,
@@ -764,15 +764,15 @@ function SubscribeLowerThird({ durationInFrames }: { durationInFrames: number })
           flex: "0 0 auto",
           fontFamily:
             "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-          fontSize: 24,
+          fontSize: 20,
           fontWeight: 850,
           gap: state.subscribed ? 8 : 0,
-          height: 58,
+          height: 48,
           justifyContent: "center",
           letterSpacing: 0,
           lineHeight: 1,
-          minWidth: state.subscribed ? 162 : 150,
-          padding: "0 24px",
+          minWidth: state.subscribed ? 146 : 132,
+          padding: "0 18px",
           transform: `scale(${state.buttonScale})`,
           transformOrigin: "center",
           willChange: "transform",
@@ -954,10 +954,10 @@ export const ShortVideo = (props: RenderInput) => {
           key={`${timing.scene.id}-audio-caption`}
         >
           <Audio src={resolveMediaSrc(timing.scene.audioPath)} />
-          <SceneCaption scene={timing.scene} />
           {shouldShowSubscribeLowerThird(timing.scene.role) ? (
             <SubscribeLowerThird durationInFrames={timing.durationInFrames} />
           ) : null}
+          <SceneCaption scene={timing.scene} />
         </Sequence>
       ))}
     </div>
