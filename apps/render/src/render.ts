@@ -51,6 +51,48 @@ const toLocalPath = (assetPath: string) => {
   return path.isAbsolute(assetPath) ? assetPath : null;
 };
 
+type RenderStaticAsset = {
+  publicPath: string;
+  sourcePath: string;
+};
+
+export const RENDER_STATIC_ASSETS: readonly RenderStaticAsset[] = [
+  {
+    publicPath: "logo/logo.png",
+    sourcePath: path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "public",
+      "logo",
+      "logo.png",
+    ),
+  },
+];
+
+const fileErrorCode = (error: unknown) =>
+  typeof error === "object" && error !== null && "code" in error
+    ? String((error as { code?: unknown }).code)
+    : null;
+
+export async function stageRenderStaticAssets(
+  publicDir: string,
+  assets: readonly RenderStaticAsset[] = RENDER_STATIC_ASSETS,
+) {
+  for (const asset of assets) {
+    const destinationPath = path.join(publicDir, asset.publicPath);
+
+    try {
+      await mkdir(path.dirname(destinationPath), { recursive: true });
+      await copyFile(asset.sourcePath, destinationPath);
+    } catch (error) {
+      if (fileErrorCode(error) === "ENOENT") {
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
 const stageAsset = async ({
   assetPath,
   kind,
@@ -126,6 +168,7 @@ const renderProject = async () => {
   const renderInput = await readRenderInput(input);
   const outputPath = path.resolve(output);
   const publicDir = await mkdtemp(path.join(os.tmpdir(), "short-render-"));
+  await stageRenderStaticAssets(publicDir);
   const stagedRenderInput = await stageRenderInputAssets(renderInput, publicDir);
   const entryPoint = path.join(path.dirname(fileURLToPath(import.meta.url)), "Root.tsx");
 

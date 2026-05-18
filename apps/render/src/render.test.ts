@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { stageRenderInputAssets } from "./render";
+import { stageRenderInputAssets, stageRenderStaticAssets } from "./render";
 import type { RenderInput } from "./schema";
 
 const tempDirs: string[] = [];
@@ -122,5 +122,41 @@ describe("stageRenderInputAssets", () => {
     }
 
     expect(stagedScene.captionTimingPath).toBeUndefined();
+  });
+});
+
+describe("stageRenderStaticAssets", () => {
+  test("copies configured static assets into the public directory", async () => {
+    const sourceDir = await mkdtemp(path.join(os.tmpdir(), "render-static-source-"));
+    const publicDir = await mkdtemp(path.join(os.tmpdir(), "render-static-public-"));
+    tempDirs.push(sourceDir, publicDir);
+
+    const sourceLogo = path.join(sourceDir, "logo.png");
+    await writeFile(sourceLogo, "logo-bytes");
+
+    await stageRenderStaticAssets(publicDir, [
+      {
+        publicPath: "logo/logo.png",
+        sourcePath: sourceLogo,
+      },
+    ]);
+
+    await expect(readFile(path.join(publicDir, "logo/logo.png"), "utf8")).resolves.toBe(
+      "logo-bytes",
+    );
+  });
+
+  test("skips missing static assets so render fallback can handle them", async () => {
+    const publicDir = await mkdtemp(path.join(os.tmpdir(), "render-static-public-"));
+    tempDirs.push(publicDir);
+
+    await stageRenderStaticAssets(publicDir, [
+      {
+        publicPath: "logo/logo.png",
+        sourcePath: path.join(publicDir, "missing-logo.png"),
+      },
+    ]);
+
+    await expect(readFile(path.join(publicDir, "logo/logo.png"), "utf8")).rejects.toThrow();
   });
 });
