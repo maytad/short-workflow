@@ -1,16 +1,18 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Audio,
+  Easing,
   Img,
   Sequence,
   continueRender,
   delayRender,
+  interpolate,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 
-import type { CaptionWord } from "@short-workflow/shared";
+import type { CaptionTimingDoc, CaptionWord } from "@short-workflow/shared";
 import { captionTimingDocSchema } from "@short-workflow/shared";
 
 import type { RenderInput } from "./schema";
@@ -45,22 +47,68 @@ export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: nu
   scenes.reduce((total, scene) => total + getSceneDurationFrames(scene, fps), 0);
 
 /**
- * Returns the word whose time window contains currentTimeSeconds, or null if
- * no word is active at that moment. Uses a linear scan — word arrays are small.
+ * Returns the index of the word whose time window contains t, or -1 if none.
  */
-export function findActiveWord(
-  words: readonly CaptionWord[],
-  currentTimeSeconds: number,
-): CaptionWord | null {
-  for (const word of words) {
-    if (currentTimeSeconds >= word.start && currentTimeSeconds < word.end) {
-      return word;
-    }
+export function pickActiveIndex(words: readonly CaptionWord[], t: number): number {
+  for (let i = 0; i < words.length; i += 1) {
+    if (words[i]!.start <= t && t < words[i]!.end) return i;
   }
-  return null;
+  return -1;
 }
 
-const captionContainerStyle: React.CSSProperties = {
+type ChunkedWord = { word: CaptionWord; index: number };
+type Chunk = ChunkedWord[];
+
+const PUNCT_SENTENCE = new Set([".", "?", "!"]);
+
+export function chunkWords(
+  words: readonly CaptionWord[],
+  opts: { target: number; min: number; max: number },
+): Chunk[] {
+  const chunks: Chunk[] = [];
+  let current: Chunk = [];
+
+  const flush = () => {
+    if (current.length > 0) {
+      chunks.push(current);
+      current = [];
+    }
+  };
+
+  for (let i = 0; i < words.length; i += 1) {
+    current.push({ word: words[i]!, index: i });
+    const text = words[i]!.text;
+    const lastChar = text.slice(-1);
+
+    if (current.length >= opts.max) {
+      flush();
+      continue;
+    }
+    if (PUNCT_SENTENCE.has(lastChar)) {
+      flush();
+      continue;
+    }
+    if (lastChar === "," && current.length >= opts.min) {
+      flush();
+    }
+  }
+  flush();
+  return chunks;
+}
+
+function pickChunk(chunks: readonly Chunk[], activeIndex: number): Chunk {
+  if (activeIndex < 0) {
+    return chunks[0] ?? [];
+  }
+  for (const chunk of chunks) {
+    if (chunk.some((entry) => entry.index === activeIndex)) {
+      return chunk;
+    }
+  }
+  return chunks[chunks.length - 1] ?? [];
+}
+
+const CAPTION_BOX_STYLE: React.CSSProperties = {
   position: "absolute",
   left: 72,
   right: 72,
@@ -75,71 +123,127 @@ const captionContainerStyle: React.CSSProperties = {
   textShadow: "0 3px 8px rgba(0,0,0,0.9), 0 0 28px rgba(0,0,0,0.85)",
 };
 
-export const StaticCaption = ({ caption }: { caption: string }) => (
-  <div style={captionContainerStyle}>{caption}</div>
-);
+function StaticCaption({ text }: { text: string }) {
+  return <div style={CAPTION_BOX_STYLE}>{text}</div>;
+}
 
-export const KaraokeCaption = ({
-  captionTimingPath,
-  fps,
+function KaraokeCaption({
+  timingSrc,
+  staticFallback,
 }: {
-  captionTimingPath: string;
-  fps: number;
-}) => {
-  const frame = useCurrentFrame();
-  const [words, setWords] = useState<CaptionWord[] | null>(null);
-  const [handle] = useState(() => delayRender("loading caption timing"));
+  timingSrc: string;
+  staticFallback: string;
+}) {
+  // All hooks declared up front, never inside a conditional.
+  const localFrame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const [handle] = useState(() => delayRender("caption_timing_load"));
+  const [doc, setDoc] = useState<CaptionTimingDoc | null>(null);
+  const [failed, setFailed] = useState(false);
+  const continuedRef = useRef(false);
 
   useEffect(() => {
-    const url = resolveMediaSrc(captionTimingPath);
-    fetch(url)
-      .then((r) => r.json())
-      .then((data: unknown) => {
-        const doc = captionTimingDocSchema.parse(data);
-        setWords(doc.words);
-        continueRender(handle);
+    let cancelled = false;
+    const releaseHandle = () => {
+      if (continuedRef.current) return;
+      continuedRef.current = true;
+      continueRender(handle);
+    };
+
+    fetch(timingSrc)
+      .then((r) => {
+        if (!r.ok) throw new Error(`fetch_status_${r.status}`);
+        return r.json();
+      })
+      .then((json) => captionTimingDocSchema.parse(json))
+      .then((parsed) => {
+        if (!cancelled) setDoc(parsed);
       })
       .catch(() => {
-        continueRender(handle);
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        releaseHandle();
       });
-  }, [captionTimingPath, handle]);
 
-  if (!words) {
-    return null;
+    return () => {
+      cancelled = true;
+      releaseHandle();
+    };
+  }, [timingSrc, handle]);
+
+  if (failed || !doc) {
+    return <StaticCaption text={staticFallback} />;
   }
 
-  const currentTimeSeconds = frame / fps;
-  const activeWord = findActiveWord(words, currentTimeSeconds);
+  const t = localFrame / fps;
+  const activeIndex = pickActiveIndex(doc.words, t);
+  const chunks = chunkWords(doc.words, { target: 5, min: 4, max: 6 });
+  const selected = pickChunk(chunks, activeIndex);
 
   return (
-    <div style={captionContainerStyle}>
-      {words.map((word, index) => (
-        <span
-          key={index}
-          style={{
-            color: word === activeWord ? "#FFD700" : "#ffffff",
-          }}
-        >
-          {word.text}
-          {index < words.length - 1 ? " " : ""}
-        </span>
-      ))}
+    <div style={CAPTION_BOX_STYLE}>
+      {selected.map((entry) => {
+        const { word, index } = entry;
+        const isActive = index === activeIndex;
+        const wordStartFrame = Math.round(word.start * fps);
+        const wordEndFrame = Math.round(word.end * fps);
+        const desiredEase = Math.round(0.08 * fps);
+        const minSpan = 2;
+        const effectiveEnd = Math.max(wordStartFrame + minSpan, wordEndFrame);
+        const easeFrames = Math.max(
+          1,
+          Math.min(desiredEase, Math.floor((effectiveEnd - wordStartFrame) / 2)),
+        );
+        const easeIn = wordStartFrame + easeFrames;
+        const easeOut = effectiveEnd + easeFrames;
+        const scaleProgress = interpolate(
+          localFrame,
+          [wordStartFrame, easeIn, effectiveEnd, easeOut],
+          [0, 1, 1, 0],
+          {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+            easing: Easing.out(Easing.cubic),
+          },
+        );
+        const scale = 1 + 0.08 * scaleProgress;
+        const color = isActive ? "#FFD400" : "#FFFFFF";
+
+        return (
+          <span
+            key={index}
+            style={{
+              display: "inline-block",
+              color,
+              transform: `scale(${scale})`,
+              transformOrigin: "center",
+              marginRight: "0.25em",
+            }}
+          >
+            {word.text}
+          </span>
+        );
+      })}
     </div>
   );
-};
+}
 
-export const SceneCaption = ({
+function SceneCaption({
   scene,
-  fps,
 }: {
-  scene: Pick<RenderInput["scenes"][number], "caption" | "captionTimingPath">;
-  fps: number;
-}) => {
+  scene: RenderInput["scenes"][number];
+}) {
   if (scene.captionTimingPath) {
-    return <KaraokeCaption captionTimingPath={scene.captionTimingPath} fps={fps} />;
+    return (
+      <KaraokeCaption
+        timingSrc={resolveMediaSrc(scene.captionTimingPath)}
+        staticFallback={scene.caption}
+      />
+    );
   }
-  return <StaticCaption caption={scene.caption} />;
-};
+  return <StaticCaption text={scene.caption} />;
+}
 
 export const ShortVideo = (props: RenderInput) => {
   const { width, height } = useVideoConfig();
@@ -178,7 +282,7 @@ export const ShortVideo = (props: RenderInput) => {
                 }}
               />
               <Audio src={resolveMediaSrc(scene.audioPath)} />
-              <SceneCaption scene={scene} fps={props.format.fps} />
+              <SceneCaption scene={scene} />
             </div>
           </Sequence>
         );

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { findActiveWord, getSceneDurationFrames, getTotalDurationFrames, resolveMediaSrc } from "./ShortVideo";
+import { chunkWords, getSceneDurationFrames, getTotalDurationFrames, pickActiveIndex, resolveMediaSrc } from "./ShortVideo";
 
 describe("ShortVideo helpers", () => {
   test("uses file URLs for absolute media paths", () => {
@@ -27,30 +27,58 @@ describe("ShortVideo helpers", () => {
   });
 });
 
-describe("findActiveWord", () => {
+describe("pickActiveIndex", () => {
   const words = [
     { text: "Hello", start: 0.0, end: 0.4 },
     { text: "world", start: 0.4, end: 0.9 },
     { text: "today", start: 0.9, end: 1.5 },
   ] as const;
-  const [hello, world, today] = words;
 
-  test("returns the word whose window contains the current time", () => {
-    expect(findActiveWord(words, 0.2)).toEqual(hello);
-    expect(findActiveWord(words, 0.5)).toEqual(world);
-    expect(findActiveWord(words, 1.0)).toEqual(today);
+  test("returns the index of the word whose window contains the current time", () => {
+    expect(pickActiveIndex(words, 0.2)).toBe(0);
+    expect(pickActiveIndex(words, 0.5)).toBe(1);
+    expect(pickActiveIndex(words, 1.0)).toBe(2);
   });
 
-  test("returns null when no word is active", () => {
-    expect(findActiveWord(words, 1.6)).toBeNull();
+  test("returns -1 when no word is active", () => {
+    expect(pickActiveIndex(words, 1.6)).toBe(-1);
   });
 
   test("treats start as inclusive and end as exclusive", () => {
-    expect(findActiveWord(words, 0.4)).toEqual(world);
-    expect(findActiveWord(words, 0.0)).toEqual(hello);
+    expect(pickActiveIndex(words, 0.4)).toBe(1);
+    expect(pickActiveIndex(words, 0.0)).toBe(0);
   });
 
-  test("returns null for an empty word list", () => {
-    expect(findActiveWord([], 0.5)).toBeNull();
+  test("returns -1 for an empty word list", () => {
+    expect(pickActiveIndex([], 0.5)).toBe(-1);
   });
 });
+
+describe("chunkWords", () => {
+  test("splits on sentence-ending punctuation", () => {
+    const words = [
+      { text: "Hello", start: 0, end: 0.3 },
+      { text: "world.", start: 0.3, end: 0.7 },
+      { text: "How", start: 0.7, end: 0.9 },
+      { text: "are", start: 0.9, end: 1.1 },
+      { text: "you?", start: 1.1, end: 1.5 },
+    ] as const;
+    const chunks = chunkWords(words, { target: 5, min: 4, max: 6 });
+    expect(chunks).toHaveLength(2);
+    expect(chunks[0]?.map((e) => e.word.text)).toEqual(["Hello", "world."]);
+    expect(chunks[1]?.map((e) => e.word.text)).toEqual(["How", "are", "you?"]);
+  });
+
+  test("preserves original word indices", () => {
+    const words = [
+      { text: "a", start: 0, end: 0.1 },
+      { text: "b", start: 0.1, end: 0.2 },
+      { text: "c.", start: 0.2, end: 0.3 },
+      { text: "d", start: 0.3, end: 0.4 },
+    ] as const;
+    const chunks = chunkWords(words, { target: 5, min: 4, max: 6 });
+    expect(chunks[0]?.map((e) => e.index)).toEqual([0, 1, 2]);
+    expect(chunks[1]?.map((e) => e.index)).toEqual([3]);
+  });
+});
+
