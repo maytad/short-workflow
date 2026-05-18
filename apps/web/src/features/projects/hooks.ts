@@ -279,3 +279,12 @@ export function useRenderProjectMutation(projectId: string) {
     onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
   });
 }
+
+export function useRevealAssetMutation() {
+  return useMutation({
+    mutationFn: (assetId: string) =>
+      apiFetch<{ revealed: true }>(`/assets/${assetId}/reveal`, {
+        method: "POST",
+      }),
+  });
+}

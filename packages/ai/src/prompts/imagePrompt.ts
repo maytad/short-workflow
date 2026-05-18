@@ -1,6 +1,11 @@
 import type { ImageProvider, ProjectStyleContext } from "../types";
 import { defaultProjectStyleContext } from "./scriptPlan";
 import type { CompiledPrompt, PromptTemplate } from "./types";
+import {
+  defaultVisualHookArchetype,
+  visualHookDirection,
+  type VisualHookArchetype,
+} from "./visualHooks";
 
 export type ImagePromptInput = {
   project: {
@@ -17,6 +22,7 @@ export type ImagePromptInput = {
     caption: string;
     imagePrompt: string;
     visualBrief?: string | null;
+    visualHookArchetype?: VisualHookArchetype | null;
   };
   provider: ImageProvider;
   styleContext?: ProjectStyleContext;
@@ -30,7 +36,7 @@ export type CompiledImagePrompt = CompiledPrompt & {
 
 export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImagePrompt> = {
   id: "tiny_mechanisms_scene_image_prompt",
-  version: 2,
+  version: 3,
   purpose: "image_prompt",
   provider: "openai",
   compile(input) {
@@ -44,42 +50,53 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
     const tone = sentence(style.tone);
     const colorAndLighting = sentence(style.colorAndLighting);
     const roleJob = roleVisualJob(input.scene.role);
+    const hookArchetype =
+      input.scene.visualHookArchetype ?? defaultVisualHookArchetype(input.scene.role);
+    const hookDirection = visualHookDirection(hookArchetype);
     const prompt = [
-      "Create a 9:16 vertical YouTube Shorts scene frame for a faceless micro-documentary.",
+      "Create one 9:16 vertical social-native science frame for a YouTube Short, Reel, or TikTok.",
       "",
-      "INTENT",
-      "This image must stop a mobile viewer in the first half-second and remain readable behind large captions.",
+      "RETENTION JOB",
+      "This must work as a first-frame visual hook on a phone screen with sound off.",
+      "The viewer should understand the object and feel a curiosity gap in under 0.5 seconds.",
+      "",
+      "SOCIAL HOOK FRAME",
+      `Visual hook archetype: ${hookArchetype}.`,
+      `Archetype direction: ${hookDirection}.`,
+      "Show the phenomenon already happening. Do not show a calm setup before the interesting moment.",
+      "Use one dominant subject filling roughly 55-70% of the upper and middle frame.",
+      "Make the frame feel like an intentional short-form opening shot, not a generic stock illustration.",
       "",
       "SCENE ROLE",
       `Scene ${input.scene.position} is ${input.scene.role}. Visual job: ${roleJob}.`,
       `Scene duration: ${input.scene.durationSeconds} seconds.`,
       "",
-      "SUBJECT",
+      "SUBJECT AND ACTION",
       `Primary visual seed: ${imagePrompt}`,
       ...(visualBrief ? [`Visual brief: ${sentence(visualBrief)}`] : []),
       `Narration context: ${narration}`,
       `Caption context only, do not render this as text: ${caption}`,
       "",
       "COMPOSITION",
-      "Use one dominant subject that is recognizable on a phone screen at a glance.",
-      "Use strong foreground, midground, and background separation with realistic depth.",
-      "Leave clean negative space in the lower 25-30% of the frame for large overlaid captions.",
-      "Keep critical details out of the bottom UI/caption area.",
-      "Prefer a macro close-up, object cutaway, low-angle detail, top-down demonstration, or symbolic physical evidence when it makes the mechanism clearer.",
+      "Use a clear vertical hierarchy: hook subject in the upper/middle frame, caption-safe negative space in the lower 25-30%.",
+      "Keep critical details away from the top, bottom, and right-side platform UI areas.",
+      "Use strong foreground/midground/background separation, but keep the image simple enough to read at thumbnail size.",
+      "Prefer hands interacting with objects, macro close-ups, cutaways, before/after contrast, frozen motion, or scale-shock compositions when they clarify the mechanism.",
       "",
       "CAMERA AND LIGHT",
-      "Use high-contrast documentary lighting, controlled highlights, grounded color, sharp focus on the key object, and mobile-readable subject separation.",
+      "Use a specific camera viewpoint: extreme macro, close-up, low-angle detail, top-down tabletop demo, or clean cutaway view.",
+      "Use bright high-contrast lighting, sharp focus on the key object, tactile real-world texture, and readable silhouettes.",
       "",
       "STYLE",
       `Visual style: ${visualStyle}`,
       `Continuity: ${imageContinuity}`,
       `Tone: ${tone}`,
       `Color and lighting: ${colorAndLighting}`,
-      "Faceless editorial documentary still, cinematic realism, tactile materials, macro texture, and no generic futuristic gloss.",
+      "Social-native science visual, photorealistic or physically plausible, tactile, bold, clear, not glossy sci-fi, not corporate stock.",
       "",
       "CONSTRAINTS",
-      "Do not include embedded text, captions, watermarks, logos, UI, fake screenshots, public figures, or deceptive real-event imagery.",
-      "Prefer objects, hands, silhouettes, environments, physical diagrams-as-scenes, and documentary visual evidence.",
+      "No embedded text, captions, labels, arrows with words, watermarks, logos, UI, fake screenshots, public figures, or deceptive real-event imagery.",
+      "Do not create abstract floating concept art unless the mechanism cannot be shown with a physical object.",
     ].join("\n");
 
     return {
@@ -92,6 +109,7 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
         aspectRatio: "9:16",
         sceneRole: input.scene.role,
         roleVisualJob: roleJob,
+        visualHookArchetype: hookArchetype,
       },
       metadata: {
         projectId: input.project.id,

@@ -27,9 +27,11 @@ const sampleScene = {
   durationSeconds: 3,
   narration: "Your recorded voice is not lying to you. Your skull is.",
   caption: "Your skull changes your voice.",
-  imagePrompt: seed.visualMetaphor,
+  imagePrompt:
+    "a hand holding a phone voice recorder near a mouth while a translucent jaw shows skull vibrations and a separate air-wave path entering the microphone",
   visualBrief:
     "A translucent side-profile skull shows two sound paths at once: vibrations traveling through bone and separate waves moving through open air.",
+  visualHookArchetype: "consequence_first" as const,
   ssml: "<speak>Your recorded voice is not lying to you. Your skull is.</speak>",
 };
 

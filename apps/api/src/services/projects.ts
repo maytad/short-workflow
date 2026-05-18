@@ -1,5 +1,7 @@
-import { readFile, rm } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { access, readFile, rm } from "node:fs/promises";
 import path, { join } from "node:path";
+import { promisify } from "node:util";
 
 import {
   deleteProjectRows,
@@ -43,6 +45,8 @@ const defaultRenderPreconditionDeps: RenderPreconditionDeps = {
   listProjectAssets,
 };
 
+const execFileAsync = promisify(execFile);
+
 export async function assertProjectCanDelete(db: DbClient, projectId: string) {
   const activeJobs = await listProjectJobs(db, projectId, "active");
   return activeJobs.length === 0;
@@ -70,6 +74,17 @@ export async function readAssetFile(
     bytes,
     mimeType: asset.mimeType,
   };
+}
+
+export async function revealAssetFile(asset: Pick<AssetRow, "path">) {
+  if (process.platform !== "darwin") {
+    throw new Error("asset_reveal_unsupported_platform");
+  }
+
+  const assetRoot = parseEnv().LOCAL_ASSET_ROOT;
+  const absolutePath = resolveLocalAssetPath(assetRoot, asset.path);
+  await access(absolutePath);
+  await execFileAsync("open", ["-R", absolutePath]);
 }
 
 function resolveLocalAssetPath(root: string, relativePath: string) {

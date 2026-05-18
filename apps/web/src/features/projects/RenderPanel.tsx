@@ -1,10 +1,11 @@
 import type { Asset, Job, Render, RenderPreconditionError } from "@short-workflow/shared";
 import { renderPreconditionErrorSchema } from "@short-workflow/shared";
-import { AlertTriangle, Check, Film, Loader2 } from "lucide-react";
+import { AlertTriangle, Check, Film, FolderOpen, Loader2 } from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "../../api/client";
-import { useRenderProjectMutation } from "./hooks";
+import { assetPreviewUrl } from "./assetUrls";
+import { useRenderProjectMutation, useRevealAssetMutation } from "./hooks";
 
 type RenderPanelProps = {
   activeJobs: Job[];
@@ -39,24 +40,33 @@ function getLatestRender(renders: Render[]) {
   )[0];
 }
 
-function getRenderOutputPath(assets: Asset[], render: Render | undefined) {
+function getRenderOutputAsset(assets: Asset[], render: Render | undefined) {
   if (!render?.outputAssetId) {
     return null;
   }
 
-  return assets.find((asset) => asset.id === render.outputAssetId)?.path ?? null;
+  return (
+    assets.find(
+      (asset) =>
+        asset.id === render.outputAssetId &&
+        asset.kind === "render" &&
+        asset.status === "ready" &&
+        asset.storageDriver === "local",
+    ) ?? null
+  );
 }
 
 export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPanelProps) {
   const [acknowledged, setAcknowledged] = useState(false);
   const renderMutation = useRenderProjectMutation(projectId);
+  const revealAsset = useRevealAssetMutation();
   const latestRender = getLatestRender(renders);
   const activeRenderJob = activeJobs.some(
     (job) =>
       job.type === "render_video" && (job.status === "pending" || job.status === "processing"),
   );
   const preconditionError = parseRenderPrecondition(renderMutation.error);
-  const outputPath = getRenderOutputPath(assets, latestRender);
+  const outputAsset = getRenderOutputAsset(assets, latestRender);
 
   return (
     <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -123,10 +133,52 @@ export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPa
         </p>
       ) : null}
 
-      {latestRender?.status === "succeeded" && outputPath ? (
-        <p className="mt-3 break-words rounded-md border border-border bg-background px-3 py-2 text-sm">
-          Output: <span className="font-medium">{outputPath}</span>
-        </p>
+      {latestRender?.status === "succeeded" && outputAsset ? (
+        <div className="mt-4 rounded-md border border-border bg-background p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="text-sm font-semibold">Final preview</h3>
+              <p className="text-xs text-muted-foreground">Rendered MP4 output</p>
+            </div>
+            <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">
+              Ready
+            </span>
+          </div>
+
+          <div className="mt-3 overflow-hidden rounded-md border border-border bg-muted">
+            <video
+              className="aspect-[9/16] max-h-[520px] w-full bg-muted object-contain"
+              controls
+              preload="metadata"
+              src={assetPreviewUrl(outputAsset)}
+            />
+          </div>
+
+          <div className="mt-3 grid gap-2">
+            <p className="min-w-0 break-words text-xs text-muted-foreground">
+              Output: <span className="font-medium text-foreground">{outputAsset.path}</span>
+            </p>
+            <button
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={revealAsset.isPending}
+              onClick={() => revealAsset.mutate(outputAsset.id)}
+              type="button"
+            >
+              {revealAsset.isPending ? (
+                <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+              ) : (
+                <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
+              )}
+              Open folder
+            </button>
+          </div>
+
+          {revealAsset.error ? (
+            <p className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
+              Folder could not be opened.
+            </p>
+          ) : null}
+        </div>
       ) : null}
     </section>
   );

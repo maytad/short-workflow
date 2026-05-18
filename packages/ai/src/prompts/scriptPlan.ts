@@ -8,6 +8,11 @@ import {
   TINY_MECHANISMS_SCENE_ROLES_BY_DURATION,
 } from "./presets/tinyMechanisms";
 import type { CompiledPrompt, PromptTemplate } from "./types";
+import {
+  VISUAL_HOOK_ARCHETYPES,
+  isVisualHookArchetype,
+  type VisualHookArchetype,
+} from "./visualHooks";
 
 const projectStyleContextSchema = z
   .object({
@@ -53,6 +58,7 @@ export const scriptSceneSchema = z
     imagePrompt: z.string().min(1),
     ssml: z.string().min(1),
     visualBrief: z.string().min(1),
+    visualHookArchetype: z.enum(VISUAL_HOOK_ARCHETYPES),
     ttsDirection: z.string().min(1),
   })
   .strict();
@@ -78,6 +84,14 @@ export const scriptPlanSchema = z
   .strict();
 
 export type ScriptPlan = z.infer<typeof scriptPlanSchema>;
+
+const storedScriptSceneSchema = scriptSceneSchema.extend({
+  visualHookArchetype: z.enum(VISUAL_HOOK_ARCHETYPES).optional(),
+});
+
+const storedScriptPlanSchema = scriptPlanSchema.extend({
+  scenes: z.array(storedScriptSceneSchema),
+});
 
 export type CompiledScriptPlanPrompt = CompiledPrompt & {
   purpose: "script";
@@ -169,6 +183,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
           "imagePrompt",
           "ssml",
           "visualBrief",
+          "visualHookArchetype",
           "ttsDirection",
         ],
         properties: {
@@ -180,6 +195,10 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
           imagePrompt: { type: "string", minLength: 1 },
           ssml: { type: "string", minLength: 1 },
           visualBrief: { type: "string", minLength: 1 },
+          visualHookArchetype: {
+            type: "string",
+            enum: VISUAL_HOOK_ARCHETYPES,
+          },
           ttsDirection: { type: "string", minLength: 1 },
         },
       },
@@ -205,7 +224,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 3,
+  version: 4,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -252,11 +271,13 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "The cta scene is a loop-ending slot, not a long subscribe call-to-action.",
             "",
             "# Visual-First Rules",
-            "Each image prompt seed must describe a concrete visual frame, not a vague concept.",
+            "Each scene must choose one visualHookArchetype from: impossible_macro, consequence_first, hands_on_demo, before_after_contrast, frozen_motion, scale_shock, reveal_cutaway.",
+            "Each image prompt seed must describe a concrete vertical frame using subject + action already happening + consequence or tension + camera viewpoint.",
             "For each scene, make visualBrief explain what the viewer should understand from the image in under half a second.",
             "Image prompt seeds and visual briefs must not ask for embedded text, labels, captions, typography, UI, logos, or watermarks.",
-            "Hook image prompts must identify the object or phenomenon immediately and include a visual curiosity gap.",
-            "Point scene image prompts must show the mechanism through macro detail, object cutaway, cause/effect, or a physical metaphor.",
+            "Hook image prompts must show the phenomenon already happening, not a calm setup before it happens.",
+            "Point scene image prompts must show the mechanism through macro detail, object cutaway, cause/effect, frozen motion, scale shock, or a physical metaphor.",
+            "Prefer real-world objects, hands, silhouettes, tabletop demonstrations, macro textures, and physically readable cause/effect over abstract floating diagrams.",
             "",
             "# Safety and Scope",
             "Do not invent a new topic. Use the selected seed exactly.",
@@ -323,13 +344,13 @@ function hasExpectedScenePlan(
 export function defaultProjectStyleContext(): ProjectStyleContext {
   return {
     visualStyle:
-      "faceless editorial documentary stills with cinematic realism, macro details, object cutaways, and clear vertical composition",
+      "social-native vertical science frames with real objects, hands, macro details, action already in progress, and clear mechanism reveals",
     tone: "clear, curious, precise, lightly dramatic, and never generic",
     pacing: "brisk but intelligible short-form narration",
     colorAndLighting:
-      "natural contrast, controlled highlights, grounded color, and mobile-readable subject separation",
+      "high contrast, bright mobile-readable subject separation, tactile real-world texture, and clean caption-safe negative space",
     imageContinuity:
-      "consistent documentary visual language across scenes with one concrete object-level detail per scene",
+      "consistent short-form science visual language with one dominant object, one clear action, and one readable mechanism per scene",
     voiceDirection: "warm documentary narrator with crisp articulation and a clean payoff",
   };
 }
@@ -342,7 +363,7 @@ export function styleContextFromScriptResponseText(
   }
 
   try {
-    const parsed = scriptPlanSchema.safeParse(JSON.parse(responseText));
+    const parsed = storedScriptPlanSchema.safeParse(JSON.parse(responseText));
     return parsed.success ? parsed.data.styleContext : undefined;
   } catch {
     return undefined;
@@ -358,12 +379,36 @@ export function sceneVisualBriefFromScriptResponseText(
   }
 
   try {
-    const parsed = scriptPlanSchema.safeParse(JSON.parse(responseText));
+    const parsed = storedScriptPlanSchema.safeParse(JSON.parse(responseText));
     if (!parsed.success) {
       return undefined;
     }
 
     return parsed.data.scenes.find((scene) => scene.position === scenePosition)?.visualBrief;
+  } catch {
+    return undefined;
+  }
+}
+
+export function sceneVisualHookArchetypeFromScriptResponseText(
+  responseText: string | null | undefined,
+  scenePosition: number,
+): VisualHookArchetype | undefined {
+  if (!responseText) {
+    return undefined;
+  }
+
+  try {
+    const parsed = storedScriptPlanSchema.safeParse(JSON.parse(responseText));
+    if (!parsed.success) {
+      return undefined;
+    }
+
+    const value = parsed.data.scenes.find(
+      (scene) => scene.position === scenePosition,
+    )?.visualHookArchetype;
+
+    return value && isVisualHookArchetype(value) ? value : undefined;
   } catch {
     return undefined;
   }

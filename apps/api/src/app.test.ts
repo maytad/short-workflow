@@ -67,6 +67,16 @@ const asset = {
   updatedAt: new Date("2026-05-17T00:00:00.000Z"),
 } as const;
 
+const renderAsset = {
+  ...asset,
+  id: "55555555-5555-4555-8555-555555555555",
+  kind: "render",
+  mimeType: "video/mp4",
+  path: "projects/test/renders/render.mp4",
+  provider: "remotion",
+  sceneId: null,
+} as const;
+
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
 }
@@ -202,6 +212,57 @@ describe("createApp", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/png");
     expect(await response.text()).toBe("png");
+  });
+
+  test("reveals ready local render asset files through the project service", async () => {
+    let receivedAsset: typeof renderAsset | undefined;
+    const services = {
+      ...createServices(),
+      getAsset: async () => renderAsset,
+      revealAssetFile: async (assetToReveal: typeof renderAsset) => {
+        receivedAsset = assetToReveal;
+      },
+    } as ProjectRouteServices & {
+      getAsset: () => Promise<typeof renderAsset>;
+      revealAssetFile: (assetToReveal: typeof renderAsset) => Promise<void>;
+    };
+    const app = createApp({
+      db: {} as never,
+      projectServices: services,
+    });
+
+    const response = await app.handle(
+      request(`/assets/${renderAsset.id}/reveal`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ revealed: true });
+    expect(receivedAsset?.id).toBe(renderAsset.id);
+  });
+
+  test("does not reveal non-render asset files", async () => {
+    let revealed = false;
+    const services = {
+      ...createServices(),
+      getAsset: async () => asset,
+      revealAssetFile: async () => {
+        revealed = true;
+      },
+    } as ProjectRouteServices & {
+      getAsset: () => Promise<typeof asset>;
+      revealAssetFile: () => Promise<void>;
+    };
+    const app = createApp({
+      db: {} as never,
+      projectServices: services,
+    });
+
+    const response = await app.handle(
+      request(`/assets/${asset.id}/reveal`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(revealed).toBe(false);
   });
 
   test("returns active jobs conflict when deleting a busy project", async () => {

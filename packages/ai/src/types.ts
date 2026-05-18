@@ -1,3 +1,5 @@
+import type { VisualHookArchetype } from "./prompts/visualHooks";
+
 export type ChannelPresetId = "tiny_mechanisms";
 
 export type ProjectStyleContext = {
@@ -44,6 +46,7 @@ export type ScriptScene = {
   imagePrompt: string;
   ssml: string;
   visualBrief: string;
+  visualHookArchetype: VisualHookArchetype;
   ttsDirection: string;
 };
 

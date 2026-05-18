@@ -4,6 +4,7 @@ import {
   promptPayload,
   resolveImageProvider,
   sceneVisualBriefFromScriptResponseText,
+  sceneVisualHookArchetypeFromScriptResponseText,
   styleContextFromScriptResponseText,
 } from "@short-workflow/ai";
 import {
@@ -50,6 +51,10 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
     latestScriptPrompt?.responseText,
     scene.position,
   );
+  const visualHookArchetype = sceneVisualHookArchetypeFromScriptResponseText(
+    latestScriptPrompt?.responseText,
+    scene.position,
+  );
 
   let asset: AssetRow | null = null;
   let assetReady = false;
@@ -69,6 +74,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       scene: {
         ...scene,
         ...(visualBrief ? { visualBrief } : {}),
+        ...(visualHookArchetype ? { visualHookArchetype } : {}),
       },
       provider,
       ...(styleContext ? { styleContext } : {}),
@@ -105,6 +111,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
         sceneId: scene.id,
         imagePrompt: scene.imagePrompt,
         visualBrief: visualBrief ?? null,
+        visualHookArchetype: visualHookArchetype ?? null,
       }),
       responseMetadata: generated.responseMetadata,
     });

@@ -1,7 +1,7 @@
 import type { Asset, Job, Scene } from "@short-workflow/shared";
 import { Image, Loader2, Music2, RefreshCw } from "lucide-react";
 
-import { API_BASE_URL } from "../../api/client";
+import { assetPreviewUrl } from "./assetUrls";
 import { useGenerateSceneAudioMutation, useGenerateSceneImageMutation } from "./hooks";
 
 type AssetKind = Extract<Asset["kind"], "image" | "audio">;
@@ -35,10 +35,6 @@ export function getLatestSceneAsset({ assets, kind, sceneId }: LatestSceneAssetI
   return assets
     .filter((asset) => asset.sceneId === sceneId && asset.kind === kind && asset.status === "ready")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-}
-
-export function assetPreviewUrl(asset: Pick<Asset, "id">) {
-  return new URL(`/assets/${asset.id}/file`, API_BASE_URL).toString();
 }
 
 function currentSceneAsset(asset: Asset | undefined, scene: Scene) {

@@ -93,17 +93,19 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
           </ol>
         </section>
 
-        <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+        <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
           <h2 className="text-sm font-semibold">Active jobs</h2>
-          <div className="mt-3 grid gap-2">
+          <div className="mt-3 grid min-w-0 gap-2">
             {activeWorkflowJobs.length > 0 ? (
               activeWorkflowJobs.map((job) => (
                 <div
-                  className="rounded-md border border-border bg-background p-2 text-xs"
+                  className="min-w-0 rounded-md border border-border bg-background p-2 text-xs"
                   key={job.id}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="truncate capitalize">{activeJobLabel(job)}</span>
+                  <div className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="min-w-0 flex-1 truncate capitalize">
+                      {activeJobLabel(job)}
+                    </span>
                     <span className="shrink-0 capitalize text-muted-foreground">{job.status}</span>
                   </div>
                   <div className="mt-2 h-1.5 overflow-hidden rounded bg-muted">

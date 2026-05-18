@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { Asset, ProjectDetailResponse, Scene } from "@short-workflow/shared";
 
-import { assetPreviewUrl, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
+import { assetPreviewUrl, assetRevealUrl } from "./assetUrls";
+import { getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
 import { applyOptimisticSceneUpdate } from "./hooks";
 import { getRenderPreconditionMessages } from "./RenderPanel";
 
@@ -48,6 +49,12 @@ describe("workflow asset helpers", () => {
   test("builds browser-safe preview URLs from asset ids", () => {
     expect(assetPreviewUrl(asset())).toBe(
       "http://localhost:3001/assets/33333333-3333-4333-8333-333333333333/file",
+    );
+  });
+
+  test("builds browser-safe reveal URLs from asset ids", () => {
+    expect(assetRevealUrl(asset())).toBe(
+      "http://localhost:3001/assets/33333333-3333-4333-8333-333333333333/reveal",
     );
   });
 

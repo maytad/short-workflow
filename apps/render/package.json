@@ -4,7 +4,7 @@
   "type": "module",
   "main": "./src/Root.tsx",
   "scripts": {
-    "dev": "remotion studio src/Root.tsx",
+    "dev": "remotion studio src/Root.tsx --no-open",
     "render:project": "node --loader tsx src/render.ts",
     "check": "bun test",
     "typecheck": "tsc --noEmit"

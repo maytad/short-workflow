@@ -32,7 +32,7 @@ export const TINY_MECHANISMS_CHANNEL_BIBLE = [
   "Allowed topics: everyday object design, human perception, everyday physics, materials and chemistry, and small systems.",
   "Disallowed topics: medical advice, finance, legal advice, politics, war, crime, breaking news, public figures, dangerous instructions, children's characters, conspiracy framing, and unsupported claims.",
   "Captions: short mobile-readable beat summaries, not full narration paragraphs.",
-  "Image direction: editorial documentary stills, macro details, object cutaways, symbolic diagrams-as-scenes, no embedded text, no logos, no UI, no public figures.",
+  "Image direction: social-native vertical science frames with one dominant object, action already in progress, real-world hands or macro details, clear mechanism reveals, no embedded text, no logos, no UI, no public figures.",
   "Retention: first sentence must be understandable without context, payoff must answer the hook, final line must connect back to the opening idea.",
 ].join("\n");
 
