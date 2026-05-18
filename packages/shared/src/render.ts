@@ -8,7 +8,7 @@ export const renderSceneInputSchema = z
     id: uuidSchema,
     position: z.number().int().positive(),
     role: sceneRoleSchema,
-    durationSeconds: z.number().min(1).max(60),
+    durationSeconds: z.number().positive().max(60),
     narration: z.string(),
     caption: z.string(),
     imagePath: z.string().min(1),
@@ -26,7 +26,7 @@ export const renderInputSchema = z
         width: z.literal(RENDER_WIDTH),
         height: z.literal(RENDER_HEIGHT),
         fps: z.literal(RENDER_FPS),
-        durationSeconds: z.number().min(20).max(60),
+        durationSeconds: z.number().positive().max(60),
       })
       .strict(),
     scenes: z.array(renderSceneInputSchema).min(1),
