@@ -167,13 +167,20 @@ async function saveCaptionTiming(input: {
   }
 
   const captionPath = sceneCaptionTimingPath(scene.projectId, scene.id, audioAssetId);
-  const captionAsset = await createPendingAsset(db, {
-    projectId: scene.projectId,
-    sceneId: scene.id,
-    kind: "caption_timing",
-    path: captionPath,
-    provider: "elevenlabs",
-  });
+
+  let captionAsset: AssetRow;
+  try {
+    captionAsset = await createPendingAsset(db, {
+      projectId: scene.projectId,
+      sceneId: scene.id,
+      kind: "caption_timing",
+      path: captionPath,
+      provider: "elevenlabs",
+    });
+  } catch (createError) {
+    console.warn("caption_create_failed", { reason: errorMessage(createError) });
+    return null;
+  }
 
   try {
     const bytes = new TextEncoder().encode(`${JSON.stringify(doc, null, 2)}\n`);
