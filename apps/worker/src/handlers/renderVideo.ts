@@ -55,6 +55,7 @@ type RenderSceneAsset = Pick<AssetRow, "path" | "createdAt">;
 type SceneAssetPair = {
   image: RenderSceneAsset | null;
   audio: RenderSceneAsset | null;
+  captionTiming: RenderSceneAsset | null;
 };
 
 export function buildRenderInput(input: {
@@ -98,6 +99,9 @@ export function buildRenderInput(input: {
         caption: scene.caption,
         imagePath: absoluteAssetPath(input.assetRoot, assets.image.path),
         audioPath: absoluteAssetPath(input.assetRoot, assets.audio.path),
+        ...(assets.captionTiming
+          ? { captionTimingPath: absoluteAssetPath(input.assetRoot, assets.captionTiming.path) }
+          : {}),
       };
     }),
   });
@@ -115,12 +119,13 @@ export async function handleRenderVideo(db: DbClient, job: JobRow, env?: Handler
   const sceneAssets = new Map<string, SceneAssetPair>();
 
   for (const scene of scenes) {
-    const [image, audio] = await Promise.all([
+    const [image, audio, captionTiming] = await Promise.all([
       getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "image" }),
       getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "audio" }),
+      getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "caption_timing" }),
     ]);
 
-    sceneAssets.set(scene.id, { image, audio });
+    sceneAssets.set(scene.id, { image, audio, captionTiming });
   }
 
   const renderInput = buildRenderInput({

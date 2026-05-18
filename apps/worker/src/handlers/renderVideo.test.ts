@@ -37,6 +37,7 @@ describe("buildRenderInput", () => {
               path: "projects/project-1/scenes/scene-1/audio/audio.wav",
               createdAt,
             },
+            captionTiming: null,
           },
         ],
       ]),
@@ -64,6 +65,63 @@ describe("buildRenderInput", () => {
         },
       ],
     });
+  });
+
+  test("includes captionTimingPath when caption timing asset is present", () => {
+    const input = buildRenderInput({
+      assetRoot: "/tmp/asset-root",
+      project,
+      scenes: [scene],
+      sceneAssets: new Map([
+        [
+          scene.id,
+          {
+            image: {
+              path: "projects/project-1/scenes/scene-1/images/image.png",
+              createdAt,
+            },
+            audio: {
+              path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
+              createdAt,
+            },
+            captionTiming: {
+              path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
+              createdAt,
+            },
+          },
+        ],
+      ]),
+    });
+
+    expect(input.scenes[0]?.captionTimingPath).toBe(
+      "/tmp/asset-root/projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
+    );
+  });
+
+  test("omits captionTimingPath when caption timing asset is absent", () => {
+    const input = buildRenderInput({
+      assetRoot: "/tmp/asset-root",
+      project,
+      scenes: [scene],
+      sceneAssets: new Map([
+        [
+          scene.id,
+          {
+            image: {
+              path: "projects/project-1/scenes/scene-1/images/image.png",
+              createdAt,
+            },
+            audio: {
+              path: "projects/project-1/scenes/scene-1/audio/audio.wav",
+              createdAt,
+            },
+            captionTiming: null,
+          },
+        ],
+      ]),
+    });
+
+    expect(input.scenes[0]?.captionTimingPath).toBeUndefined();
   });
 
   test("throws a render precondition error when a scene is not ready", () => {
