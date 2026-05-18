@@ -46,6 +46,33 @@ export const getSceneDurationFrames = (scene: SceneDuration, fps: number) =>
 export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: number) =>
   scenes.reduce((total, scene) => total + getSceneDurationFrames(scene, fps), 0);
 
+export function getSceneVisualTransitionFrames(input: {
+  fps: number;
+  nextDurationInFrames: number;
+  previousDurationInFrames: number;
+}) {
+  const targetFrames = Math.max(1, Math.round(0.3 * input.fps));
+  const previousDuration = Math.max(0, Math.round(input.previousDurationInFrames));
+  const nextDuration = Math.max(0, Math.round(input.nextDurationInFrames));
+  const maxBySceneDuration = Math.floor(Math.min(previousDuration, nextDuration) / 3);
+
+  return Math.max(0, Math.min(targetFrames, maxBySceneDuration));
+}
+
+export function getSceneVisualOpacity(input: { frame: number; transitionInFrames: number }) {
+  const transitionInFrames = Math.max(0, Math.round(input.transitionInFrames));
+
+  if (transitionInFrames === 0) {
+    return 1;
+  }
+
+  return interpolate(input.frame, [0, transitionInFrames], [0, 1], {
+    easing: Easing.out(Easing.cubic),
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+}
+
 type SceneMotionRole = RenderInput["scenes"][number]["role"];
 
 export type SceneMotionProfile = {
@@ -580,15 +607,196 @@ function SceneCaption({
   return <StaticCaption text={scene.caption} />;
 }
 
+function SubscribeAvatar() {
+  const [logoFailed, setLogoFailed] = useState(false);
+  const avatarStyle: React.CSSProperties = {
+    alignItems: "center",
+    background: "linear-gradient(135deg, #151515, #2a2a2a)",
+    border: "3px solid rgba(255,255,255,0.92)",
+    borderRadius: "50%",
+    boxShadow: "0 14px 34px rgba(0,0,0,0.34)",
+    color: "#ffffff",
+    display: "flex",
+    flex: "0 0 auto",
+    fontFamily:
+      "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+    fontSize: 30,
+    fontWeight: 900,
+    height: 86,
+    justifyContent: "center",
+    lineHeight: 1,
+    overflow: "hidden",
+    width: 86,
+  };
+
+  if (logoFailed) {
+    return <div style={avatarStyle}>TM</div>;
+  }
+
+  return (
+    <div style={avatarStyle}>
+      <Img
+        onError={() => setLogoFailed(true)}
+        src={resolveMediaSrc(SUBSCRIBE_LOWER_THIRD.logoPath)}
+        style={{
+          height: "100%",
+          objectFit: "cover",
+          width: "100%",
+        }}
+      />
+    </div>
+  );
+}
+
+function SubscribeCheckMark() {
+  return (
+    <svg
+      aria-hidden="true"
+      height="26"
+      viewBox="0 0 28 28"
+      width="26"
+      style={{
+        display: "block",
+        flex: "0 0 auto",
+      }}
+    >
+      <circle cx="14" cy="14" fill="#ffffff" r="13" />
+      <path
+        d="M8.1 14.4 12 18.2 20.2 9.8"
+        fill="none"
+        stroke="#1f2937"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="3"
+      />
+    </svg>
+  );
+}
+
+function SubscribeLowerThird({ durationInFrames }: { durationInFrames: number }) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const state = getSubscribeLowerThirdState({
+    fps,
+    frame,
+    sceneDurationInFrames: durationInFrames,
+  });
+
+  if (!state.visible) {
+    return null;
+  }
+
+  const buttonBackground = state.subscribed ? "#f4f4f5" : "#ff0033";
+  const buttonColor = state.subscribed ? "#27272a" : "#ffffff";
+
+  return (
+    <div
+      style={{
+        alignItems: "center",
+        background: "rgba(255,255,255,0.96)",
+        border: "1px solid rgba(255,255,255,0.72)",
+        borderRadius: 28,
+        bottom: 76,
+        boxShadow: "0 28px 70px rgba(0,0,0,0.34)",
+        display: "flex",
+        gap: 22,
+        height: 128,
+        left: 64,
+        opacity: state.opacity,
+        padding: "20px 22px",
+        position: "absolute",
+        transform: `translate3d(0, ${state.translateY}px, 0) scale(${state.scale})`,
+        transformOrigin: "left bottom",
+        width: 640,
+        willChange: "opacity, transform",
+      }}
+    >
+      <SubscribeAvatar />
+      <div
+        style={{
+          display: "flex",
+          flex: "1 1 auto",
+          flexDirection: "column",
+          gap: 7,
+          minWidth: 0,
+        }}
+      >
+        <div
+          style={{
+            color: "#111111",
+            fontFamily:
+              "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+            fontSize: 32,
+            fontWeight: 850,
+            letterSpacing: 0,
+            lineHeight: 1,
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {SUBSCRIBE_LOWER_THIRD.channelName}
+        </div>
+        <div
+          style={{
+            color: "#666666",
+            fontFamily:
+              "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+            fontSize: 22,
+            fontWeight: 650,
+            letterSpacing: 0,
+            lineHeight: 1,
+          }}
+        >
+          YouTube
+        </div>
+      </div>
+      <div
+        style={{
+          alignItems: "center",
+          background: buttonBackground,
+          borderRadius: 999,
+          boxShadow: state.subscribed
+            ? "inset 0 0 0 1px rgba(24,24,27,0.08)"
+            : "0 14px 32px rgba(255,0,51,0.32)",
+          color: buttonColor,
+          display: "flex",
+          flex: "0 0 auto",
+          fontFamily:
+            "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
+          fontSize: 24,
+          fontWeight: 850,
+          gap: state.subscribed ? 8 : 0,
+          height: 58,
+          justifyContent: "center",
+          letterSpacing: 0,
+          lineHeight: 1,
+          minWidth: state.subscribed ? 162 : 150,
+          padding: "0 24px",
+          transform: `scale(${state.buttonScale})`,
+          transformOrigin: "center",
+          willChange: "transform",
+        }}
+      >
+        {state.subscribed ? <SubscribeCheckMark /> : null}
+        {state.subscribed ? "Subscribed" : "Subscribe"}
+      </div>
+    </div>
+  );
+}
+
 function SceneVisual({
   durationInFrames,
+  frameOverride,
   scene,
 }: {
   durationInFrames: number;
+  frameOverride?: number;
   scene: RenderInput["scenes"][number];
 }) {
-  const frame = useCurrentFrame();
+  const currentFrame = useCurrentFrame();
   const { fps } = useVideoConfig();
+  const frame = frameOverride ?? currentFrame;
   const motion = getSceneMotionStyle({
     durationInFrames,
     fps,
@@ -637,9 +845,91 @@ function SceneVisual({
   );
 }
 
+function SceneVisualLayer({
+  durationInFrames,
+  previousDurationInFrames,
+  previousScene,
+  scene,
+  transitionInFrames,
+}: {
+  durationInFrames: number;
+  previousDurationInFrames?: number | undefined;
+  previousScene?: RenderInput["scenes"][number] | undefined;
+  scene: RenderInput["scenes"][number];
+  transitionInFrames: number;
+}) {
+  const frame = useCurrentFrame();
+  const opacity = getSceneVisualOpacity({ frame, transitionInFrames });
+  const shouldRenderPreviousVisual =
+    previousScene !== undefined &&
+    previousDurationInFrames !== undefined &&
+    transitionInFrames > 0 &&
+    frame <= transitionInFrames;
+
+  return (
+    <div
+      style={{
+        backgroundColor: "#050505",
+        height: "100%",
+        opacity,
+        position: "relative",
+        width: "100%",
+      }}
+    >
+      {shouldRenderPreviousVisual ? (
+        <div
+          style={{
+            inset: 0,
+            position: "absolute",
+          }}
+        >
+          <SceneVisual
+            durationInFrames={previousDurationInFrames}
+            frameOverride={Math.max(0, previousDurationInFrames - 1)}
+            scene={previousScene}
+          />
+        </div>
+      ) : null}
+      <div
+        style={{
+          inset: 0,
+          opacity,
+          position: "absolute",
+        }}
+      >
+        <SceneVisual durationInFrames={durationInFrames} scene={scene} />
+      </div>
+    </div>
+  );
+}
+
 export const ShortVideo = (props: RenderInput) => {
   const { width, height } = useVideoConfig();
   let from = 0;
+  const sceneTimings = props.scenes.map((scene) => {
+    const durationInFrames = getSceneDurationFrames(scene, props.format.fps);
+    const sequenceFrom = from;
+    from += durationInFrames;
+
+    return {
+      durationInFrames,
+      scene,
+      sequenceFrom,
+    };
+  });
+  const transitionInFramesByScene = sceneTimings.map((timing, index) => {
+    const previousTiming = sceneTimings[index - 1];
+
+    if (!previousTiming) {
+      return 0;
+    }
+
+    return getSceneVisualTransitionFrames({
+      fps: props.format.fps,
+      nextDurationInFrames: timing.durationInFrames,
+      previousDurationInFrames: previousTiming.durationInFrames,
+    });
+  });
 
   return (
     <div
@@ -650,13 +940,16 @@ export const ShortVideo = (props: RenderInput) => {
         overflow: "hidden",
       }}
     >
-      {props.scenes.map((scene) => {
-        const durationInFrames = getSceneDurationFrames(scene, props.format.fps);
-        const sequenceFrom = from;
-        from += durationInFrames;
+      {sceneTimings.map((timing, index) => {
+        const previousTiming = sceneTimings[index - 1];
 
         return (
-          <Sequence durationInFrames={durationInFrames} from={sequenceFrom} key={scene.id}>
+          <Sequence
+            durationInFrames={timing.durationInFrames}
+            from={timing.sequenceFrom}
+            key={`${timing.scene.id}-visual`}
+            premountFor={transitionInFramesByScene[index] ?? 0}
+          >
             <div
               style={{
                 position: "relative",
@@ -665,13 +958,30 @@ export const ShortVideo = (props: RenderInput) => {
                 backgroundColor: "#050505",
               }}
             >
-              <SceneVisual durationInFrames={durationInFrames} scene={scene} />
-              <Audio src={resolveMediaSrc(scene.audioPath)} />
-              <SceneCaption scene={scene} />
+              <SceneVisualLayer
+                durationInFrames={timing.durationInFrames}
+                previousDurationInFrames={previousTiming?.durationInFrames}
+                previousScene={previousTiming?.scene}
+                scene={timing.scene}
+                transitionInFrames={transitionInFramesByScene[index] ?? 0}
+              />
             </div>
           </Sequence>
         );
       })}
+      {sceneTimings.map((timing) => (
+        <Sequence
+          durationInFrames={timing.durationInFrames}
+          from={timing.sequenceFrom}
+          key={`${timing.scene.id}-audio-caption`}
+        >
+          <Audio src={resolveMediaSrc(timing.scene.audioPath)} />
+          <SceneCaption scene={timing.scene} />
+          {shouldShowSubscribeLowerThird(timing.scene.role) ? (
+            <SubscribeLowerThird durationInFrames={timing.durationInFrames} />
+          ) : null}
+        </Sequence>
+      ))}
     </div>
   );
 };
