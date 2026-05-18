@@ -55,8 +55,24 @@ export function sceneImagePath(projectId: string, sceneId: string, assetId: stri
   return path.join("projects", projectId, "scenes", sceneId, "images", `${assetId}.png`);
 }
 
-export function sceneAudioPath(projectId: string, sceneId: string, assetId: string) {
-  return path.join("projects", projectId, "scenes", sceneId, "audio", `${assetId}.wav`);
+export function sceneAudioPath(
+  projectId: string,
+  sceneId: string,
+  assetId: string,
+  ext: string = "wav",
+) {
+  return path.join("projects", projectId, "scenes", sceneId, "audio", `${assetId}.${ext}`);
+}
+
+export function sceneCaptionTimingPath(projectId: string, sceneId: string, assetId: string) {
+  return path.join(
+    "projects",
+    projectId,
+    "scenes",
+    sceneId,
+    "caption-timing",
+    `${assetId}.json`,
+  );
 }
 
 export function renderInputPath(projectId: string, renderId: string) {

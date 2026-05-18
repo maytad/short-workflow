@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { absoluteAssetPath, renderInputPath, sceneAudioPath, writeAssetFile } from "./assets";
+import { absoluteAssetPath, renderInputPath, sceneAudioPath, sceneCaptionTimingPath, writeAssetFile } from "./assets";
 
 describe("asset utilities", () => {
   test("joins the asset root and relative path", () => {
@@ -50,9 +50,28 @@ describe("asset utilities", () => {
     );
   });
 
-  test("builds scene audio paths as wav files", () => {
+  test("builds scene audio paths as wav files by default", () => {
     expect(sceneAudioPath("project-1", "scene-1", "asset-1")).toBe(
       path.join("projects", "project-1", "scenes", "scene-1", "audio", "asset-1.wav"),
+    );
+  });
+
+  test("builds scene audio paths with a custom extension", () => {
+    expect(sceneAudioPath("project-1", "scene-1", "asset-1", "mp3")).toBe(
+      path.join("projects", "project-1", "scenes", "scene-1", "audio", "asset-1.mp3"),
+    );
+  });
+
+  test("builds scene caption timing paths as json files", () => {
+    expect(sceneCaptionTimingPath("project-1", "scene-1", "asset-1")).toBe(
+      path.join(
+        "projects",
+        "project-1",
+        "scenes",
+        "scene-1",
+        "caption-timing",
+        "asset-1.json",
+      ),
     );
   });
 });
