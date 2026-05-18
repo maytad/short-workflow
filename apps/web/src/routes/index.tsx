@@ -30,23 +30,23 @@ function ProjectsIndexRoute() {
   const projects = projectsQuery.data ?? [];
 
   return (
-    <section className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+    <section className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
       <ProjectCreateForm />
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-sm font-medium text-muted-foreground">Projects</p>
-          <h1 className="text-2xl font-semibold tracking-normal">Short video workflow</h1>
+      <div className="min-w-0 space-y-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Projects</p>
+            <h1 className="text-2xl font-semibold tracking-normal">Short video workflow</h1>
+          </div>
+          {projectsQuery.isFetching ? (
+            <span className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              Refreshing
+            </span>
+          ) : null}
         </div>
-        {projectsQuery.isFetching ? (
-          <span className="inline-flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm text-muted-foreground">
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            Refreshing
-          </span>
-        ) : null}
-      </div>
 
-      <div className="lg:col-start-2">
         <div className="rounded-lg border border-border bg-card shadow-sm">
           {projectsQuery.isLoading ? (
             <div className="flex min-h-48 items-center justify-center gap-2 text-sm text-muted-foreground">

@@ -66,6 +66,11 @@ export function RenderPanel({ activeJobs, assets, projectId, renders }: RenderPa
           <p className="text-sm text-muted-foreground">
             {latestRender ? `Latest: ${latestRender.status}` : "No render requested yet"}
           </p>
+          {latestRender ? (
+            <p className="text-xs text-muted-foreground">
+              Rendered length: about {latestRender.durationSeconds}s
+            </p>
+          ) : null}
         </div>
         <Film className="size-5 text-muted-foreground" aria-hidden="true" />
       </div>

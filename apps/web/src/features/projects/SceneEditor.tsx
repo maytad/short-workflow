@@ -148,7 +148,7 @@ export function SceneEditor({ projectId, selectedScene }: SceneEditorProps) {
           rows={4}
         />
         <label className="grid gap-1 text-sm font-medium">
-          Duration seconds
+          Planned duration seconds
           <input
             className="h-10 rounded-md border border-border bg-muted/50 px-3 text-sm outline-none"
             readOnly

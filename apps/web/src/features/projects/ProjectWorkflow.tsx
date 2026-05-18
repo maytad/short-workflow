@@ -56,7 +56,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
               <dd className="font-medium capitalize">{detail.project.status}</dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Duration</dt>
+              <dt className="text-muted-foreground">Script target</dt>
               <dd className="font-medium">{detail.project.targetDurationSeconds}s</dd>
             </div>
             <div className="grid gap-1">
