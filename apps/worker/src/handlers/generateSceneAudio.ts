@@ -1,12 +1,9 @@
 import {
-  generateSpeech,
-  promptPayload,
-  styleContextFromScriptResponseText,
-  ttsPromptTemplate,
+  buildCaptionTimingDoc,
+  generateSpeechWithTimestamps,
 } from "@short-workflow/ai";
 import {
   createPendingAsset,
-  getLatestPromptVersion,
   getScene,
   insertPromptVersion,
   markAssetFailed,
@@ -17,7 +14,7 @@ import {
   type JobRow,
 } from "@short-workflow/db";
 
-import { sceneAudioPath, writeAssetFile } from "../assets";
+import { sceneAudioPath, sceneCaptionTimingPath, writeAssetFile } from "../assets";
 import { resolveHandlerEnv, type HandlerEnv } from "./types";
 
 export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: HandlerEnv) {
@@ -32,74 +29,125 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
     throw new Error("scene_not_found");
   }
 
-  const latestScriptPrompt = await getLatestPromptVersion(db, {
-    projectId: scene.projectId,
-    sceneId: null,
-    purpose: "script",
-  });
-  const styleContext = styleContextFromScriptResponseText(latestScriptPrompt?.responseText);
+  const voiceId = process.env.ELEVENLABS_VOICE_ID;
+  const modelId = process.env.ELEVENLABS_MODEL_ID;
+  if (!voiceId) {
+    throw new Error("ELEVENLABS_VOICE_ID_missing");
+  }
+  if (!modelId) {
+    throw new Error("ELEVENLABS_MODEL_ID_missing");
+  }
 
-  let asset: AssetRow | null = null;
-  let assetReady = false;
+  let audioAsset: AssetRow | null = null;
+  let captionAsset: AssetRow | null = null;
+  let audioAssetReady = false;
+  let captionAssetReady = false;
 
   try {
-    asset = await createPendingAsset(db, {
+    audioAsset = await createPendingAsset(db, {
       projectId: scene.projectId,
       sceneId: scene.id,
       kind: "audio",
-      path: sceneAudioPath(scene.projectId, scene.id, "pending"),
-      provider: "google_gemini",
+      path: sceneAudioPath(scene.projectId, scene.id, "pending", "mp3"),
+      provider: "elevenlabs",
     });
 
-    const voiceName = process.env.GEMINI_TTS_VOICE ?? "Kore";
-    const compiledPrompt = ttsPromptTemplate.compile({
-      scene,
-      voiceName,
-      ...(styleContext ? { styleContext } : {}),
+    const generated = await generateSpeechWithTimestamps({
+      narration: scene.narration,
+      voiceId,
+      modelId,
     });
-    const generated = await generateSpeech({
-      ssml: scene.ssml,
-      prompt: compiledPrompt.prompt,
-      voiceName,
-      promptMetadata: {
-        templateId: compiledPrompt.templateId,
-        templateVersion: compiledPrompt.templateVersion,
-      },
-    });
-    const finalPath = sceneAudioPath(scene.projectId, scene.id, asset.id);
-    const file = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalPath, generated.bytes);
 
-    await markAssetReady(db, asset.id, {
-      path: finalPath,
+    const finalAudioPath = sceneAudioPath(scene.projectId, scene.id, audioAsset.id, "mp3");
+    const audioFile = await writeAssetFile(
+      handlerEnv.LOCAL_ASSET_ROOT,
+      finalAudioPath,
+      generated.bytes,
+    );
+
+    await markAssetReady(db, audioAsset.id, {
+      path: finalAudioPath,
       mimeType: generated.mimeType,
-      sizeBytes: file.sizeBytes,
-      checksum: file.checksum,
-      provider: "google_gemini",
+      sizeBytes: audioFile.sizeBytes,
+      checksum: audioFile.checksum,
+      provider: "elevenlabs",
       model: generated.model,
     });
-    assetReady = true;
+    audioAssetReady = true;
+
+    if (generated.alignment) {
+      captionAsset = await createPendingAsset(db, {
+        projectId: scene.projectId,
+        sceneId: scene.id,
+        kind: "caption_timing",
+        path: sceneCaptionTimingPath(scene.projectId, scene.id, "pending"),
+        provider: "elevenlabs",
+        model: generated.model,
+      });
+
+      // at(-1) is always defined here: validateAlignment (called inside buildCaptionTimingDoc)
+      // guarantees the array is non-empty.
+      const audioDurationSeconds =
+        generated.alignment.characterEndTimesSeconds.at(-1) ?? 1;
+
+      const captionTimingDoc = buildCaptionTimingDoc({
+        alignment: generated.alignment,
+        narration: scene.narration,
+        sourceAudioAssetId: audioAsset.id,
+        audioDurationSeconds,
+      });
+
+      const finalCaptionPath = sceneCaptionTimingPath(
+        scene.projectId,
+        scene.id,
+        captionAsset.id,
+      );
+      const captionBytes = new TextEncoder().encode(
+        `${JSON.stringify(captionTimingDoc, null, 2)}\n`,
+      );
+      const captionFile = await writeAssetFile(
+        handlerEnv.LOCAL_ASSET_ROOT,
+        finalCaptionPath,
+        captionBytes,
+      );
+
+      await markAssetReady(db, captionAsset.id, {
+        path: finalCaptionPath,
+        mimeType: "application/json",
+        sizeBytes: captionFile.sizeBytes,
+        checksum: captionFile.checksum,
+        provider: "elevenlabs",
+        model: generated.model,
+      });
+      captionAssetReady = true;
+    }
 
     const promptVersion = await insertPromptVersion(db, {
       projectId: scene.projectId,
       sceneId: scene.id,
       purpose: "ssml",
-      provider: "google_gemini",
+      provider: "elevenlabs",
       model: generated.model,
-      promptPayload: promptPayload(compiledPrompt, {
-        sceneId: scene.id,
-        ssml: scene.ssml,
+      promptPayload: {
         narration: scene.narration,
-      }),
+        voiceId,
+        modelId,
+      },
       responseMetadata: generated.responseMetadata,
     });
 
     await markJobSucceeded(db, job.id, {
-      assetId: asset.id,
+      assetId: audioAsset.id,
+      ...(captionAsset ? { captionTimingAssetId: captionAsset.id } : {}),
       promptVersionId: promptVersion.id,
     });
   } catch (error) {
-    if (asset && !assetReady) {
-      await markAssetFailed(db, asset.id, errorMessage(error));
+    if (captionAsset && !captionAssetReady) {
+      await markAssetFailed(db, captionAsset.id, errorMessage(error));
+    }
+
+    if (audioAsset && !audioAssetReady) {
+      await markAssetFailed(db, audioAsset.id, errorMessage(error));
     }
 
     throw error;
