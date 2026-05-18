@@ -28,6 +28,8 @@ const sampleScene = {
   narration: "Your recorded voice is not lying to you. Your skull is.",
   caption: "Your skull changes your voice.",
   imagePrompt: seed.visualMetaphor,
+  visualBrief:
+    "A translucent side-profile skull shows two sound paths at once: vibrations traveling through bone and separate waves moving through open air.",
   ssml: "<speak>Your recorded voice is not lying to you. Your skull is.</speak>",
 };
 

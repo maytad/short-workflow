@@ -3,6 +3,7 @@ import {
   imagePromptTemplate,
   promptPayload,
   resolveImageProvider,
+  sceneVisualBriefFromScriptResponseText,
   styleContextFromScriptResponseText,
 } from "@short-workflow/ai";
 import {
@@ -45,6 +46,10 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
     purpose: "script",
   });
   const styleContext = styleContextFromScriptResponseText(latestScriptPrompt?.responseText);
+  const visualBrief = sceneVisualBriefFromScriptResponseText(
+    latestScriptPrompt?.responseText,
+    scene.position,
+  );
 
   let asset: AssetRow | null = null;
   let assetReady = false;
@@ -61,7 +66,10 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
 
     const compiledPrompt = imagePromptTemplate.compile({
       project,
-      scene,
+      scene: {
+        ...scene,
+        ...(visualBrief ? { visualBrief } : {}),
+      },
       provider,
       ...(styleContext ? { styleContext } : {}),
     });
@@ -96,6 +104,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
         projectId: project.id,
         sceneId: scene.id,
         imagePrompt: scene.imagePrompt,
+        visualBrief: visualBrief ?? null,
       }),
       responseMetadata: generated.responseMetadata,
     });

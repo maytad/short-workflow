@@ -205,7 +205,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 1,
+  version: 2,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -241,7 +241,11 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Do not create medical, finance, legal, political, crime, disaster, public figure, or breaking-news content.",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
             "The cta scene is a loop-ending slot, not a long subscribe call-to-action.",
-            "Image prompt seeds must describe visual subject matter and must not ask for embedded text.",
+            "Each image prompt seed must describe a concrete visual frame, not a vague concept.",
+            "For each scene, make visualBrief explain what the viewer should understand from the image in under half a second.",
+            "Image prompt seeds and visual briefs must not ask for embedded text, labels, captions, typography, UI, logos, or watermarks.",
+            "Hook image prompts must identify the object or phenomenon immediately and include a visual curiosity gap.",
+            "Point scene image prompts must show the mechanism through macro detail, object cutaway, cause/effect, or a physical metaphor.",
             "SSML must use one <speak> root and speak the narration naturally.",
           ].join("\n"),
         },
@@ -321,6 +325,26 @@ export function styleContextFromScriptResponseText(
   try {
     const parsed = scriptPlanSchema.safeParse(JSON.parse(responseText));
     return parsed.success ? parsed.data.styleContext : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function sceneVisualBriefFromScriptResponseText(
+  responseText: string | null | undefined,
+  scenePosition: number,
+): string | undefined {
+  if (!responseText) {
+    return undefined;
+  }
+
+  try {
+    const parsed = scriptPlanSchema.safeParse(JSON.parse(responseText));
+    if (!parsed.success) {
+      return undefined;
+    }
+
+    return parsed.data.scenes.find((scene) => scene.position === scenePosition)?.visualBrief;
   } catch {
     return undefined;
   }
