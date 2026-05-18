@@ -13,6 +13,7 @@ export const renderSceneInputSchema = z
     caption: z.string(),
     imagePath: z.string().min(1),
     audioPath: z.string().min(1),
+    captionTimingPath: z.string().min(1).optional(),
   })
   .strict();
 
