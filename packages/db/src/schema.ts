@@ -28,6 +28,7 @@ export const assetKindEnum = pgEnum("asset_kind", [
   "render",
   "thumbnail",
   "render_input",
+  "caption_timing",
 ]);
 export const assetStatusEnum = pgEnum("asset_status", ["pending", "ready", "failed"]);
 export const storageDriverEnum = pgEnum("storage_driver", ["local"]);
@@ -37,6 +38,7 @@ export const assetProviderEnum = pgEnum("asset_provider", [
   "google_tts",
   "remotion",
   "local",
+  "elevenlabs",
 ]);
 export const jobTypeEnum = pgEnum("job_type", [
   "generate_script",
