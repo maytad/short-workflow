@@ -56,7 +56,7 @@ describe("validateAlignment", () => {
 
   test("rejects end <= start at any index", () => {
     const ends = [...wellFormed.characterEndTimesSeconds];
-    ends[2] = wellFormed.characterStartTimesSeconds[2]; // equal -> reject
+    ends[2] = wellFormed.characterStartTimesSeconds[2]!; // equal -> reject
     const result = validateAlignment({ ...wellFormed, characterEndTimesSeconds: ends });
     expect(result.ok).toBe(false);
   });
@@ -139,8 +139,8 @@ describe("validateCaptionTimingDoc", () => {
       sourceAudioAssetId: "audio-1",
     });
     // Force overlap > 0.05s
-    doc.words[1].start = doc.words[0].end - 0.5;
-    doc.words[1].end = doc.words[1].start + 0.1;
+    doc.words[1]!.start = doc.words[0]!.end - 0.5;
+    doc.words[1]!.end = doc.words[1]!.start + 0.1;
     const result = validateCaptionTimingDoc(doc, { sceneDurationSeconds: 5 });
     expect(result.ok).toBe(false);
   });
