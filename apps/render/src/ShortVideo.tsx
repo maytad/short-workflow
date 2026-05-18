@@ -47,11 +47,22 @@ export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: nu
   scenes.reduce((total, scene) => total + getSceneDurationFrames(scene, fps), 0);
 
 /**
- * Returns the index of the word whose time window contains t, or -1 if none.
+ * Returns the index of the active word at time t. A word is active from its
+ * own start until the next word starts (or until its end if it is the last
+ * word). This intentionally extends through inter-word silences — without it,
+ * the highlight flickers off-on across the small gaps that ElevenLabs leaves
+ * between words.
+ *
+ * Returns -1 only for pre-roll (before any word has started) and post-roll
+ * (after the last word's end has passed).
  */
 export function pickActiveIndex(words: readonly CaptionWord[], t: number): number {
+  if (words.length === 0) return -1;
+  if (t < words[0]!.start) return -1;
   for (let i = 0; i < words.length; i += 1) {
-    if (words[i]!.start <= t && t < words[i]!.end) return i;
+    const next = words[i + 1];
+    const upper = next ? next.start : words[i]!.end;
+    if (t >= words[i]!.start && t < upper) return i;
   }
   return -1;
 }
@@ -96,14 +107,29 @@ export function chunkWords(
   return chunks;
 }
 
-function pickChunk(chunks: readonly Chunk[], activeIndex: number): Chunk {
-  if (activeIndex < 0) {
-    return chunks[0] ?? [];
+/**
+ * Selects the chunk to display. Uses a sticky "progress index" — the latest
+ * word whose start has already passed — so the chunk does not flicker back to
+ * chunks[0] during inter-word silences (mid-stream activeIndex === -1) or
+ * after the last word ends (post-roll). Pre-roll still shows chunks[0].
+ */
+function pickChunk(
+  chunks: readonly Chunk[],
+  words: readonly CaptionWord[],
+  t: number,
+): Chunk {
+  if (chunks.length === 0) return [];
+  if (words.length === 0) return chunks[0] ?? [];
+  if (t < words[0]!.start) return chunks[0] ?? [];
+
+  let progressIndex = 0;
+  for (let i = 0; i < words.length; i += 1) {
+    if (words[i]!.start <= t) progressIndex = i;
+    else break;
   }
+
   for (const chunk of chunks) {
-    if (chunk.some((entry) => entry.index === activeIndex)) {
-      return chunk;
-    }
+    if (chunk.some((entry) => entry.index === progressIndex)) return chunk;
   }
   return chunks[chunks.length - 1] ?? [];
 }
@@ -179,7 +205,7 @@ function KaraokeCaption({
   const t = localFrame / fps;
   const activeIndex = pickActiveIndex(doc.words, t);
   const chunks = chunkWords(doc.words, { target: 5, min: 4, max: 6 });
-  const selected = pickChunk(chunks, activeIndex);
+  const selected = pickChunk(chunks, doc.words, t);
 
   return (
     <div style={CAPTION_BOX_STYLE}>

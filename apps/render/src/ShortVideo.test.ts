@@ -52,6 +52,19 @@ describe("pickActiveIndex", () => {
   test("returns -1 for an empty word list", () => {
     expect(pickActiveIndex([], 0.5)).toBe(-1);
   });
+
+  test("extends a word through the silence before the next word", () => {
+    // ElevenLabs typically leaves 30-80ms of silence between words. The
+    // highlight should stay on the previous word during that gap to avoid
+    // flicker — only the post-roll (after the final word) returns -1.
+    const gappy = [
+      { text: "Hi", start: 0.0, end: 0.3 },
+      { text: "there", start: 0.5, end: 0.9 },
+    ] as const;
+    expect(pickActiveIndex(gappy, 0.4)).toBe(0); // gap between words
+    expect(pickActiveIndex(gappy, 0.5)).toBe(1); // next word starts
+    expect(pickActiveIndex(gappy, 0.95)).toBe(-1); // post-roll
+  });
 });
 
 describe("chunkWords", () => {
