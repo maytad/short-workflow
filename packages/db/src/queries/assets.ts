@@ -103,3 +103,24 @@ export async function getCurrentReadySceneAsset(
 
   return row?.asset ?? null;
 }
+
+export async function getReadyAssetByPath(
+  db: DbClient,
+  input: { sceneId: string; kind: AssetRow["kind"]; path: string },
+) {
+  const [row] = await db
+    .select()
+    .from(assets)
+    .where(
+      and(
+        eq(assets.sceneId, input.sceneId),
+        eq(assets.kind, input.kind),
+        eq(assets.path, input.path),
+        eq(assets.status, "ready"),
+      ),
+    )
+    .orderBy(desc(assets.createdAt))
+    .limit(1);
+
+  return row ?? null;
+}
