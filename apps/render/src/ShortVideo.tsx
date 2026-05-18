@@ -46,6 +46,188 @@ export const getSceneDurationFrames = (scene: SceneDuration, fps: number) =>
 export const getTotalDurationFrames = (scenes: readonly SceneDuration[], fps: number) =>
   scenes.reduce((total, scene) => total + getSceneDurationFrames(scene, fps), 0);
 
+type SceneMotionRole = RenderInput["scenes"][number]["role"];
+
+export type SceneMotionProfile = {
+  baseScaleStart: number;
+  baseScaleEnd: number;
+  panX: number;
+  panY: number;
+  beatEveryFrames: number;
+  beatOffsetFrames: number;
+  pulseScale: number;
+  pulseFrames: number;
+  entranceScale: number;
+  overlayMaxOpacity: number;
+  captionScrimOpacity: number;
+};
+
+export type SceneMotionStyle = {
+  scale: number;
+  translateX: number;
+  translateY: number;
+  overlayOpacity: number;
+  captionScrimOpacity: number;
+};
+
+export type SceneMotionStyleInput = {
+  durationInFrames: number;
+  fps: number;
+  frame: number;
+  position: number;
+  role: SceneMotionRole;
+};
+
+const deterministicDirection = (position: number) => (position % 2 === 0 ? -1 : 1);
+
+export function sceneMotionProfile(
+  role: SceneMotionRole,
+  position: number,
+  fps: number,
+): SceneMotionProfile {
+  const direction = deterministicDirection(position);
+  const twoSeconds = Math.max(1, Math.round(2 * fps));
+  const threeSeconds = Math.max(1, Math.round(3 * fps));
+  const fourSeconds = Math.max(1, Math.round(4 * fps));
+
+  switch (role) {
+    case "hook":
+      return {
+        baseScaleStart: 1.045,
+        baseScaleEnd: 1.105,
+        panX: 34 * direction,
+        panY: -20,
+        beatEveryFrames: twoSeconds,
+        beatOffsetFrames: Math.round(0.25 * fps),
+        pulseScale: 0.028,
+        pulseFrames: Math.round(0.32 * fps),
+        entranceScale: 0.035,
+        overlayMaxOpacity: 0.18,
+        captionScrimOpacity: 0.32,
+      };
+    case "context":
+      return {
+        baseScaleStart: 1.035,
+        baseScaleEnd: 1.075,
+        panX: 24 * direction,
+        panY: 10,
+        beatEveryFrames: fourSeconds,
+        beatOffsetFrames: Math.round(0.75 * fps),
+        pulseScale: 0.012,
+        pulseFrames: Math.round(0.28 * fps),
+        entranceScale: 0.018,
+        overlayMaxOpacity: 0.1,
+        captionScrimOpacity: 0.28,
+      };
+    case "point":
+      return {
+        baseScaleStart: 1.055,
+        baseScaleEnd: 1.12,
+        panX: 28 * direction,
+        panY: -14,
+        beatEveryFrames: threeSeconds,
+        beatOffsetFrames: Math.round(0.45 * fps),
+        pulseScale: 0.022,
+        pulseFrames: Math.round(0.34 * fps),
+        entranceScale: 0.024,
+        overlayMaxOpacity: 0.22,
+        captionScrimOpacity: 0.34,
+      };
+    case "payoff":
+      return {
+        baseScaleStart: 1.04,
+        baseScaleEnd: 1.09,
+        panX: 26 * direction,
+        panY: -8,
+        beatEveryFrames: threeSeconds,
+        beatOffsetFrames: Math.round(0.65 * fps),
+        pulseScale: 0.018,
+        pulseFrames: Math.round(0.3 * fps),
+        entranceScale: 0.02,
+        overlayMaxOpacity: 0.14,
+        captionScrimOpacity: 0.32,
+      };
+    case "cta":
+      return {
+        baseScaleStart: 1.05,
+        baseScaleEnd: 1.085,
+        panX: -22 * direction,
+        panY: 12,
+        beatEveryFrames: threeSeconds,
+        beatOffsetFrames: Math.round(0.35 * fps),
+        pulseScale: 0.016,
+        pulseFrames: Math.round(0.28 * fps),
+        entranceScale: 0.018,
+        overlayMaxOpacity: 0.12,
+        captionScrimOpacity: 0.32,
+      };
+  }
+}
+
+export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionStyle {
+  const duration = Math.max(1, input.durationInFrames);
+  const frame = Math.min(Math.max(0, input.frame), duration - 1);
+  const profile = sceneMotionProfile(input.role, input.position, input.fps);
+  const progress = duration <= 1 ? 1 : frame / (duration - 1);
+
+  const baseScale = interpolate(
+    progress,
+    [0, 1],
+    [profile.baseScaleStart, profile.baseScaleEnd],
+    {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.inOut(Easing.cubic),
+    },
+  );
+
+  const entranceProgress = interpolate(frame, [0, Math.round(0.45 * input.fps)], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.out(Easing.cubic),
+  });
+
+  const rawBeatFrame = frame - profile.beatOffsetFrames;
+  const beatFrame = Math.max(0, rawBeatFrame);
+  const beatPosition =
+    profile.beatEveryFrames > 0 ? beatFrame % profile.beatEveryFrames : beatFrame;
+  const pulseProgress =
+    rawBeatFrame >= 0 && beatPosition <= profile.pulseFrames
+      ? interpolate(beatPosition, [0, profile.pulseFrames], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+          easing: Easing.out(Easing.cubic),
+        })
+      : 0;
+
+  const scale =
+    baseScale +
+    profile.entranceScale * entranceProgress * (1 - progress) +
+    profile.pulseScale * pulseProgress;
+
+  const overlayOpacity = Math.min(
+    profile.overlayMaxOpacity,
+    profile.overlayMaxOpacity * (1 - progress) +
+      profile.overlayMaxOpacity * 0.35 * pulseProgress,
+  );
+
+  return {
+    scale,
+    translateX: interpolate(progress, [0, 1], [-profile.panX, profile.panX], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.inOut(Easing.cubic),
+    }),
+    translateY: interpolate(progress, [0, 1], [-profile.panY, profile.panY], {
+      extrapolateLeft: "clamp",
+      extrapolateRight: "clamp",
+      easing: Easing.inOut(Easing.cubic),
+    }),
+    overlayOpacity,
+    captionScrimOpacity: profile.captionScrimOpacity,
+  };
+}
+
 /**
  * Returns the index of the active word at time t. A word is active from its
  * own start until the next word starts (or until its end if it is the last

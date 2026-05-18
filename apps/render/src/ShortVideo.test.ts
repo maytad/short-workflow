@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
-import { chunkWords, getSceneDurationFrames, getTotalDurationFrames, pickActiveIndex, resolveMediaSrc } from "./ShortVideo";
+import {
+  chunkWords,
+  getSceneDurationFrames,
+  getSceneMotionStyle,
+  getTotalDurationFrames,
+  pickActiveIndex,
+  resolveMediaSrc,
+  sceneMotionProfile,
+} from "./ShortVideo";
 
 describe("ShortVideo helpers", () => {
   test("uses file URLs for absolute media paths", () => {
@@ -95,3 +103,71 @@ describe("chunkWords", () => {
   });
 });
 
+describe("scene motion", () => {
+  test("uses a stronger first beat for hook scenes", () => {
+    const hook = sceneMotionProfile("hook", 1, 30);
+    const context = sceneMotionProfile("context", 2, 30);
+
+    expect(hook.beatEveryFrames).toBeLessThan(context.beatEveryFrames);
+    expect(hook.pulseScale).toBeGreaterThan(context.pulseScale);
+    expect(hook.baseScaleEnd).toBeGreaterThan(hook.baseScaleStart);
+  });
+
+  test("produces deterministic pan and punch-in values over a scene", () => {
+    const start = getSceneMotionStyle({
+      durationInFrames: 180,
+      fps: 30,
+      frame: 0,
+      position: 1,
+      role: "hook",
+    });
+    const middle = getSceneMotionStyle({
+      durationInFrames: 180,
+      fps: 30,
+      frame: 75,
+      position: 1,
+      role: "hook",
+    });
+    const end = getSceneMotionStyle({
+      durationInFrames: 180,
+      fps: 30,
+      frame: 179,
+      position: 1,
+      role: "hook",
+    });
+
+    expect(start.scale).toBeGreaterThan(1);
+    expect(middle.scale).toBeGreaterThan(start.scale);
+    expect(end.scale).toBeGreaterThan(start.scale);
+    expect(start.translateX).not.toBe(end.translateX);
+    expect(start.overlayOpacity).toBeGreaterThan(end.overlayOpacity);
+  });
+
+  test("keeps point scenes visually emphasized without hiding captions", () => {
+    const style = getSceneMotionStyle({
+      durationInFrames: 210,
+      fps: 30,
+      frame: 90,
+      position: 3,
+      role: "point",
+    });
+
+    expect(style.scale).toBeGreaterThan(1.04);
+    expect(style.overlayOpacity).toBeGreaterThanOrEqual(0);
+    expect(style.overlayOpacity).toBeLessThanOrEqual(0.22);
+    expect(style.captionScrimOpacity).toBeGreaterThan(0);
+  });
+
+  test("clamps pulsed overlay opacity to the role maximum", () => {
+    const maxOpacity = sceneMotionProfile("point", 3, 30).overlayMaxOpacity;
+    const style = getSceneMotionStyle({
+      durationInFrames: 210,
+      fps: 30,
+      frame: 14,
+      position: 3,
+      role: "point",
+    });
+
+    expect(style.overlayOpacity).toBeCloseTo(maxOpacity, 5);
+  });
+});
