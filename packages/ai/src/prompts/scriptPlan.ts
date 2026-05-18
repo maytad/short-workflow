@@ -224,7 +224,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 4,
+  version: 5,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -262,6 +262,14 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "Create one focused micro-documentary episode from the selected seed. The final script should feel specific, concrete, and immediately understandable to a curious general audience.",
             "Every scene must earn its time with either curiosity, mechanism clarity, visual evidence, payoff, or a loop-back ending.",
+            "Use the selected mechanical episode concept fields directly. Do not drift into a broad everyday-science explainer.",
+            "Open with the misconception, impossible-looking behavior, or satisfying action already happening.",
+            "Do not use a generic \"inside this object\" opening unless the selected title angle requires it.",
+            "The hook and payoff must be connected by the selected loopPayoff.",
+            "At least one point scene must reveal the named mechanism through the selected visualReveal.",
+            "Narration should include the selected satisfyingMotion as concrete verbs where natural.",
+            "Do not over-explain the entire object. Explain the selected mechanism only.",
+            "Avoid repeating generic sentence shapes such as \"This works because\" and \"Inside, there is\".",
             "",
             "# Pacing Rules",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
@@ -282,6 +290,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "# Safety and Scope",
             "Do not invent a new topic. Use the selected seed exactly.",
             "Do not create medical, finance, legal, political, crime, disaster, public figure, or breaking-news content.",
+            "For lock or security-adjacent mechanisms, explain internal principles only; never provide bypass, picking, decoding, cracking, defeating, tool-use, step sequences, or unauthorized-opening instructions.",
             "",
             "# Output Contract",
             "Return production-ready JSON that follows the supplied schema.",
@@ -297,8 +306,14 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             `<scene_roles>${roles.join(", ")}</scene_roles>`,
             `<seed_id>${seed.seedId}</seed_id>`,
             `<central_question>${seed.centralQuestion}</central_question>`,
-            `<everyday_object_or_phenomenon>${seed.everydayObjectOrPhenomenon}</everyday_object_or_phenomenon>`,
+            `<mechanism_family>${seed.mechanismFamily}</mechanism_family>`,
+            `<object_or_mechanism>${seed.objectOrMechanism}</object_or_mechanism>`,
+            `<title_angle>${seed.titleAngle}</title_angle>`,
+            `<viewer_misconception>${seed.viewerMisconception}</viewer_misconception>`,
             `<mechanism_hint>${seed.mechanismHint}</mechanism_hint>`,
+            `<satisfying_motion>${seed.satisfyingMotion}</satisfying_motion>`,
+            `<visual_reveal>${seed.visualReveal}</visual_reveal>`,
+            `<loop_payoff>${seed.loopPayoff}</loop_payoff>`,
             `<visual_metaphor>${seed.visualMetaphor}</visual_metaphor>`,
             `Return exactly ${roles.length} scenes in this role order.`,
           ].join("\n"),
@@ -344,14 +359,14 @@ function hasExpectedScenePlan(
 export function defaultProjectStyleContext(): ProjectStyleContext {
   return {
     visualStyle:
-      "social-native vertical science frames with real objects, hands, macro details, action already in progress, and clear mechanism reveals",
+      "social-native vertical macro mechanism frames with real objects, cutaways, transparent housings, springs, cams, latches, gears, pawls, tracks, levers, valves, and tactile material texture",
     tone: "clear, curious, precise, lightly dramatic, and never generic",
-    pacing: "brisk but intelligible short-form narration",
+    pacing: "brisk but intelligible short-form narration with a satisfying mechanical reveal",
     colorAndLighting:
-      "high contrast, bright mobile-readable subject separation, tactile real-world texture, and clean caption-safe negative space",
+      "high contrast, bright mobile-readable subject separation, tactile real-world texture, metallic and plastic detail, and clean caption-safe negative space",
     imageContinuity:
-      "consistent short-form science visual language with one dominant object, one clear action, and one readable mechanism per scene",
-    voiceDirection: "warm documentary narrator with crisp articulation and a clean payoff",
+      "consistent mechanical micro-documentary language with one dominant object, one readable mechanism, and one satisfying motion beat per scene",
+    voiceDirection: "warm documentary narrator with crisp articulation and a clean loop payoff",
   };
 }
 

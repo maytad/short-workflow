@@ -3,57 +3,56 @@ import { getTinyMechanismsSeed, TINY_MECHANISMS_PRESET_ID } from "./presets/tiny
 import { scriptPlanPrompt } from "./scriptPlan";
 import { ttsPromptTemplate } from "./ttsPrompt";
 
-const seed = getTinyMechanismsSeed("recorded_voice");
-if (!seed) {
-  throw new Error("review_seed_missing");
-}
+const reviewSeedIds = ["click_pen_cam_lock", "watch_escapement_ticks", "spray_bottle_check_valves"];
 
-const script = scriptPlanPrompt.compile({
-  channelPresetId: TINY_MECHANISMS_PRESET_ID,
-  seedId: seed.seedId,
-  targetDurationSeconds: 45,
+const reviews = reviewSeedIds.map((seedId, index) => {
+  const seed = getTinyMechanismsSeed(seedId);
+  if (!seed) {
+    throw new Error(`review_seed_missing:${seedId}`);
+  }
+
+  const script = scriptPlanPrompt.compile({
+    channelPresetId: TINY_MECHANISMS_PRESET_ID,
+    seedId: seed.seedId,
+    targetDurationSeconds: 45,
+  });
+
+  const sampleProject = {
+    id: `review-project-${index + 1}`,
+    title: `Tiny Mechanisms: ${seed.centralQuestion}`,
+    topic: `tiny_mechanisms:${seed.seedId}`,
+  };
+
+  const sampleScene = {
+    id: `review-scene-${index + 1}`,
+    position: 1,
+    role: "hook" as const,
+    durationSeconds: 3,
+    narration: seed.loopPayoff,
+    caption: seed.titleAngle,
+    imagePrompt: seed.visualReveal,
+    visualBrief: `Show ${seed.objectOrMechanism} through ${seed.visualReveal}.`,
+    visualHookArchetype: "reveal_cutaway" as const,
+    ssml: `<speak>${seed.loopPayoff}</speak>`,
+  };
+
+  const image = imagePromptTemplate.compile({
+    project: sampleProject,
+    scene: sampleScene,
+    provider: "openai",
+  });
+
+  const tts = ttsPromptTemplate.compile({
+    scene: sampleScene,
+    voiceName: "Kore",
+  });
+
+  return {
+    seed,
+    script,
+    image,
+    tts,
+  };
 });
 
-const sampleProject = {
-  id: "review-project",
-  title: `Tiny Mechanisms: ${seed.centralQuestion}`,
-  topic: `tiny_mechanisms:${seed.seedId}`,
-};
-
-const sampleScene = {
-  id: "review-scene",
-  position: 1,
-  role: "hook" as const,
-  durationSeconds: 3,
-  narration: "Your recorded voice is not lying to you. Your skull is.",
-  caption: "Your skull changes your voice.",
-  imagePrompt:
-    "a hand holding a phone voice recorder near a mouth while a translucent jaw shows skull vibrations and a separate air-wave path entering the microphone",
-  visualBrief:
-    "A translucent side-profile skull shows two sound paths at once: vibrations traveling through bone and separate waves moving through open air.",
-  visualHookArchetype: "consequence_first" as const,
-  ssml: "<speak>Your recorded voice is not lying to you. Your skull is.</speak>",
-};
-
-const image = imagePromptTemplate.compile({
-  project: sampleProject,
-  scene: sampleScene,
-  provider: "openai",
-});
-
-const tts = ttsPromptTemplate.compile({
-  scene: sampleScene,
-  voiceName: "Kore",
-});
-
-console.log(
-  JSON.stringify(
-    {
-      script,
-      image,
-      tts,
-    },
-    null,
-    2,
-  ),
-);
+console.log(JSON.stringify({ reviews }, null, 2));
