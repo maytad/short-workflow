@@ -16,12 +16,12 @@ export function validateAlignment(alignment: ElevenLabsAlignment): ValidationRes
   ) {
     return { ok: false, reason: "length_mismatch" };
   }
-  if (characterStartTimesSeconds[0] < 0) {
+  if ((characterStartTimesSeconds[0] ?? 0) < 0) {
     return { ok: false, reason: "negative_first_start" };
   }
   for (let i = 0; i < characters.length; i += 1) {
-    const s = characterStartTimesSeconds[i];
-    const e = characterEndTimesSeconds[i];
+    const s = characterStartTimesSeconds[i]!;
+    const e = characterEndTimesSeconds[i]!;
     if (!Number.isFinite(s) || !Number.isFinite(e)) {
       return { ok: false, reason: `non_finite_at_${i}` };
     }
@@ -39,18 +39,18 @@ export function alignmentToWords(alignment: ElevenLabsAlignment): CaptionWord[] 
 
   const flush = () => {
     if (chunk.length === 0) return;
-    const first = chunk[0];
-    const last = chunk[chunk.length - 1];
+    const first = chunk[0]!;
+    const last = chunk[chunk.length - 1]!;
     words.push({
-      text: chunk.map((i) => characters[i]).join(""),
-      start: characterStartTimesSeconds[first],
-      end: characterEndTimesSeconds[last],
+      text: chunk.map((i) => characters[i]!).join(""),
+      start: characterStartTimesSeconds[first]!,
+      end: characterEndTimesSeconds[last]!,
     });
     chunk = [];
   };
 
   for (let i = 0; i < characters.length; i += 1) {
-    const c = characters[i];
+    const c = characters[i]!;
     if (/\s/.test(c)) {
       flush();
     } else {
@@ -91,11 +91,11 @@ export function validateCaptionTimingDoc(
     return { ok: false, reason: "non_positive_audio_duration" };
   }
   for (let i = 0; i < doc.words.length; i += 1) {
-    const w = doc.words[i];
+    const w = doc.words[i]!;
     if (w.start < 0) return { ok: false, reason: `word_${i}_negative_start` };
     if (w.end <= w.start) return { ok: false, reason: `word_${i}_end_le_start` };
     if (i > 0) {
-      const prev = doc.words[i - 1];
+      const prev = doc.words[i - 1]!;
       if (w.start + 0.05 < prev.end) {
         return { ok: false, reason: `word_${i}_not_monotonic` };
       }
