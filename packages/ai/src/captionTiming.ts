@@ -1,99 +1,105 @@
 import type { CaptionTimingDoc, CaptionWord } from "@short-workflow/shared";
-import { captionTimingDocSchema } from "@short-workflow/shared";
 
 import type { ElevenLabsAlignment } from "./elevenLabsTts";
 
-/**
- * Validates that an ElevenLabsAlignment is non-empty and all three arrays
- * have the same length. Throws on any violation.
- */
-export function validateAlignment(alignment: ElevenLabsAlignment): void {
-  const len = alignment.characters.length;
-  if (len === 0) {
-    throw new Error("elevenlabs_alignment_empty");
+type ValidationResult = { ok: true } | { ok: false; reason: string };
+
+export function validateAlignment(alignment: ElevenLabsAlignment): ValidationResult {
+  const { characters, characterStartTimesSeconds, characterEndTimesSeconds } = alignment;
+
+  if (characters.length === 0) {
+    return { ok: false, reason: "empty_characters" };
   }
   if (
-    alignment.characterStartTimesSeconds.length !== len ||
-    alignment.characterEndTimesSeconds.length !== len
+    characterStartTimesSeconds.length !== characters.length ||
+    characterEndTimesSeconds.length !== characters.length
   ) {
-    throw new Error("elevenlabs_alignment_length_mismatch");
+    return { ok: false, reason: "length_mismatch" };
   }
+  if (characterStartTimesSeconds[0] < 0) {
+    return { ok: false, reason: "negative_first_start" };
+  }
+  for (let i = 0; i < characters.length; i += 1) {
+    const s = characterStartTimesSeconds[i];
+    const e = characterEndTimesSeconds[i];
+    if (!Number.isFinite(s) || !Number.isFinite(e)) {
+      return { ok: false, reason: `non_finite_at_${i}` };
+    }
+    if (e <= s) {
+      return { ok: false, reason: `end_le_start_at_${i}` };
+    }
+  }
+  return { ok: true };
 }
 
-/**
- * Converts a character-level ElevenLabs alignment into an array of
- * CaptionWord objects by grouping consecutive non-whitespace characters.
- * Each word's start/end times come from the first/last character in the group.
- */
 export function alignmentToWords(alignment: ElevenLabsAlignment): CaptionWord[] {
-  validateAlignment(alignment);
-
+  const { characters, characterStartTimesSeconds, characterEndTimesSeconds } = alignment;
   const words: CaptionWord[] = [];
-  let wordChars = "";
-  let wordStart = 0;
-  let wordEnd = 0;
+  let chunk: number[] = [];
 
-  for (let i = 0; i < alignment.characters.length; i++) {
-    const char = alignment.characters[i];
-    const start = alignment.characterStartTimesSeconds[i];
-    const end = alignment.characterEndTimesSeconds[i];
+  const flush = () => {
+    if (chunk.length === 0) return;
+    const first = chunk[0];
+    const last = chunk[chunk.length - 1];
+    words.push({
+      text: chunk.map((i) => characters[i]).join(""),
+      start: characterStartTimesSeconds[first],
+      end: characterEndTimesSeconds[last],
+    });
+    chunk = [];
+  };
 
-    if (char === undefined || start === undefined || end === undefined) {
-      continue;
-    }
-
-    if (char === " " || char === "\n" || char === "\t") {
-      if (wordChars.length > 0) {
-        words.push({ text: wordChars, start: wordStart, end: wordEnd });
-        wordChars = "";
-      }
+  for (let i = 0; i < characters.length; i += 1) {
+    const c = characters[i];
+    if (/\s/.test(c)) {
+      flush();
     } else {
-      if (wordChars.length === 0) {
-        wordStart = start;
-      }
-      wordChars += char;
-      wordEnd = end;
+      chunk.push(i);
     }
   }
-
-  if (wordChars.length > 0) {
-    words.push({ text: wordChars, start: wordStart, end: wordEnd });
-  }
+  flush();
 
   return words;
 }
 
-export type BuildCaptionTimingDocInput = {
+export function buildCaptionTimingDoc(input: {
   alignment: ElevenLabsAlignment;
-  narration: string;
   sourceAudioAssetId: string;
-  audioDurationSeconds: number;
-};
+}): CaptionTimingDoc {
+  const { alignment, sourceAudioAssetId } = input;
+  const words = alignmentToWords(alignment);
+  const narration = alignment.characters.join("");
+  const audioDurationSeconds = Math.max(...alignment.characterEndTimesSeconds);
 
-/**
- * Builds and validates a CaptionTimingDoc from an ElevenLabs alignment and
- * audio metadata. Throws if the alignment produces no words or if the
- * resulting document fails schema validation.
- */
-export function buildCaptionTimingDoc(input: BuildCaptionTimingDocInput): CaptionTimingDoc {
-  const words = alignmentToWords(input.alignment);
-  if (words.length === 0) {
-    throw new Error("caption_timing_no_words");
-  }
-
-  return validateCaptionTimingDoc({
+  return {
     version: 1,
-    sourceAudioAssetId: input.sourceAudioAssetId,
-    narration: input.narration,
-    audioDurationSeconds: input.audioDurationSeconds,
+    sourceAudioAssetId,
+    narration,
+    audioDurationSeconds,
     words,
-  });
+  };
 }
 
-/**
- * Parses and validates an unknown value as a CaptionTimingDoc using the
- * shared Zod schema. Throws a ZodError on invalid input.
- */
-export function validateCaptionTimingDoc(value: unknown): CaptionTimingDoc {
-  return captionTimingDocSchema.parse(value);
+export function validateCaptionTimingDoc(
+  doc: CaptionTimingDoc,
+  _options: { sceneDurationSeconds: number },
+): ValidationResult {
+  if (doc.words.length === 0) {
+    return { ok: false, reason: "empty_words" };
+  }
+  if (doc.audioDurationSeconds <= 0) {
+    return { ok: false, reason: "non_positive_audio_duration" };
+  }
+  for (let i = 0; i < doc.words.length; i += 1) {
+    const w = doc.words[i];
+    if (w.start < 0) return { ok: false, reason: `word_${i}_negative_start` };
+    if (w.end <= w.start) return { ok: false, reason: `word_${i}_end_le_start` };
+    if (i > 0) {
+      const prev = doc.words[i - 1];
+      if (w.start + 0.05 < prev.end) {
+        return { ok: false, reason: `word_${i}_not_monotonic` };
+      }
+    }
+  }
+  return { ok: true };
 }
