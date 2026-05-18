@@ -1,4 +1,4 @@
-import type { YoutubeMetadata } from "@short-workflow/shared";
+import { formatYoutubeDescriptionWithHashtags, type YoutubeMetadata } from "@short-workflow/shared";
 import { AlertCircle, Check, Copy, Youtube } from "lucide-react";
 import { useState } from "react";
 
@@ -15,6 +15,7 @@ type CopyState = {
 export function YoutubeMetadataPanel({ metadata }: YoutubeMetadataPanelProps) {
   const [copyState, setCopyState] = useState<CopyState | null>(null);
   const hashtags = metadata.hashtags.join(" ");
+  const uploadDescription = formatYoutubeDescriptionWithHashtags(metadata);
 
   async function copyValue(key: CopyKey, value: string) {
     const copied = await copyText(value);
@@ -50,8 +51,8 @@ export function YoutubeMetadataPanel({ metadata }: YoutubeMetadataPanelProps) {
           copyStatus={copyState?.key === "description" ? copyState.status : null}
           label="Description"
           multiline
-          onCopy={() => void copyValue("description", metadata.description)}
-          value={metadata.description}
+          onCopy={() => void copyValue("description", uploadDescription)}
+          value={uploadDescription}
         />
         <MetadataField
           copyStatus={copyState?.key === "hashtags" ? copyState.status : null}

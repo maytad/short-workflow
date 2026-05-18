@@ -59,7 +59,7 @@ async function youtubeErrorMessage(response: Response) {
   }
 }
 
-export async function uploadPrivateYoutubeVideo(input: {
+export async function uploadYoutubeVideo(input: {
   accessToken: string;
   filePath: string;
   upload: YoutubeUploadJobInput;
@@ -67,6 +67,13 @@ export async function uploadPrivateYoutubeVideo(input: {
 }): Promise<YoutubeUploadJobOutput> {
   const fetchFn = input.fetchFn ?? fetch;
   const file = await stat(input.filePath);
+  const status = {
+    privacyStatus: "private" as const,
+    selfDeclaredMadeForKids: false,
+    containsSyntheticMedia: true,
+    ...(input.upload.mode === "scheduled_public" ? { publishAt: input.upload.publishAt } : {}),
+  };
+
   const startResponse = await fetchFn(YOUTUBE_UPLOAD_URL, {
     body: JSON.stringify({
       snippet: {
@@ -74,11 +81,7 @@ export async function uploadPrivateYoutubeVideo(input: {
         description: input.upload.description,
         tags: input.upload.tags,
       },
-      status: {
-        privacyStatus: "private",
-        selfDeclaredMadeForKids: false,
-        containsSyntheticMedia: true,
-      },
+      status,
     }),
     headers: {
       authorization: `Bearer ${input.accessToken}`,
@@ -118,7 +121,10 @@ export async function uploadPrivateYoutubeVideo(input: {
   return youtubeUploadJobOutputSchema.parse({
     youtubeVideoId: parsed.id,
     youtubeStudioUrl: `https://studio.youtube.com/video/${parsed.id}/edit`,
+    mode: input.upload.mode,
     privacyStatus: "private",
+    publishAt: input.upload.mode === "scheduled_public" ? input.upload.publishAt : null,
+    scheduleId: input.upload.mode === "scheduled_public" ? input.upload.scheduleId : null,
     uploadedAt: new Date().toISOString(),
   });
 }

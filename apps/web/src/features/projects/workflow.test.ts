@@ -1,10 +1,21 @@
 import { describe, expect, test } from "bun:test";
-import type { Asset, Job, ProjectDetailResponse, Render, Scene } from "@short-workflow/shared";
+import type {
+  Asset,
+  BulkAssetQueueResponse,
+  Job,
+  ProjectDetailResponse,
+  Render,
+  Scene,
+} from "@short-workflow/shared";
 
 import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
-import { getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
+import { assetQueueFeedbackMessage, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
 import { applyOptimisticSceneUpdate } from "./hooks";
-import { canUploadYoutube, getRenderPreconditionMessages } from "./RenderPanel";
+import {
+  canUploadYoutube,
+  formatYoutubePublishTime,
+  getRenderPreconditionMessages,
+} from "./RenderPanel";
 
 function scene(overrides: Partial<Scene> = {}): Scene {
   return {
@@ -86,6 +97,18 @@ function job(overrides: Partial<Job> = {}): Job {
   };
 }
 
+function bulkAssetQueueResponse(
+  overrides: Partial<BulkAssetQueueResponse> = {},
+): BulkAssetQueueResponse {
+  return {
+    existingActiveCount: 0,
+    jobs: [],
+    queuedCount: 0,
+    skippedCurrentCount: 0,
+    ...overrides,
+  };
+}
+
 describe("workflow asset helpers", () => {
   test("builds browser-safe preview URLs from asset ids", () => {
     expect(assetPreviewUrl(asset())).toBe(
@@ -130,6 +153,21 @@ describe("workflow asset helpers", () => {
         sceneId: "11111111-1111-4111-8111-111111111111",
       }),
     ).toEqual(newest);
+  });
+
+  test("reports queued project asset jobs when new or active jobs exist", () => {
+    expect(assetQueueFeedbackMessage(bulkAssetQueueResponse({ queuedCount: 2 }))).toBe(
+      "Queued 2 asset jobs.",
+    );
+    expect(assetQueueFeedbackMessage(bulkAssetQueueResponse({ existingActiveCount: 1 }))).toBe(
+      "Queued 1 asset job.",
+    );
+  });
+
+  test("reports current project assets when no jobs were queued or already active", () => {
+    expect(
+      assetQueueFeedbackMessage(bulkAssetQueueResponse({ skippedCurrentCount: 4 })),
+    ).toBe("All assets are current.");
   });
 });
 
@@ -261,5 +299,16 @@ describe("YouTube upload helpers", () => {
         youtubeMetadata: metadata,
       }),
     ).toBe(false);
+  });
+});
+
+describe("YouTube schedule helpers", () => {
+  test("formats scheduled publish time in Bangkok time", () => {
+    expect(formatYoutubePublishTime("2026-05-19T02:00:00.000Z", "Asia/Bangkok")).toContain(
+      "May 19, 2026",
+    );
+    expect(formatYoutubePublishTime("2026-05-19T02:00:00.000Z", "Asia/Bangkok")).toContain(
+      "09:00",
+    );
   });
 });

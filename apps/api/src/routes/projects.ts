@@ -5,25 +5,32 @@ import {
   TINY_MECHANISMS_PENDING_TOPIC,
   updateProjectRequestSchema,
   updateSceneRequestSchema,
+  youtubeUploadRequestSchema,
 } from "@short-workflow/shared";
 import {
   acknowledgeRenderDisclosure,
+  attachYoutubeScheduleJob,
   createJobIdempotent,
   createProject,
   getAsset,
   getProject,
+  getYoutubeScheduleForJob,
   getScene,
   listProjectAssets,
   listProjectRenders,
   listProjectScenes,
   listProjects,
+  parseDailyPublishTimes,
+  reserveNextYoutubeScheduleSlot,
   retryFailedJob,
   updateProject,
   updateScene,
   type DbClient,
+  withAdvisoryTransactionLock,
 } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
+import { parseYoutubeScheduleEnv } from "../env";
 import { conflict, internalError, jsonError, notFound, validationFailed } from "../http";
 import {
   assertProjectCanDelete,
@@ -32,6 +39,7 @@ import {
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
+  queueMissingProjectAssets,
   readAssetFile,
   revealAssetFile,
 } from "../services/projects";
@@ -90,6 +98,10 @@ export type ProjectRouteServices = {
   acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
   buildRenderPreconditionReport: typeof buildRenderPreconditionReport;
   buildYoutubeUploadJobInput: typeof buildYoutubeUploadJobInput;
+  queueMissingProjectAssets: typeof queueMissingProjectAssets;
+  reserveNextYoutubeScheduleSlot: typeof reserveNextYoutubeScheduleSlot;
+  attachYoutubeScheduleJob: typeof attachYoutubeScheduleJob;
+  getYoutubeScheduleForJob: typeof getYoutubeScheduleForJob;
   getYoutubeAuthStatus?: ReturnType<typeof createYoutubeAuthServices>["getYoutubeAuthStatus"];
   getAsset?: typeof getAsset;
   readAssetFile?: typeof readAssetFile;
@@ -120,6 +132,10 @@ const defaultServices: ProjectRouteServices = {
   acknowledgeRenderDisclosure,
   buildRenderPreconditionReport,
   buildYoutubeUploadJobInput,
+  queueMissingProjectAssets,
+  reserveNextYoutubeScheduleSlot,
+  attachYoutubeScheduleJob,
+  getYoutubeScheduleForJob,
   getYoutubeAuthStatus: defaultYoutubeAuthStatus,
   getAsset,
   readAssetFile,
@@ -268,6 +284,25 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
             input: { projectId: project.id },
           });
         })
+        .post("/:projectId/generate-assets", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const project = await services.getProject(db, projectId);
+
+          if (!project) {
+            return notFound(set);
+          }
+
+          try {
+            return await services.queueMissingProjectAssets(db, project.id);
+          } catch (error) {
+            if (error instanceof Error && error.message === "project_has_no_scenes") {
+              return jsonError(set, 422, "project_has_no_scenes");
+            }
+
+            throw error;
+          }
+        })
         .post("/:projectId/render", async (context) => {
           const { db, params, set } = withRouteContext(context);
           const projectId = requireRouteParam(params.projectId, "projectId");
@@ -293,34 +328,79 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
           });
         })
         .post("/:projectId/youtube-upload", async (context) => {
-          const { db, params, set } = withRouteContext(context);
+          const { body, db, params, set } = withRouteContext(context);
           const projectId = requireRouteParam(params.projectId, "projectId");
+          const parsedBody = youtubeUploadRequestSchema.safeParse(body ?? {});
+
+          if (!parsedBody.success) {
+            return validationFailed(set, parsedBody.error);
+          }
+
           const project = await services.getProject(db, projectId);
 
           if (!project) {
             return notFound(set);
           }
 
-          const activeUploadJob = (
-            await services.listProjectJobs(db, project.id, "active")
-          ).find((job) => job.type === "upload_youtube");
-          if (activeUploadJob) {
-            return activeUploadJob;
-          }
-
-          const authStatus = await (services.getYoutubeAuthStatus ?? defaultYoutubeAuthStatus)();
-          if (!authStatus.connected) {
-            return conflict(set, "youtube_not_connected");
-          }
-
           try {
-            const input = await services.buildYoutubeUploadJobInput(db, project.id);
-            return services.createJobIdempotent(db, {
-              projectId: project.id,
-              sceneId: null,
-              type: "upload_youtube",
-              input,
-              maxAttempts: 1,
+            return await withAdvisoryTransactionLock(db, `youtube-upload:${project.id}`, async (tx) => {
+              const activeUploadJob = (
+                await services.listProjectJobs(tx, project.id, "active")
+              ).find((job) => job.type === "upload_youtube");
+              if (activeUploadJob) {
+                return {
+                  job: activeUploadJob,
+                  schedule: await services.getYoutubeScheduleForJob(tx, activeUploadJob.id),
+                };
+              }
+
+              const authStatus = await (services.getYoutubeAuthStatus ?? defaultYoutubeAuthStatus)();
+              if (!authStatus.connected) {
+                return conflict(set, "youtube_not_connected");
+              }
+
+              const uploadInput = await services.buildYoutubeUploadJobInput(
+                tx,
+                project.id,
+                parsedBody.data.mode,
+              );
+              let schedule = null;
+              let input: Record<string, unknown> = uploadInput;
+
+              if (parsedBody.data.mode === "scheduled_public") {
+                const env = parseYoutubeScheduleEnv();
+                schedule = await services.reserveNextYoutubeScheduleSlot(tx, {
+                  projectId: project.id,
+                  renderId: uploadInput.renderId,
+                  outputAssetId: uploadInput.outputAssetId,
+                  now: new Date(),
+                  timezone: env.YOUTUBE_SCHEDULE_TIMEZONE ?? "Asia/Bangkok",
+                  dailyPublishTimes: parseDailyPublishTimes(
+                    env.YOUTUBE_DAILY_PUBLISH_TIMES ?? "09:00,12:00,17:00,21:00",
+                  ),
+                  minLeadMinutes: env.YOUTUBE_SCHEDULE_MIN_LEAD_MINUTES ?? 30,
+                });
+                input = {
+                  ...uploadInput,
+                  mode: "scheduled_public",
+                  scheduleId: schedule.id,
+                  publishAt: schedule.scheduledPublishAt.toISOString(),
+                };
+              }
+
+              const job = await services.createJobIdempotent(tx, {
+                projectId: project.id,
+                sceneId: null,
+                type: "upload_youtube",
+                input,
+                maxAttempts: 1,
+              });
+
+              if (schedule) {
+                schedule = await services.attachYoutubeScheduleJob(tx, schedule.id, job.id);
+              }
+
+              return { job, schedule };
             });
           } catch (error) {
             if (
@@ -328,6 +408,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
               error.message.startsWith("youtube_upload_preconditions_failed")
             ) {
               return jsonError(set, 422, "youtube_upload_preconditions_failed");
+            }
+
+            if (error instanceof Error && error.message === "youtube_schedule_full") {
+              return conflict(set, "youtube_schedule_full");
             }
 
             throw error;

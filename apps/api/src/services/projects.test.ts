@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildRenderPreconditionReport } from "./projects";
+import type { DbClient, JobRow } from "@short-workflow/db";
+
+import {
+  buildRenderPreconditionReport,
+  buildYoutubeUploadDescription,
+  queueMissingProjectAssets,
+} from "./projects";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
 const currentSceneId = "22222222-2222-4222-8222-222222222222";
@@ -49,6 +55,145 @@ function asset(
   } as const;
 }
 
+function job(
+  sceneId: string,
+  type: Extract<JobRow["type"], "generate_scene_image" | "generate_scene_audio">,
+): JobRow {
+  return {
+    id: crypto.randomUUID(),
+    projectId,
+    sceneId,
+    type,
+    status: "pending",
+    attempts: 0,
+    maxAttempts: 5,
+    parentJobId: null,
+    errorMessage: null,
+    input: { projectId, sceneId },
+    output: null,
+    nextRetryAt: null,
+    createdAt: new Date("2026-05-17T00:00:00.000Z"),
+    startedAt: null,
+    finishedAt: null,
+    updatedAt: new Date("2026-05-17T00:00:00.000Z"),
+  };
+}
+
+type QueueDepsInput = {
+  assets?: ReturnType<typeof asset>[];
+  activeJobs?: JobRow[];
+  scenes?: ReturnType<typeof scene>[];
+};
+
+function queueDeps(input: QueueDepsInput) {
+  const createdInputs: {
+    projectId: string;
+    sceneId: string | null;
+    type: JobRow["type"];
+    input: Record<string, unknown>;
+    maxAttempts?: number;
+  }[] = [];
+
+  return {
+    createdInputs,
+    deps: {
+      createJobIdempotent: async (_db: DbClient, jobInput: (typeof createdInputs)[number]) => {
+        createdInputs.push(jobInput);
+        return job(
+          jobInput.sceneId ?? currentSceneId,
+          jobInput.type as Extract<
+            JobRow["type"],
+            "generate_scene_image" | "generate_scene_audio"
+          >,
+        );
+      },
+      listProjectAssets: async () => input.assets ?? [],
+      listProjectJobs: async () => input.activeJobs ?? [],
+      listProjectScenes: async () =>
+        input.scenes ?? [scene(currentSceneId, "ready", "2026-05-17T01:00:00.000Z")],
+    },
+  };
+}
+
+describe("queueMissingProjectAssets", () => {
+  test("queues image and audio jobs for missing assets", async () => {
+    const { createdInputs, deps } = queueDeps({});
+
+    const result = await queueMissingProjectAssets({} as never, projectId, deps);
+
+    expect(result.queuedCount).toBe(2);
+    expect(result.existingActiveCount).toBe(0);
+    expect(result.skippedCurrentCount).toBe(0);
+    expect(result.jobs).toHaveLength(2);
+    expect(createdInputs).toEqual([
+      {
+        projectId,
+        sceneId: currentSceneId,
+        type: "generate_scene_image",
+        input: { projectId, sceneId: currentSceneId },
+      },
+      {
+        projectId,
+        sceneId: currentSceneId,
+        type: "generate_scene_audio",
+        input: { projectId, sceneId: currentSceneId },
+      },
+    ]);
+  });
+
+  test("skips current image and audio assets", async () => {
+    const { createdInputs, deps } = queueDeps({
+      assets: [
+        asset(currentSceneId, "image", "2026-05-17T01:00:00.000Z"),
+        asset(currentSceneId, "audio", "2026-05-17T01:00:00.000Z"),
+      ],
+    });
+
+    const result = await queueMissingProjectAssets({} as never, projectId, deps);
+
+    expect(result).toMatchObject({
+      queuedCount: 0,
+      existingActiveCount: 0,
+      skippedCurrentCount: 2,
+      jobs: [],
+    });
+    expect(createdInputs).toEqual([]);
+  });
+
+  test("queues stale assets and returns existing active jobs", async () => {
+    const activeAudioJob = job(staleSceneId, "generate_scene_audio");
+    const { createdInputs, deps } = queueDeps({
+      activeJobs: [activeAudioJob],
+      assets: [asset(staleSceneId, "image", "2026-05-17T01:59:59.000Z")],
+      scenes: [scene(staleSceneId, "ready", "2026-05-17T02:00:00.000Z")],
+    });
+
+    const result = await queueMissingProjectAssets({} as never, projectId, deps);
+
+    expect(result.queuedCount).toBe(1);
+    expect(result.existingActiveCount).toBe(1);
+    expect(result.skippedCurrentCount).toBe(0);
+    expect(result.jobs).toHaveLength(2);
+    expect(result.jobs.map((queuedJob) => queuedJob.id)).toContain(activeAudioJob.id);
+    expect(createdInputs).toEqual([
+      {
+        projectId,
+        sceneId: staleSceneId,
+        type: "generate_scene_image",
+        input: { projectId, sceneId: staleSceneId },
+      },
+    ]);
+  });
+
+  test("throws when the project has no scenes", async () => {
+    const { deps } = queueDeps({ scenes: [] });
+
+    await expect(queueMissingProjectAssets({} as never, projectId, deps)).rejects.toThrow(
+      "project_has_no_scenes",
+    );
+  });
+});
+
 describe("buildRenderPreconditionReport", () => {
   test("reports missing, stale, and not-ready scene inputs", async () => {
     const report = await buildRenderPreconditionReport({} as never, projectId, {
@@ -89,5 +234,16 @@ describe("buildRenderPreconditionReport", () => {
       scenesStaleImage: [],
       scenesStaleAudio: [],
     });
+  });
+});
+
+describe("buildYoutubeUploadDescription", () => {
+  test("appends visible hashtags to the YouTube description", () => {
+    expect(
+      buildYoutubeUploadDescription({
+        description: "A compact explanation of the mechanism.",
+        hashtags: ["#TinyMechanisms", "Engineering", "#Shorts"],
+      }),
+    ).toBe("A compact explanation of the mechanism.\n\n#TinyMechanisms #Engineering #Shorts");
   });
 });

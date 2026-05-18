@@ -207,6 +207,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
           activeJobs={activeWorkflowJobs}
           assets={detail.assets}
           projectId={projectId}
+          sceneCount={detail.scenes.length}
           selectedScene={selectedScene}
         />
         <RenderPanel

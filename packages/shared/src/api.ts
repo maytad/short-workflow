@@ -9,6 +9,7 @@ import {
   renderSchema,
   sceneSchema,
   youtubeMetadataSchema,
+  youtubeUploadScheduleSchema,
   youtubeUploadSummarySchema,
   uuidSchema,
 } from "./schemas";
@@ -56,6 +57,22 @@ export const projectDetailResponseSchema = z
   })
   .strict();
 
+export const bulkAssetQueueResponseSchema = z
+  .object({
+    jobs: z.array(jobSchema),
+    queuedCount: z.number().int().nonnegative(),
+    existingActiveCount: z.number().int().nonnegative(),
+    skippedCurrentCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const youtubeUploadResponseSchema = z
+  .object({
+    job: jobSchema,
+    schedule: youtubeUploadScheduleSchema.nullable(),
+  })
+  .strict();
+
 export const renderPreconditionErrorSchema = z
   .object({
     error: z.literal("render_preconditions_failed"),
@@ -79,4 +96,6 @@ export type CreateTinyMechanismsProjectRequest = z.infer<
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 export type UpdateSceneRequest = z.infer<typeof updateSceneRequestSchema>;
 export type ProjectDetailResponse = z.infer<typeof projectDetailResponseSchema>;
+export type BulkAssetQueueResponse = z.infer<typeof bulkAssetQueueResponseSchema>;
+export type YoutubeUploadResponse = z.infer<typeof youtubeUploadResponseSchema>;
 export type RenderPreconditionError = z.infer<typeof renderPreconditionErrorSchema>;

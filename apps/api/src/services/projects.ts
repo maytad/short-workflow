@@ -4,8 +4,10 @@ import path, { join } from "node:path";
 import { promisify } from "node:util";
 
 import {
+  createJobIdempotent,
   deleteProjectRows,
   getProject,
+  getYoutubeScheduleForJob,
   listProjectAssets,
   listProjectRenders,
   listProjectScenes,
@@ -13,8 +15,17 @@ import {
   type DbClient,
   type JobRow,
   type SceneRow,
+  type YoutubeUploadScheduleRow,
 } from "@short-workflow/db";
-import { youtubeMetadataSchema, youtubeUploadJobOutputSchema } from "@short-workflow/shared";
+import {
+  type BulkAssetQueueResponse,
+  type YoutubeUploadMode,
+  formatYoutubeDescriptionWithHashtags,
+  youtubeMetadataSchema,
+  youtubeUploadJobInputSchema,
+  youtubeTagKeywords,
+  youtubeUploadJobOutputSchema,
+} from "@short-workflow/shared";
 
 import { parseEnv } from "../env";
 import { listProjectJobs } from "./jobs";
@@ -40,9 +51,33 @@ type RenderPreconditionDeps = {
   listProjectAssets: typeof listProjectAssets;
 };
 
+type QueueAssetKind = Extract<AssetRow["kind"], "image" | "audio">;
+type QueueAssetJobType = Extract<JobRow["type"], "generate_scene_image" | "generate_scene_audio">;
+
+type QueueMissingProjectAssetsDeps = {
+  createJobIdempotent: typeof createJobIdempotent;
+  listProjectAssets: typeof listProjectAssets;
+  listProjectJobs: typeof listProjectJobs;
+  listProjectScenes: typeof listProjectScenes;
+};
+
+const assetQueueKinds: QueueAssetKind[] = ["image", "audio"];
+
+const assetJobTypeByKind: Record<QueueAssetKind, QueueAssetJobType> = {
+  image: "generate_scene_image",
+  audio: "generate_scene_audio",
+};
+
 const defaultRenderPreconditionDeps: RenderPreconditionDeps = {
   listProjectScenes,
   listProjectAssets,
+};
+
+const defaultQueueMissingProjectAssetsDeps: QueueMissingProjectAssetsDeps = {
+  createJobIdempotent,
+  listProjectAssets,
+  listProjectJobs,
+  listProjectScenes,
 };
 
 const execFileAsync = promisify(execFile);
@@ -112,6 +147,10 @@ export async function getProjectDetail(db: DbClient, projectId: string) {
     listProjectRenders(db, projectId),
     listProjectJobs(db, projectId),
   ]);
+  const youtubeUploadJob = latestYoutubeUploadJob(jobs);
+  const youtubeSchedule = youtubeUploadJob
+    ? await getYoutubeScheduleForJob(db, youtubeUploadJob.id)
+    : null;
 
   return {
     project,
@@ -120,7 +159,7 @@ export async function getProjectDetail(db: DbClient, projectId: string) {
     renders,
     jobs,
     youtubeMetadata: latestYoutubeMetadata(jobs),
-    youtubeUpload: latestYoutubeUpload(jobs),
+    youtubeUpload: latestYoutubeUpload(youtubeUploadJob, youtubeSchedule),
   };
 }
 
@@ -144,22 +183,45 @@ function latestYoutubeMetadata(jobs: JobRow[]) {
   return null;
 }
 
-function latestYoutubeUpload(jobs: JobRow[]) {
-  const job = jobs.find((candidate) => candidate.type === "upload_youtube");
+function latestYoutubeUploadJob(jobs: JobRow[]) {
+  return jobs.find((candidate) => candidate.type === "upload_youtube") ?? null;
+}
+
+function latestYoutubeUpload(job: JobRow | null, schedule: YoutubeUploadScheduleRow | null) {
   if (!job) {
     return null;
   }
 
   const parsedOutput = youtubeUploadJobOutputSchema.safeParse(job.output);
+  const parsedInput = youtubeUploadJobInputSchema.safeParse(job.input);
 
   return {
     jobId: job.id,
     status: job.status,
-    youtubeVideoId: parsedOutput.success ? parsedOutput.data.youtubeVideoId : null,
+    mode: parsedOutput.success
+      ? parsedOutput.data.mode
+      : parsedInput.success
+        ? parsedInput.data.mode
+        : null,
+    youtubeVideoId: parsedOutput.success
+      ? parsedOutput.data.youtubeVideoId
+      : (schedule?.youtubeVideoId ?? null),
     youtubeStudioUrl: parsedOutput.success ? parsedOutput.data.youtubeStudioUrl : null,
-    privacyStatus: parsedOutput.success ? parsedOutput.data.privacyStatus : null,
+    privacyStatus: parsedOutput.success
+      ? parsedOutput.data.privacyStatus
+      : parsedInput.success
+        ? parsedInput.data.privacyStatus
+        : null,
+    publishAt: parsedOutput.success
+      ? parsedOutput.data.publishAt
+      : parsedInput.success && parsedInput.data.mode === "scheduled_public"
+        ? parsedInput.data.publishAt
+        : null,
+    scheduledPublishAt: schedule?.scheduledPublishAt.toISOString() ?? null,
+    scheduleStatus: schedule?.status ?? null,
+    timezone: schedule?.timezone ?? null,
     uploadedAt: parsedOutput.success ? parsedOutput.data.uploadedAt : null,
-    errorMessage: job.errorMessage,
+    errorMessage: job.errorMessage ?? schedule?.errorMessage ?? null,
     createdAt: job.createdAt.toISOString(),
     updatedAt: job.updatedAt.toISOString(),
   };
@@ -169,7 +231,11 @@ function isJsonRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export async function buildYoutubeUploadJobInput(db: DbClient, projectId: string) {
+export async function buildYoutubeUploadJobInput(
+  db: DbClient,
+  projectId: string,
+  mode: YoutubeUploadMode = "private",
+) {
   const [renders, assets, jobs] = await Promise.all([
     listProjectRenders(db, projectId),
     listProjectAssets(db, projectId),
@@ -198,15 +264,121 @@ export async function buildYoutubeUploadJobInput(db: DbClient, projectId: string
   }
 
   return {
+    mode,
     renderId: latestSucceededRender.id,
     outputAssetId: outputAsset.id,
     title: metadata.youtubeTitle,
-    description: metadata.description,
-    tags: metadata.hashtags.map((tag) => tag.replace(/^#+/, "")),
+    description: buildYoutubeUploadDescription(metadata),
+    tags: youtubeTagKeywords(metadata.hashtags),
     privacyStatus: "private" as const,
     selfDeclaredMadeForKids: false as const,
     containsSyntheticMedia: true as const,
   };
+}
+
+export const buildYoutubeUploadDescription = formatYoutubeDescriptionWithHashtags;
+
+export async function queueMissingProjectAssets(
+  db: DbClient,
+  projectId: string,
+  deps: QueueMissingProjectAssetsDeps = defaultQueueMissingProjectAssetsDeps,
+): Promise<BulkAssetQueueResponse> {
+  const [scenes, assets, activeJobs] = await Promise.all([
+    deps.listProjectScenes(db, projectId),
+    deps.listProjectAssets(db, projectId),
+    deps.listProjectJobs(db, projectId, "active"),
+  ]);
+
+  if (scenes.length === 0) {
+    throw new Error("project_has_no_scenes");
+  }
+
+  const jobs: BulkAssetQueueResponse["jobs"] = [];
+  let queuedCount = 0;
+  let existingActiveCount = 0;
+  let skippedCurrentCount = 0;
+
+  for (const scene of scenes) {
+    for (const kind of assetQueueKinds) {
+      const type = assetJobTypeByKind[kind];
+
+      if (hasCurrentSceneAsset(assets, scene, kind)) {
+        skippedCurrentCount += 1;
+        continue;
+      }
+
+      const activeJob = findActiveAssetJob(activeJobs, scene.id, type);
+      if (activeJob) {
+        jobs.push(serializeJob(activeJob));
+        existingActiveCount += 1;
+        continue;
+      }
+
+      const createdJob = await deps.createJobIdempotent(db, {
+        projectId: scene.projectId,
+        sceneId: scene.id,
+        type,
+        input: { projectId: scene.projectId, sceneId: scene.id },
+      });
+      jobs.push(serializeJob(createdJob));
+      queuedCount += 1;
+    }
+  }
+
+  return {
+    jobs,
+    queuedCount,
+    existingActiveCount,
+    skippedCurrentCount,
+  };
+}
+
+function serializeJob(job: JobRow): BulkAssetQueueResponse["jobs"][number] {
+  return {
+    id: job.id,
+    projectId: job.projectId,
+    sceneId: job.sceneId,
+    type: job.type,
+    status: job.status,
+    attempts: job.attempts,
+    maxAttempts: job.maxAttempts,
+    parentJobId: job.parentJobId,
+    errorMessage: job.errorMessage,
+    input: isJsonRecord(job.input) ? job.input : {},
+    output: isJsonRecord(job.output) ? job.output : null,
+    nextRetryAt: job.nextRetryAt?.toISOString() ?? null,
+    createdAt: job.createdAt.toISOString(),
+    startedAt: job.startedAt?.toISOString() ?? null,
+    finishedAt: job.finishedAt?.toISOString() ?? null,
+    updatedAt: job.updatedAt.toISOString(),
+  };
+}
+
+function hasCurrentSceneAsset(
+  assets: Pick<AssetRow, "createdAt" | "kind" | "sceneId" | "status">[],
+  scene: Pick<SceneRow, "contentUpdatedAt" | "id">,
+  kind: QueueAssetKind,
+) {
+  return assets.some(
+    (asset) =>
+      asset.sceneId === scene.id &&
+      asset.kind === kind &&
+      asset.status === "ready" &&
+      asset.createdAt >= scene.contentUpdatedAt,
+  );
+}
+
+function findActiveAssetJob(
+  activeJobs: JobRow[],
+  sceneId: string,
+  type: QueueAssetJobType,
+) {
+  return activeJobs.find(
+    (job) =>
+      job.sceneId === sceneId &&
+      job.type === type &&
+      (job.status === "pending" || job.status === "processing"),
+  );
 }
 
 export async function buildRenderPreconditionReport(

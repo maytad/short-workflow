@@ -82,6 +82,7 @@ const youtubeJob = {
   id: "66666666-6666-4666-8666-666666666666",
   type: "upload_youtube",
   input: {
+    mode: "private",
     renderId: "77777777-7777-4777-8777-777777777777",
     outputAssetId: renderAsset.id,
     title: "Test title",
@@ -92,6 +93,36 @@ const youtubeJob = {
     containsSyntheticMedia: true,
   },
 } as const;
+
+const youtubeSchedule = {
+  id: "88888888-8888-4888-8888-888888888888",
+  projectId: project.id,
+  jobId: null,
+  renderId: youtubeJob.input.renderId,
+  outputAssetId: renderAsset.id,
+  scheduledPublishAt: new Date("2026-05-19T02:00:00.000Z"),
+  timezone: "Asia/Bangkok",
+  status: "reserved",
+  youtubeVideoId: null,
+  errorMessage: null,
+  createdAt: new Date("2026-05-18T00:00:00.000Z"),
+  updatedAt: new Date("2026-05-18T00:00:00.000Z"),
+} as const;
+
+const testDb = {
+  execute: async () => [],
+} as never;
+
+function apiJob(row: typeof job) {
+  return {
+    ...row,
+    nextRetryAt: null,
+    createdAt: row.createdAt.toISOString(),
+    startedAt: null,
+    finishedAt: null,
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
 
 function request(path: string, init?: RequestInit) {
   return new Request(`http://localhost${path}`, init);
@@ -133,6 +164,15 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
       scenesStaleAudio: [],
     }),
     buildYoutubeUploadJobInput: async () => youtubeJob.input,
+    reserveNextYoutubeScheduleSlot: async () => youtubeSchedule,
+    attachYoutubeScheduleJob: async () => ({ ...youtubeSchedule, jobId: youtubeJob.id }),
+    getYoutubeScheduleForJob: async () => null,
+    queueMissingProjectAssets: async () => ({
+      jobs: [],
+      queuedCount: 0,
+      existingActiveCount: 0,
+      skippedCurrentCount: 0,
+    }),
     getYoutubeAuthStatus: async () => ({ connected: true }),
     ...overrides,
   };
@@ -141,7 +181,7 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
 describe("createApp", () => {
   test("allows CORS preflight from Vite 127.0.0.1 origin", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
     });
 
@@ -160,7 +200,7 @@ describe("createApp", () => {
 
   test("serves health without touching project services", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
     });
 
@@ -175,7 +215,7 @@ describe("createApp", () => {
 
   test("returns YouTube auth status without exposing tokens", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
       youtubeServices: {
         getYoutubeAuthStatus: async () => ({ connected: true }),
@@ -195,7 +235,7 @@ describe("createApp", () => {
 
   test("creates a YouTube auth URL", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
       youtubeServices: {
         getYoutubeAuthStatus: async () => ({ connected: false }),
@@ -217,7 +257,7 @@ describe("createApp", () => {
 
   test("maps missing YouTube OAuth env to conflict", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
       youtubeServices: {
         getYoutubeAuthStatus: async () => ({ connected: false }),
@@ -237,7 +277,7 @@ describe("createApp", () => {
 
   test("maps YouTube OAuth callback failure to bad request", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
       youtubeServices: {
         getYoutubeAuthStatus: async () => ({ connected: false }),
@@ -259,7 +299,7 @@ describe("createApp", () => {
 
   test("returns concise validation issues for invalid project creation", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
     });
 
@@ -280,7 +320,7 @@ describe("createApp", () => {
 
   test("returns 404 when project detail is missing", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         getProjectDetail: async () => null,
       }),
@@ -306,7 +346,7 @@ describe("createApp", () => {
       readAssetFile: () => Promise<{ bytes: Uint8Array; mimeType: string }>;
     };
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: services,
     });
 
@@ -330,7 +370,7 @@ describe("createApp", () => {
       revealAssetFile: (assetToReveal: typeof renderAsset) => Promise<void>;
     };
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: services,
     });
 
@@ -356,7 +396,7 @@ describe("createApp", () => {
       revealAssetFile: () => Promise<void>;
     };
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: services,
     });
 
@@ -370,7 +410,7 @@ describe("createApp", () => {
 
   test("returns active jobs conflict when deleting a busy project", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         assertProjectCanDelete: async () => false,
       }),
@@ -391,7 +431,7 @@ describe("createApp", () => {
   test("passes active status filter to project jobs service", async () => {
     let receivedStatus: "active" | undefined;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         listProjectJobs: async (_db, _projectId, status) => {
           receivedStatus = status;
@@ -412,7 +452,7 @@ describe("createApp", () => {
   test("creates a project script generation job", async () => {
     let receivedInput: unknown;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         createJobIdempotent: async (_db, input) => {
           receivedInput = input;
@@ -435,6 +475,50 @@ describe("createApp", () => {
     });
   });
 
+  test("queues missing project assets", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        queueMissingProjectAssets: async () => ({
+          jobs: [apiJob(job)],
+          queuedCount: 1,
+          existingActiveCount: 0,
+          skippedCurrentCount: 3,
+        }),
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/generate-assets`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      jobs: [{ id: job.id }],
+      queuedCount: 1,
+      existingActiveCount: 0,
+      skippedCurrentCount: 3,
+    });
+  });
+
+  test("returns no-scenes error for project asset queue", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        queueMissingProjectAssets: async () => {
+          throw new Error("project_has_no_scenes");
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/generate-assets`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(422);
+    expect(await response.json()).toEqual({ error: "project_has_no_scenes" });
+  });
+
   test("returns render precondition failures instead of creating render job", async () => {
     let createdJob = false;
     const report = {
@@ -446,7 +530,7 @@ describe("createApp", () => {
       scenesStaleAudio: [],
     };
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         buildRenderPreconditionReport: async () => report,
         createJobIdempotent: async () => {
@@ -479,7 +563,7 @@ describe("createApp", () => {
       scenesStaleAudio: [],
     };
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         buildRenderPreconditionReport: async () => report,
         createJobIdempotent: async () => {
@@ -504,7 +588,7 @@ describe("createApp", () => {
   test("returns conflict when YouTube is not connected", async () => {
     let createdJob = false;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         getYoutubeAuthStatus: async () => ({ connected: false }),
         createJobIdempotent: async () => {
@@ -527,10 +611,15 @@ describe("createApp", () => {
     let checkedAuth = false;
     let builtInput = false;
     let createdJob = false;
+    let lookedUpScheduleForJob: string | undefined;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         listProjectJobs: async () => [youtubeJob],
+        getYoutubeScheduleForJob: async (_db, jobId) => {
+          lookedUpScheduleForJob = jobId;
+          return null;
+        },
         getYoutubeAuthStatus: async () => {
           checkedAuth = true;
           return { connected: false };
@@ -552,9 +641,13 @@ describe("createApp", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      id: youtubeJob.id,
-      type: "upload_youtube",
+      job: {
+        id: youtubeJob.id,
+        type: "upload_youtube",
+      },
+      schedule: null,
     });
+    expect(lookedUpScheduleForJob).toBe(youtubeJob.id);
     expect(checkedAuth).toBe(false);
     expect(builtInput).toBe(false);
     expect(createdJob).toBe(false);
@@ -564,7 +657,7 @@ describe("createApp", () => {
     let receivedInput: unknown;
     const uploadInput = youtubeJob.input;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         getYoutubeAuthStatus: async () => ({ connected: true }),
         buildYoutubeUploadJobInput: async () => uploadInput,
@@ -576,13 +669,20 @@ describe("createApp", () => {
     });
 
     const response = await app.handle(
-      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+      request(`/projects/${project.id}/youtube-upload`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "private" }),
+      }),
     );
 
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      id: youtubeJob.id,
-      type: "upload_youtube",
+      job: {
+        id: youtubeJob.id,
+        type: "upload_youtube",
+      },
+      schedule: null,
     });
     expect(receivedInput).toEqual({
       projectId: project.id,
@@ -593,10 +693,84 @@ describe("createApp", () => {
     });
   });
 
+  test("queues a scheduled public YouTube upload job", async () => {
+    let receivedInput: unknown;
+    let reservedProjectId: string | undefined;
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({ connected: true }),
+        reserveNextYoutubeScheduleSlot: async (_db, input) => {
+          reservedProjectId = input.projectId;
+          return youtubeSchedule;
+        },
+        createJobIdempotent: async (_db, input) => {
+          receivedInput = input;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "scheduled_public" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      job: { id: youtubeJob.id, type: "upload_youtube" },
+      schedule: {
+        id: youtubeSchedule.id,
+        scheduledPublishAt: youtubeSchedule.scheduledPublishAt.toISOString(),
+        timezone: "Asia/Bangkok",
+        status: "reserved",
+      },
+    });
+    expect(reservedProjectId).toBe(project.id);
+    expect(receivedInput).toMatchObject({
+      projectId: project.id,
+      sceneId: null,
+      type: "upload_youtube",
+      input: {
+        mode: "scheduled_public",
+        scheduleId: youtubeSchedule.id,
+        publishAt: youtubeSchedule.scheduledPublishAt.toISOString(),
+        privacyStatus: "private",
+      },
+      maxAttempts: 1,
+    });
+  });
+
+  test("maps full YouTube schedule to conflict", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({ connected: true }),
+        reserveNextYoutubeScheduleSlot: async () => {
+          throw new Error("youtube_schedule_full");
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ mode: "scheduled_public" }),
+      }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "youtube_schedule_full" });
+  });
+
   test("returns upload precondition errors before queueing YouTube upload", async () => {
     let createdJob = false;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         getYoutubeAuthStatus: async () => ({ connected: true }),
         buildYoutubeUploadJobInput: async () => {
@@ -622,7 +796,7 @@ describe("createApp", () => {
     let receivedSceneId: string | undefined;
     let receivedInput: unknown;
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         updateScene: async (_db, sceneId, input) => {
           receivedSceneId = sceneId;
@@ -675,7 +849,7 @@ describe("createApp", () => {
 
   test("returns 400 for invalid scene update input", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices(),
     });
 
@@ -696,7 +870,7 @@ describe("createApp", () => {
 
   test("maps retry_requires_failed_job to conflict", async () => {
     const app = createApp({
-      db: {} as never,
+      db: testDb,
       projectServices: createServices({
         retryFailedJob: async () => {
           throw new Error("retry_requires_failed_job");

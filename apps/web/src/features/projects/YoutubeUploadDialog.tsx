@@ -1,5 +1,11 @@
-import type { Asset, YoutubeMetadata } from "@short-workflow/shared";
+import {
+  formatYoutubeDescriptionWithHashtags,
+  type Asset,
+  type YoutubeMetadata,
+  type YoutubeUploadMode,
+} from "@short-workflow/shared";
 import { AlertCircle, Loader2, Upload, X, Youtube } from "lucide-react";
+import { useState } from "react";
 
 import { assetPreviewUrl } from "./assetUrls";
 import {
@@ -24,7 +30,9 @@ export function YoutubeUploadDialog({
   const authStatus = useYoutubeAuthStatusQuery();
   const startAuth = useStartYoutubeAuthMutation();
   const uploadYoutube = useUploadYoutubeMutation(projectId);
+  const [mode, setMode] = useState<YoutubeUploadMode>("scheduled_public");
   const hashtags = metadata.hashtags.join(" ");
+  const uploadDescription = formatYoutubeDescriptionWithHashtags(metadata);
   const connected = authStatus.data?.connected === true;
 
   async function connectYoutube() {
@@ -33,7 +41,7 @@ export function YoutubeUploadDialog({
   }
 
   async function confirmUpload() {
-    await uploadYoutube.mutateAsync();
+    await uploadYoutube.mutateAsync({ mode });
     onClose();
   }
 
@@ -61,7 +69,7 @@ export function YoutubeUploadDialog({
               </h2>
             </div>
             <p className="mt-1 text-sm text-muted-foreground">
-              Private video, not made for kids.
+              Schedule publicly or keep the upload private.
             </p>
           </div>
           <button
@@ -88,13 +96,41 @@ export function YoutubeUploadDialog({
 
           <div className="grid min-w-0 content-start gap-3">
             <MetadataRow label="Title" value={metadata.youtubeTitle} />
-            <MetadataRow label="Description" multiline value={metadata.description} />
+            <MetadataRow label="Description" multiline value={uploadDescription} />
             <MetadataRow label="Hashtags" value={hashtags} />
             <div className="grid gap-2 rounded-md border border-border bg-background p-3 text-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-muted-foreground">Privacy</span>
-                <span className="font-medium">Private</span>
+              <span className="text-xs font-medium uppercase text-muted-foreground">
+                Upload mode
+              </span>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  className={`h-9 rounded-md border px-3 text-sm font-medium ${
+                    mode === "scheduled_public"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card hover:bg-muted"
+                  }`}
+                  onClick={() => setMode("scheduled_public")}
+                  type="button"
+                >
+                  Schedule public
+                </button>
+                <button
+                  className={`h-9 rounded-md border px-3 text-sm font-medium ${
+                    mode === "private"
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card hover:bg-muted"
+                  }`}
+                  onClick={() => setMode("private")}
+                  type="button"
+                >
+                  Private now
+                </button>
               </div>
+              <p className="text-xs leading-5 text-muted-foreground">
+                {mode === "scheduled_public"
+                  ? "The next available public slot will be reserved automatically: 09:00, 12:00, 17:00, or 21:00 Bangkok time."
+                  : "The video stays private after upload."}
+              </p>
               <div className="flex items-center justify-between gap-3">
                 <span className="text-muted-foreground">Audience</span>
                 <span className="font-medium">Not made for kids</span>
@@ -140,9 +176,11 @@ export function YoutubeUploadDialog({
               {uploadYoutube.isPending ? (
                 <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               ) : (
-                <Upload className="size-4" aria-hidden="true" />
+                <Upload className="size-4 shrink-0" aria-hidden="true" />
               )}
-              Confirm private upload
+              <span className="whitespace-nowrap">
+                {mode === "scheduled_public" ? "Schedule public upload" : "Confirm private upload"}
+              </span>
             </button>
           ) : (
             <button

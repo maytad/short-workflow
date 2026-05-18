@@ -204,6 +204,44 @@ export const renders = pgTable("renders", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
 });
 
+export const youtubeUploadSchedules = pgTable(
+  "youtube_upload_schedules",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    jobId: uuid("job_id").references(() => jobs.id, { onDelete: "set null" }),
+    renderId: uuid("render_id")
+      .notNull()
+      .references(() => renders.id, { onDelete: "cascade" }),
+    outputAssetId: uuid("output_asset_id")
+      .notNull()
+      .references(() => assets.id, { onDelete: "cascade" }),
+    scheduledPublishAt: timestamp("scheduled_publish_at", { withTimezone: true }).notNull(),
+    timezone: text("timezone").notNull(),
+    status: text("status").notNull().default("reserved"),
+    youtubeVideoId: text("youtube_video_id"),
+    errorMessage: text("error_message"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (table) => [
+    check(
+      "youtube_upload_schedules_status_check",
+      sql`${table.status} in ('reserved', 'uploading', 'scheduled', 'failed', 'cancelled')`,
+    ),
+    index("youtube_upload_schedules_project_created_at_idx").on(
+      table.projectId,
+      table.createdAt.desc(),
+    ),
+    index("youtube_upload_schedules_publish_at_idx").on(table.scheduledPublishAt),
+    uniqueIndex("youtube_upload_schedules_one_active_publish_slot")
+      .on(table.scheduledPublishAt)
+      .where(sql`${table.status} in ('reserved', 'uploading', 'scheduled')`),
+  ],
+);
+
 export const promptVersions = pgTable(
   "prompt_versions",
   {
@@ -245,4 +283,5 @@ export type SceneRow = typeof scenes.$inferSelect;
 export type AssetRow = typeof assets.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
 export type RenderRow = typeof renders.$inferSelect;
+export type YoutubeUploadScheduleRow = typeof youtubeUploadSchedules.$inferSelect;
 export type PromptVersionRow = typeof promptVersions.$inferSelect;

@@ -1,4 +1,5 @@
 import type {
+  BulkAssetQueueResponse,
   CreateProjectRequest,
   CreateTinyMechanismsProjectRequest,
   Job,
@@ -8,6 +9,8 @@ import type {
   UpdateSceneRequest,
   YoutubeAuthStartResponse,
   YoutubeAuthStatus,
+  YoutubeUploadRequest,
+  YoutubeUploadResponse,
 } from "@short-workflow/shared";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
@@ -269,6 +272,18 @@ export function useGenerateSceneAudioMutation(projectId: string, sceneId: string
   });
 }
 
+export function useGenerateProjectAssetsMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<BulkAssetQueueResponse>(`/projects/${projectId}/generate-assets`, {
+        method: "POST",
+      }),
+    onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
+  });
+}
+
 export function useUpdateSceneMutation(projectId: string, sceneId: string) {
   const queryClient = useQueryClient();
   const detailQueryKey = queryKeys.projects.detail(projectId);
@@ -322,8 +337,9 @@ export function useUploadYoutubeMutation(projectId: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () =>
-      apiFetch<Job>(`/projects/${projectId}/youtube-upload`, {
+    mutationFn: (input: YoutubeUploadRequest) =>
+      apiFetch<YoutubeUploadResponse>(`/projects/${projectId}/youtube-upload`, {
+        body: JSON.stringify(input),
         method: "POST",
       }),
     onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),

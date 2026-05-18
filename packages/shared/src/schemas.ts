@@ -140,24 +140,74 @@ export const youtubeAuthStartResponseSchema = z
   })
   .strict();
 
-export const youtubeUploadJobInputSchema = z
+export const youtubeUploadModeSchema = z.enum(["private", "scheduled_public"]);
+export const youtubeUploadScheduleStatusSchema = z.enum([
+  "reserved",
+  "uploading",
+  "scheduled",
+  "failed",
+  "cancelled",
+]);
+
+export const youtubeUploadScheduleSchema = z
   .object({
+    id: uuidSchema,
+    projectId: uuidSchema,
+    jobId: nullableUuidSchema,
     renderId: uuidSchema,
     outputAssetId: uuidSchema,
-    title: z.string().trim().min(1).max(100),
-    description: z.string().trim().min(1),
-    tags: z.array(z.string().trim().min(1)).max(20),
-    privacyStatus: z.literal("private"),
-    selfDeclaredMadeForKids: z.literal(false),
-    containsSyntheticMedia: z.literal(true),
+    scheduledPublishAt: isoDateSchema,
+    timezone: z.string().min(1),
+    status: youtubeUploadScheduleStatusSchema,
+    youtubeVideoId: z.string().min(1).nullable(),
+    errorMessage: nullableStringSchema,
+    createdAt: isoDateSchema,
+    updatedAt: isoDateSchema,
   })
   .strict();
+
+export const youtubeUploadRequestSchema = z
+  .object({
+    mode: youtubeUploadModeSchema.default("scheduled_public"),
+  })
+  .strict();
+
+const baseYoutubeUploadJobInputSchema = z.object({
+  renderId: uuidSchema,
+  outputAssetId: uuidSchema,
+  title: z.string().trim().min(1).max(100),
+  description: z.string().trim().min(1),
+  tags: z.array(z.string().trim().min(1)).max(20),
+  privacyStatus: z.literal("private"),
+  selfDeclaredMadeForKids: z.literal(false),
+  containsSyntheticMedia: z.literal(true),
+});
+
+export const youtubeUploadJobInputSchema = z.discriminatedUnion("mode", [
+  baseYoutubeUploadJobInputSchema
+    .extend({
+      mode: z.literal("private"),
+      publishAt: z.never().optional(),
+      scheduleId: z.never().optional(),
+    })
+    .strict(),
+  baseYoutubeUploadJobInputSchema
+    .extend({
+      mode: z.literal("scheduled_public"),
+      publishAt: isoDateSchema,
+      scheduleId: uuidSchema,
+    })
+    .strict(),
+]);
 
 export const youtubeUploadJobOutputSchema = z
   .object({
     youtubeVideoId: z.string().min(1),
     youtubeStudioUrl: z.url(),
+    mode: youtubeUploadModeSchema,
     privacyStatus: z.literal("private"),
+    publishAt: nullableIsoDateSchema,
+    scheduleId: nullableUuidSchema,
     uploadedAt: isoDateSchema,
   })
   .strict();
@@ -166,9 +216,14 @@ export const youtubeUploadSummarySchema = z
   .object({
     jobId: uuidSchema,
     status: jobStatusSchema,
+    mode: youtubeUploadModeSchema.nullable(),
     youtubeVideoId: z.string().min(1).nullable(),
     youtubeStudioUrl: z.url().nullable(),
     privacyStatus: z.literal("private").nullable(),
+    publishAt: nullableIsoDateSchema,
+    scheduledPublishAt: nullableIsoDateSchema,
+    scheduleStatus: youtubeUploadScheduleStatusSchema.nullable(),
+    timezone: z.string().min(1).nullable(),
     uploadedAt: nullableIsoDateSchema,
     errorMessage: nullableStringSchema,
     createdAt: isoDateSchema,
@@ -202,6 +257,10 @@ export type Render = z.infer<typeof renderSchema>;
 export type YoutubeMetadata = z.infer<typeof youtubeMetadataSchema>;
 export type YoutubeAuthStatus = z.infer<typeof youtubeAuthStatusSchema>;
 export type YoutubeAuthStartResponse = z.infer<typeof youtubeAuthStartResponseSchema>;
+export type YoutubeUploadMode = z.infer<typeof youtubeUploadModeSchema>;
+export type YoutubeUploadRequest = z.infer<typeof youtubeUploadRequestSchema>;
+export type YoutubeUploadSchedule = z.infer<typeof youtubeUploadScheduleSchema>;
+export type YoutubeUploadScheduleStatus = z.infer<typeof youtubeUploadScheduleStatusSchema>;
 export type YoutubeUploadJobInput = z.infer<typeof youtubeUploadJobInputSchema>;
 export type YoutubeUploadJobOutput = z.infer<typeof youtubeUploadJobOutputSchema>;
 export type YoutubeUploadSummary = z.infer<typeof youtubeUploadSummarySchema>;

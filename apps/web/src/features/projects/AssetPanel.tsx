@@ -1,8 +1,12 @@
-import type { Asset, Job, Scene } from "@short-workflow/shared";
-import { Image, Loader2, Music2, RefreshCw } from "lucide-react";
+import type { Asset, BulkAssetQueueResponse, Job, Scene } from "@short-workflow/shared";
+import { Image, Layers3, Loader2, Music2, RefreshCw } from "lucide-react";
 
 import { assetPreviewUrl } from "./assetUrls";
-import { useGenerateSceneAudioMutation, useGenerateSceneImageMutation } from "./hooks";
+import {
+  useGenerateProjectAssetsMutation,
+  useGenerateSceneAudioMutation,
+  useGenerateSceneImageMutation,
+} from "./hooks";
 
 type AssetKind = Extract<Asset["kind"], "image" | "audio">;
 
@@ -16,6 +20,7 @@ type AssetPanelProps = {
   activeJobs: Job[];
   assets: Asset[];
   projectId: string;
+  sceneCount: number;
   selectedScene: Scene | null;
 };
 
@@ -35,6 +40,16 @@ export function getLatestSceneAsset({ assets, kind, sceneId }: LatestSceneAssetI
   return assets
     .filter((asset) => asset.sceneId === sceneId && asset.kind === kind && asset.status === "ready")
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+}
+
+export function assetQueueFeedbackMessage(result: BulkAssetQueueResponse) {
+  const activeCount = result.queuedCount + result.existingActiveCount;
+
+  if (activeCount > 0) {
+    return `Queued ${activeCount} asset ${activeCount === 1 ? "job" : "jobs"}.`;
+  }
+
+  return "All assets are current.";
 }
 
 function currentSceneAsset(asset: Asset | undefined, scene: Scene) {
@@ -163,17 +178,74 @@ function AssetPreviewSection({
   );
 }
 
-export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: AssetPanelProps) {
+function ProjectAssetQueueButton({
+  disabled,
+  onGenerate,
+  pending,
+}: {
+  disabled: boolean;
+  onGenerate: () => void;
+  pending: boolean;
+}) {
+  return (
+    <button
+      className="mt-4 inline-flex h-9 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+      disabled={disabled}
+      onClick={onGenerate}
+      type="button"
+    >
+      {pending ? (
+        <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
+      ) : (
+        <Layers3 className="size-4 shrink-0" aria-hidden="true" />
+      )}
+      <span className="min-w-0 truncate">
+        {pending ? "Queueing assets" : "Generate missing assets"}
+      </span>
+    </button>
+  );
+}
+
+export function AssetPanel({
+  activeJobs,
+  assets,
+  projectId,
+  sceneCount,
+  selectedScene,
+}: AssetPanelProps) {
   const imageMutation = useGenerateSceneImageMutation(projectId, selectedScene?.id ?? "");
   const audioMutation = useGenerateSceneAudioMutation(projectId, selectedScene?.id ?? "");
+  const projectAssetsMutation = useGenerateProjectAssetsMutation(projectId);
+  const projectAssetFeedback = projectAssetsMutation.data
+    ? assetQueueFeedbackMessage(projectAssetsMutation.data)
+    : null;
+  const queueProjectAssets = () => {
+    projectAssetsMutation.reset();
+    projectAssetsMutation.mutate();
+  };
 
   if (!selectedScene) {
     return (
       <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
         <h2 className="text-base font-semibold">Assets</h2>
+        <ProjectAssetQueueButton
+          disabled={sceneCount === 0 || projectAssetsMutation.isPending}
+          onGenerate={queueProjectAssets}
+          pending={projectAssetsMutation.isPending}
+        />
+        {projectAssetFeedback ? (
+          <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+            {projectAssetFeedback}
+          </p>
+        ) : null}
         <p className="mt-2 text-sm text-muted-foreground">
           Select a scene to review image and audio assets.
         </p>
+        {projectAssetsMutation.error ? (
+          <p className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
+            Asset generation could not be queued.
+          </p>
+        ) : null}
       </section>
     );
   }
@@ -197,6 +269,17 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
         <h2 className="text-base font-semibold">Assets</h2>
         <p className="text-sm text-muted-foreground">Scene {selectedScene.position}</p>
       </div>
+
+      <ProjectAssetQueueButton
+        disabled={sceneCount === 0 || projectAssetsMutation.isPending}
+        onGenerate={queueProjectAssets}
+        pending={projectAssetsMutation.isPending}
+      />
+      {projectAssetFeedback ? (
+        <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
+          {projectAssetFeedback}
+        </p>
+      ) : null}
 
       <div className="mt-4 grid min-w-0 gap-3">
         <AssetStatusRow
@@ -223,7 +306,7 @@ export function AssetPanel({ activeJobs, assets, projectId, selectedScene }: Ass
         scene={selectedScene}
       />
 
-      {imageMutation.error || audioMutation.error ? (
+      {imageMutation.error || audioMutation.error || projectAssetsMutation.error ? (
         <p className="mt-3 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
           Asset generation could not be queued.
         </p>

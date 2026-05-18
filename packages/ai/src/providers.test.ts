@@ -268,7 +268,7 @@ test("generateSpeechWithClient requests Gemini TTS audio and returns WAV bytes",
         {
           parts: [
             {
-              text: "Read the following transcript naturally for a short-form video narration:\n\nHello & welcome.",
+              text: "Synthesize speech for this short-form video narration.\n\n### TRANSCRIPT\nHello & welcome.",
             },
           ],
         },

@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import { refreshYoutubeToken, writeYoutubeToken } from "./tokenStore";
-import { uploadPrivateYoutubeVideo } from "./upload";
+import { uploadYoutubeVideo } from "./upload";
 
 describe("refreshYoutubeToken", () => {
   test("preserves the refresh token and computes a new expiry", async () => {
@@ -82,7 +82,7 @@ describe("refreshYoutubeToken", () => {
   });
 });
 
-describe("uploadPrivateYoutubeVideo", () => {
+describe("uploadYoutubeVideo", () => {
   test("starts a private resumable upload and puts the MP4 bytes", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "youtube-upload-"));
     const filePath = path.join(root, "video.mp4");
@@ -91,10 +91,11 @@ describe("uploadPrivateYoutubeVideo", () => {
     const requests: Request[] = [];
 
     try {
-      const output = await uploadPrivateYoutubeVideo({
+      const output = await uploadYoutubeVideo({
         accessToken: "access-token",
         filePath,
         upload: {
+          mode: "private",
           renderId: "123e4567-e89b-12d3-a456-426614174000",
           outputAssetId: "123e4567-e89b-12d3-a456-426614174001",
           title: "Private upload",
@@ -122,7 +123,10 @@ describe("uploadPrivateYoutubeVideo", () => {
       expect(output).toMatchObject({
         youtubeVideoId: "yt-video-123",
         youtubeStudioUrl: "https://studio.youtube.com/video/yt-video-123/edit",
+        mode: "private",
         privacyStatus: "private",
+        publishAt: null,
+        scheduleId: null,
       });
       expect(Date.parse(output.uploadedAt)).not.toBeNaN();
 
@@ -164,6 +168,63 @@ describe("uploadPrivateYoutubeVideo", () => {
     }
   });
 
+  test("sends publishAt for scheduled public uploads", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "youtube-upload-scheduled-"));
+    const filePath = path.join(root, "video.mp4");
+    await writeFile(filePath, new Uint8Array([0, 1]));
+    const requests: Request[] = [];
+
+    try {
+      const output = await uploadYoutubeVideo({
+        accessToken: "access-token",
+        filePath,
+        upload: {
+          mode: "scheduled_public",
+          renderId: "123e4567-e89b-12d3-a456-426614174000",
+          outputAssetId: "123e4567-e89b-12d3-a456-426614174001",
+          scheduleId: "123e4567-e89b-12d3-a456-426614174002",
+          publishAt: "2026-05-19T02:00:00.000Z",
+          title: "Scheduled upload",
+          description: "A short description",
+          tags: ["shorts"],
+          privacyStatus: "private",
+          selfDeclaredMadeForKids: false,
+          containsSyntheticMedia: true,
+        },
+        fetchFn: async (url, init) => {
+          requests.push(new Request(url, init));
+          if (requests.length === 1) {
+            return new Response(null, {
+              status: 200,
+              headers: { location: "https://upload.youtube.test/session" },
+            });
+          }
+
+          return Response.json({ id: "yt-video-456" });
+        },
+      });
+
+      expect(await requests[0]?.json()).toMatchObject({
+        status: {
+          privacyStatus: "private",
+          publishAt: "2026-05-19T02:00:00.000Z",
+          selfDeclaredMadeForKids: false,
+          containsSyntheticMedia: true,
+        },
+      });
+      expect(output).toMatchObject({
+        youtubeVideoId: "yt-video-456",
+        mode: "scheduled_public",
+        privacyStatus: "private",
+        publishAt: "2026-05-19T02:00:00.000Z",
+        scheduleId: "123e4567-e89b-12d3-a456-426614174002",
+      });
+      expect(Date.parse(output.uploadedAt)).not.toBeNaN();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("normalizes YouTube session errors", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "youtube-upload-error-"));
     const filePath = path.join(root, "video.mp4");
@@ -171,10 +232,11 @@ describe("uploadPrivateYoutubeVideo", () => {
 
     try {
       await expect(
-        uploadPrivateYoutubeVideo({
+        uploadYoutubeVideo({
           accessToken: "access-token",
           filePath,
           upload: {
+            mode: "private",
             renderId: "123e4567-e89b-12d3-a456-426614174000",
             outputAssetId: "123e4567-e89b-12d3-a456-426614174001",
             title: "Private upload",
@@ -208,10 +270,11 @@ describe("uploadPrivateYoutubeVideo", () => {
 
     try {
       await expect(
-        uploadPrivateYoutubeVideo({
+        uploadYoutubeVideo({
           accessToken: "access-token",
           filePath,
           upload: {
+            mode: "private",
             renderId: "123e4567-e89b-12d3-a456-426614174000",
             outputAssetId: "123e4567-e89b-12d3-a456-426614174001",
             title: "Private upload",

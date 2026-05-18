@@ -89,6 +89,18 @@ export function canUploadYoutube({
   );
 }
 
+export function formatYoutubePublishTime(value: string, timezone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    day: "numeric",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "short",
+    timeZone: timezone,
+    year: "numeric",
+  }).format(new Date(value));
+}
+
 export function RenderPanel({
   activeJobs,
   assets,
@@ -119,6 +131,10 @@ export function RenderPanel({
     outputAsset,
     youtubeMetadata,
   });
+  const scheduledPublishLabel =
+    youtubeUpload?.scheduledPublishAt && youtubeUpload.timezone
+      ? formatYoutubePublishTime(youtubeUpload.scheduledPublishAt, youtubeUpload.timezone)
+      : null;
 
   return (
     <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
@@ -210,7 +226,7 @@ export function RenderPanel({
             <p className="min-w-0 break-words text-xs text-muted-foreground">
               Output: <span className="font-medium text-foreground">{outputAsset.path}</span>
             </p>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
               <button
                 className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={revealAsset.isPending}
@@ -222,7 +238,7 @@ export function RenderPanel({
                 ) : (
                   <FolderOpen className="size-4 shrink-0" aria-hidden="true" />
                 )}
-                Open folder
+                <span className="whitespace-nowrap">Open folder</span>
               </button>
 
               {youtubeMetadata ? (
@@ -237,7 +253,9 @@ export function RenderPanel({
                   ) : (
                     <Youtube className="size-4 shrink-0" aria-hidden="true" />
                   )}
-                  {activeUploadJob ? "Uploading to YouTube" : "Upload to YouTube"}
+                  <span className="whitespace-nowrap">
+                    {activeUploadJob ? "Uploading to YouTube" : "Upload to YouTube"}
+                  </span>
                 </button>
               ) : null}
             </div>
@@ -249,26 +267,41 @@ export function RenderPanel({
             </p>
           ) : null}
 
-          {youtubeUpload?.youtubeVideoId && youtubeUpload.youtubeStudioUrl ? (
+          {youtubeUpload ? (
             <div className="mt-3 rounded-md border border-border bg-background p-3 text-sm">
               <div className="flex items-center justify-between gap-3">
-                <span className="min-w-0 truncate font-medium">Uploaded privately to YouTube</span>
+                <span className="min-w-0 truncate font-medium">
+                  {youtubeUpload.mode === "scheduled_public"
+                    ? "Scheduled public on YouTube"
+                    : "Uploaded privately to YouTube"}
+                </span>
                 <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs capitalize text-muted-foreground">
-                  {youtubeUpload.privacyStatus ?? "private"}
+                  {youtubeUpload.mode === "scheduled_public"
+                    ? (youtubeUpload.scheduleStatus ?? "scheduled")
+                    : (youtubeUpload.privacyStatus ?? "private")}
                 </span>
               </div>
-              <p className="mt-1 break-words text-xs text-muted-foreground">
-                Video ID: {youtubeUpload.youtubeVideoId}
-              </p>
-              <a
-                className="mt-2 inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-primary hover:underline"
-                href={youtubeUpload.youtubeStudioUrl}
-                rel="noreferrer"
-                target="_blank"
-              >
-                <span className="truncate">Open in YouTube Studio</span>
-                <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
-              </a>
+              {youtubeUpload.youtubeVideoId ? (
+                <p className="mt-1 break-words text-xs text-muted-foreground">
+                  Video ID: {youtubeUpload.youtubeVideoId}
+                </p>
+              ) : null}
+              {scheduledPublishLabel ? (
+                <p className="mt-1 break-words text-xs text-muted-foreground">
+                  Publishes at {scheduledPublishLabel} {youtubeUpload.timezone}
+                </p>
+              ) : null}
+              {youtubeUpload.youtubeStudioUrl ? (
+                <a
+                  className="mt-2 inline-flex min-w-0 items-center gap-1.5 text-sm font-medium text-primary hover:underline"
+                  href={youtubeUpload.youtubeStudioUrl}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  <span className="truncate">Open in YouTube Studio</span>
+                  <ExternalLink className="size-3.5 shrink-0" aria-hidden="true" />
+                </a>
+              ) : null}
             </div>
           ) : null}
         </div>
