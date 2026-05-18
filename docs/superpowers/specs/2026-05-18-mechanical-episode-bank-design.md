@@ -214,6 +214,38 @@ The image prompt compiler already supports social-native visual hooks. It should
 
 `imagePromptTemplate.version` should be bumped if the prompt text changes.
 
+## Audience-First Correction
+
+Early generated scripts showed that a purely mechanism-first bank can drift into a workshop/tool explanation channel. The preset should instead frame each episode as:
+
+```text
+Everyday Object -> Strange Behavior -> Hidden Mechanism -> Satisfying Reveal
+```
+
+The mechanism remains real, but the viewer-facing hook must start from a familiar object behavior, sound, risk, surprise, or satisfying motion. The script should avoid sounding like a repair tutorial, tool demo, or engineering lecture.
+
+New active seeds should carry audience-facing fields:
+
+```ts
+appealTier: "mass_appeal" | "kinetic_satisfying" | "workshop_tool";
+audienceContext: string;
+nativeSetting: string;
+hookEmotion: string;
+avoidVisualSetting: string;
+```
+
+Field meanings:
+
+- `appealTier`: editorial priority for selection order. `mass_appeal` and `kinetic_satisfying` should lead the active bank. `workshop_tool` should be sparse and never dominate early generation.
+- `audienceContext`: why a non-engineer recognizes or cares about the object.
+- `nativeSetting`: the preferred real-world setting for visuals.
+- `hookEmotion`: the viewer feeling the hook should create, such as surprise, tension, relief, disbelief, or satisfying completion.
+- `avoidVisualSetting`: visual defaults that would make the episode feel too generic or too workshop-like.
+
+Prompt guidance must prefer native everyday settings over workbench defaults. Workbench, repair bench, dark tabletop, exploded tool demos, and generic steel-part closeups should appear only when the selected seed explicitly requires them.
+
+The active seed order should prioritize everyday objects first. Tool-focused seeds such as ratchet screwdriver, socket wrench, tripod quick-release, and manual can opener remain valid, but they should be framed through sound, surprising behavior, or everyday outcome rather than repair instructions.
+
 ## Initial Active Seed Set
 
 The first active bank should target 30-40 seeds. This is enough variety for initial channel testing without pretending the MVP needs an infinite trend engine. The table below is the editorial inventory; the implementation should order the exported active array to avoid adjacent mechanism families.
