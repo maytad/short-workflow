@@ -32,6 +32,25 @@ describe("mechanical episode bank", () => {
     }
   });
 
+  test("active seeds include audience-first editorial fields", () => {
+    const clickPen = getTinyMechanismsSeed("click_pen_cam_lock");
+    expect(clickPen?.selectionStatus).toBe("active");
+    expect(clickPen?.appealTier).toBe("mass_appeal");
+    expect(clickPen?.audienceContext).toContain("pen");
+    expect(clickPen?.nativeSetting).toContain("desk");
+    expect(clickPen?.hookEmotion).toContain("same press");
+    expect(clickPen?.avoidVisualSetting).toContain("workbench");
+  });
+
+  test("first twelve active seeds avoid workshop-tool dominance", () => {
+    const firstTwelve = TINY_MECHANISMS_ACTIVE_SEEDS.slice(0, 12);
+    expect(firstTwelve).toHaveLength(12);
+    expect(firstTwelve.map((seed) => seed.seedId)).not.toContain("ratchet_screwdriver_pawl");
+    expect(firstTwelve.map((seed) => seed.seedId)).not.toContain("socket_wrench_direction_switch");
+    expect(firstTwelve.map((seed) => seed.seedId)).not.toContain("tripod_quick_release_plate");
+    expect(firstTwelve.filter((seed) => seed.appealTier === "workshop_tool")).toHaveLength(0);
+  });
+
   test("compiled script prompt includes mechanical episode concept fields", () => {
     const seed = getTinyMechanismsSeed("click_pen_cam_lock");
     expect(seed?.selectionStatus).toBe("active");
