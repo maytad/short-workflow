@@ -40,6 +40,7 @@ describe("buildRenderInput", () => {
               createdAt,
             },
             captionTiming: null,
+            captionTimingAudioDurationSeconds: null,
           },
         ],
       ]),
@@ -93,6 +94,7 @@ describe("buildRenderInput", () => {
               path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
               createdAt,
             },
+            captionTimingAudioDurationSeconds: null,
           },
         ],
       ]),
@@ -123,12 +125,112 @@ describe("buildRenderInput", () => {
               createdAt,
             },
             captionTiming: null,
+            captionTimingAudioDurationSeconds: null,
           },
         ],
       ]),
     });
 
     expect(input.scenes[0]?.captionTimingPath).toBeUndefined();
+  });
+
+  test("trims scene duration to caption timing audio duration plus tail buffer", () => {
+    const input = buildRenderInput({
+      assetRoot: "/tmp/asset-root",
+      project,
+      scenes: [scene],
+      sceneAssets: new Map([
+        [
+          scene.id,
+          {
+            image: {
+              id: "img-asset-1",
+              path: "projects/project-1/scenes/scene-1/images/image.png",
+              createdAt,
+            },
+            audio: {
+              id: "audio-asset-1",
+              path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
+              createdAt,
+            },
+            captionTiming: {
+              id: "caption-asset-1",
+              path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
+              createdAt,
+            },
+            captionTimingAudioDurationSeconds: 2.1,
+          },
+        ],
+      ]),
+    });
+
+    const expectedDuration = Math.ceil((2.1 + 0.25) * 30) / 30;
+    expect(input.scenes[0]?.durationSeconds).toBe(expectedDuration);
+    expect(input.format.durationSeconds).toBe(expectedDuration);
+  });
+
+  test("falls back to planned scene duration when caption timing duration is absent", () => {
+    const input = buildRenderInput({
+      assetRoot: "/tmp/asset-root",
+      project,
+      scenes: [scene],
+      sceneAssets: new Map([
+        [
+          scene.id,
+          {
+            image: {
+              id: "img-asset-1",
+              path: "projects/project-1/scenes/scene-1/images/image.png",
+              createdAt,
+            },
+            audio: {
+              id: "audio-asset-1",
+              path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
+              createdAt,
+            },
+            captionTiming: null,
+            captionTimingAudioDurationSeconds: null,
+          },
+        ],
+      ]),
+    });
+
+    expect(input.scenes[0]?.durationSeconds).toBe(scene.durationSeconds);
+    expect(input.format.durationSeconds).toBe(scene.durationSeconds);
+  });
+
+  test("caps trimmed duration at the planned scene duration", () => {
+    const input = buildRenderInput({
+      assetRoot: "/tmp/asset-root",
+      project,
+      scenes: [{ ...scene, durationSeconds: 3 }],
+      sceneAssets: new Map([
+        [
+          scene.id,
+          {
+            image: {
+              id: "img-asset-1",
+              path: "projects/project-1/scenes/scene-1/images/image.png",
+              createdAt,
+            },
+            audio: {
+              id: "audio-asset-1",
+              path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
+              createdAt,
+            },
+            captionTiming: {
+              id: "caption-asset-1",
+              path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
+              createdAt,
+            },
+            captionTimingAudioDurationSeconds: 4,
+          },
+        ],
+      ]),
+    });
+
+    expect(input.scenes[0]?.durationSeconds).toBe(3);
+    expect(input.format.durationSeconds).toBe(3);
   });
 
   test("throws a render precondition error when a scene is not ready", () => {

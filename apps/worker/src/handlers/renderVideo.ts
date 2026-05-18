@@ -1,10 +1,11 @@
-import { mkdir, access } from "node:fs/promises";
+import { mkdir, access, readFile } from "node:fs/promises";
 import path from "node:path";
 
 import {
   RENDER_FPS,
   RENDER_HEIGHT,
   RENDER_WIDTH,
+  captionTimingDocSchema,
   renderInputSchema,
   type RenderInput,
 } from "@short-workflow/shared";
@@ -58,7 +59,63 @@ type SceneAssetPair = {
   image: RenderSceneAsset | null;
   audio: RenderSceneAsset | null;
   captionTiming: RenderSceneAsset | null;
+  captionTimingAudioDurationSeconds: number | null;
 };
+
+export const RENDER_TAIL_BUFFER_SECONDS = 0.25;
+
+export function effectiveSceneDurationFrames(input: {
+  plannedDurationSeconds: number;
+  audioDurationSeconds: number | null | undefined;
+  fps?: number;
+  tailBufferSeconds?: number;
+}) {
+  const fps = input.fps ?? RENDER_FPS;
+  const tailBufferSeconds = input.tailBufferSeconds ?? RENDER_TAIL_BUFFER_SECONDS;
+  const plannedFrames = Math.round(input.plannedDurationSeconds * fps);
+
+  if (!input.audioDurationSeconds || input.audioDurationSeconds <= 0) {
+    return Math.max(1, plannedFrames);
+  }
+
+  const audioFrames = Math.ceil((input.audioDurationSeconds + tailBufferSeconds) * fps);
+  return Math.max(1, Math.min(plannedFrames, audioFrames));
+}
+
+export function effectiveSceneDurationSeconds(input: {
+  plannedDurationSeconds: number;
+  audioDurationSeconds: number | null | undefined;
+  fps?: number;
+  tailBufferSeconds?: number;
+}) {
+  const fps = input.fps ?? RENDER_FPS;
+  return effectiveSceneDurationFrames(input) / fps;
+}
+
+async function readCaptionTimingAudioDurationSeconds(input: {
+  assetRoot: string;
+  sceneId: string;
+  captionTiming: RenderSceneAsset | null;
+}) {
+  if (!input.captionTiming) {
+    return null;
+  }
+
+  const absolutePath = absoluteAssetPath(input.assetRoot, input.captionTiming.path);
+
+  try {
+    const raw = await readFile(absolutePath, "utf8");
+    const parsed = captionTimingDocSchema.parse(JSON.parse(raw));
+    return parsed.audioDurationSeconds;
+  } catch (error) {
+    console.warn("caption_timing_audio_duration_unavailable", {
+      sceneId: input.sceneId,
+      path: input.captionTiming.path,
+      reason: errorMessage(error),
+    });
+    return null;
+  }
+}
 
 export function buildRenderInput(input: {
   assetRoot: string;
@@ -70,7 +127,42 @@ export function buildRenderInput(input: {
     throw new Error("render_preconditions_failed:no_scenes");
   }
 
-  const durationSeconds = input.scenes.reduce((total, scene) => total + scene.durationSeconds, 0);
+  let totalDurationFrames = 0;
+
+  const renderScenes = input.scenes.map((scene) => {
+    if (scene.status !== "ready") {
+      throw new Error(`render_preconditions_failed:scene_not_ready:${scene.id}`);
+    }
+
+    const assets = input.sceneAssets.get(scene.id);
+
+    if (!assets?.image || !assets.audio) {
+      throw new Error(`render_preconditions_failed:missing_scene_asset:${scene.id}`);
+    }
+
+    const durationFrames = effectiveSceneDurationFrames({
+      plannedDurationSeconds: scene.durationSeconds,
+      audioDurationSeconds: assets.captionTimingAudioDurationSeconds,
+      fps: RENDER_FPS,
+    });
+    totalDurationFrames += durationFrames;
+
+    return {
+      id: scene.id,
+      position: scene.position,
+      role: scene.role,
+      durationSeconds: durationFrames / RENDER_FPS,
+      narration: scene.narration,
+      caption: scene.caption,
+      imagePath: absoluteAssetPath(input.assetRoot, assets.image.path),
+      audioPath: absoluteAssetPath(input.assetRoot, assets.audio.path),
+      ...(assets.captionTiming
+        ? { captionTimingPath: absoluteAssetPath(input.assetRoot, assets.captionTiming.path) }
+        : {}),
+    };
+  });
+
+  const durationSeconds = totalDurationFrames / RENDER_FPS;
 
   return renderInputSchema.parse({
     projectId: input.project.id,
@@ -81,31 +173,7 @@ export function buildRenderInput(input: {
       fps: RENDER_FPS,
       durationSeconds,
     },
-    scenes: input.scenes.map((scene) => {
-      if (scene.status !== "ready") {
-        throw new Error(`render_preconditions_failed:scene_not_ready:${scene.id}`);
-      }
-
-      const assets = input.sceneAssets.get(scene.id);
-
-      if (!assets?.image || !assets.audio) {
-        throw new Error(`render_preconditions_failed:missing_scene_asset:${scene.id}`);
-      }
-
-      return {
-        id: scene.id,
-        position: scene.position,
-        role: scene.role,
-        durationSeconds: scene.durationSeconds,
-        narration: scene.narration,
-        caption: scene.caption,
-        imagePath: absoluteAssetPath(input.assetRoot, assets.image.path),
-        audioPath: absoluteAssetPath(input.assetRoot, assets.audio.path),
-        ...(assets.captionTiming
-          ? { captionTimingPath: absoluteAssetPath(input.assetRoot, assets.captionTiming.path) }
-          : {}),
-      };
-    }),
+    scenes: renderScenes,
   });
 }
 
@@ -136,7 +204,18 @@ export async function handleRenderVideo(db: DbClient, job: JobRow, env?: Handler
       });
     }
 
-    sceneAssets.set(scene.id, { image, audio, captionTiming });
+    const captionTimingAudioDurationSeconds = await readCaptionTimingAudioDurationSeconds({
+      assetRoot: handlerEnv.LOCAL_ASSET_ROOT,
+      sceneId: scene.id,
+      captionTiming,
+    });
+
+    sceneAssets.set(scene.id, {
+      image,
+      audio,
+      captionTiming,
+      captionTimingAudioDurationSeconds,
+    });
   }
 
   const renderInput = buildRenderInput({
@@ -156,7 +235,7 @@ export async function handleRenderVideo(db: DbClient, job: JobRow, env?: Handler
     render = await createRenderAttempt(db, {
       projectId: project.id,
       status: "processing",
-      durationSeconds: renderInput.format.durationSeconds,
+      durationSeconds: Math.ceil(renderInput.format.durationSeconds),
       width: RENDER_WIDTH,
       height: RENDER_HEIGHT,
       fps: RENDER_FPS,
