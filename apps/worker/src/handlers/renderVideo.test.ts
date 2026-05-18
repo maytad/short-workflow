@@ -30,10 +30,12 @@ describe("buildRenderInput", () => {
           scene.id,
           {
             image: {
+              id: "img-asset-1",
               path: "projects/project-1/scenes/scene-1/images/image.png",
               createdAt,
             },
             audio: {
+              id: "audio-asset-1",
               path: "projects/project-1/scenes/scene-1/audio/audio.wav",
               createdAt,
             },
@@ -77,14 +79,17 @@ describe("buildRenderInput", () => {
           scene.id,
           {
             image: {
+              id: "img-asset-1",
               path: "projects/project-1/scenes/scene-1/images/image.png",
               createdAt,
             },
             audio: {
+              id: "audio-asset-1",
               path: "projects/project-1/scenes/scene-1/audio/audio.mp3",
               createdAt,
             },
             captionTiming: {
+              id: "caption-asset-1",
               path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
               createdAt,
             },
@@ -108,10 +113,12 @@ describe("buildRenderInput", () => {
           scene.id,
           {
             image: {
+              id: "img-asset-1",
               path: "projects/project-1/scenes/scene-1/images/image.png",
               createdAt,
             },
             audio: {
+              id: "audio-asset-1",
               path: "projects/project-1/scenes/scene-1/audio/audio.wav",
               createdAt,
             },

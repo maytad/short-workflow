@@ -13,6 +13,7 @@ import {
   createRenderAttempt,
   getCurrentReadySceneAsset,
   getProject,
+  getReadyAssetByPath,
   listProjectScenes,
   markAssetFailed,
   markAssetReady,
@@ -30,6 +31,7 @@ import {
   absoluteAssetPath,
   renderInputPath,
   renderOutputPath,
+  sceneCaptionTimingPath,
   statAssetFile,
   writeAssetFile,
 } from "../assets";
@@ -50,7 +52,7 @@ type RenderScene = {
   status: string;
 };
 
-type RenderSceneAsset = Pick<AssetRow, "path" | "createdAt">;
+type RenderSceneAsset = Pick<AssetRow, "id" | "path" | "createdAt">;
 
 type SceneAssetPair = {
   image: RenderSceneAsset | null;
@@ -119,11 +121,20 @@ export async function handleRenderVideo(db: DbClient, job: JobRow, env?: Handler
   const sceneAssets = new Map<string, SceneAssetPair>();
 
   for (const scene of scenes) {
-    const [image, audio, captionTiming] = await Promise.all([
+    const [image, audio] = await Promise.all([
       getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "image" }),
       getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "audio" }),
-      getCurrentReadySceneAsset(db, { sceneId: scene.id, kind: "caption_timing" }),
     ]);
+
+    let captionTiming: RenderSceneAsset | null = null;
+    if (audio) {
+      const captionPath = sceneCaptionTimingPath(project.id, scene.id, audio.id);
+      captionTiming = await getReadyAssetByPath(db, {
+        sceneId: scene.id,
+        kind: "caption_timing",
+        path: captionPath,
+      });
+    }
 
     sceneAssets.set(scene.id, { image, audio, captionTiming });
   }
