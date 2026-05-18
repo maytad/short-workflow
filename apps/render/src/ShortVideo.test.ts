@@ -170,4 +170,24 @@ describe("scene motion", () => {
 
     expect(style.overlayOpacity).toBeCloseTo(maxOpacity, 5);
   });
+
+  test("keeps enough image bleed to cover horizontal pan", () => {
+    const roles = ["hook", "context", "point", "payoff", "cta"] as const;
+    const width = 1080;
+
+    for (const role of roles) {
+      for (const frame of [0, 209]) {
+        const style = getSceneMotionStyle({
+          durationInFrames: 210,
+          fps: 30,
+          frame,
+          position: 1,
+          role,
+        });
+        const horizontalBleed = ((style.scale - 1) * width) / 2;
+
+        expect(horizontalBleed).toBeGreaterThanOrEqual(Math.abs(style.translateX));
+      }
+    }
+  });
 });

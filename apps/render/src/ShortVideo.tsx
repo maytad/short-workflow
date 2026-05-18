@@ -93,7 +93,7 @@ export function sceneMotionProfile(
   switch (role) {
     case "hook":
       return {
-        baseScaleStart: 1.045,
+        baseScaleStart: 1.07,
         baseScaleEnd: 1.105,
         panX: 34 * direction,
         panY: -20,
@@ -107,7 +107,7 @@ export function sceneMotionProfile(
       };
     case "context":
       return {
-        baseScaleStart: 1.035,
+        baseScaleStart: 1.05,
         baseScaleEnd: 1.075,
         panX: 24 * direction,
         panY: 10,
@@ -121,7 +121,7 @@ export function sceneMotionProfile(
       };
     case "point":
       return {
-        baseScaleStart: 1.055,
+        baseScaleStart: 1.06,
         baseScaleEnd: 1.12,
         panX: 28 * direction,
         panY: -14,
@@ -135,7 +135,7 @@ export function sceneMotionProfile(
       };
     case "payoff":
       return {
-        baseScaleStart: 1.04,
+        baseScaleStart: 1.055,
         baseScaleEnd: 1.09,
         panX: 26 * direction,
         panY: -8,
@@ -453,6 +453,62 @@ function SceneCaption({
   return <StaticCaption text={scene.caption} />;
 }
 
+function SceneVisual({
+  durationInFrames,
+  scene,
+}: {
+  durationInFrames: number;
+  scene: RenderInput["scenes"][number];
+}) {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const motion = getSceneMotionStyle({
+    durationInFrames,
+    fps,
+    frame,
+    position: scene.position,
+    role: scene.role,
+  });
+
+  return (
+    <>
+      <Img
+        src={resolveMediaSrc(scene.imagePath)}
+        style={{
+          height: "100%",
+          objectFit: "cover",
+          transform: `translate3d(${motion.translateX}px, ${motion.translateY}px, 0) scale(${motion.scale})`,
+          transformOrigin: "center",
+          width: "100%",
+        }}
+      />
+      <div
+        style={{
+          background:
+            "radial-gradient(circle at 50% 42%, rgba(255,255,255,0.16), rgba(0,0,0,0) 36%), linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.18))",
+          inset: 0,
+          opacity: motion.overlayOpacity,
+          pointerEvents: "none",
+          position: "absolute",
+        }}
+      />
+      <div
+        style={{
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.66) 100%)",
+          bottom: 0,
+          height: 520,
+          left: 0,
+          opacity: motion.captionScrimOpacity,
+          pointerEvents: "none",
+          position: "absolute",
+          right: 0,
+        }}
+      />
+    </>
+  );
+}
+
 export const ShortVideo = (props: RenderInput) => {
   const { width, height } = useVideoConfig();
   let from = 0;
@@ -481,14 +537,7 @@ export const ShortVideo = (props: RenderInput) => {
                 backgroundColor: "#050505",
               }}
             >
-              <Img
-                src={resolveMediaSrc(scene.imagePath)}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                }}
-              />
+              <SceneVisual durationInFrames={durationInFrames} scene={scene} />
               <Audio src={resolveMediaSrc(scene.audioPath)} />
               <SceneCaption scene={scene} />
             </div>
