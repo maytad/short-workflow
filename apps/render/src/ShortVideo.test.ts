@@ -190,4 +190,29 @@ describe("scene motion", () => {
       }
     }
   });
+
+  test("clamps out-of-range frames to safe motion values", () => {
+    const before = getSceneMotionStyle({
+      durationInFrames: 90,
+      fps: 30,
+      frame: -20,
+      position: 2,
+      role: "payoff",
+    });
+    const after = getSceneMotionStyle({
+      durationInFrames: 90,
+      fps: 30,
+      frame: 200,
+      position: 2,
+      role: "payoff",
+    });
+
+    expect(before.scale).toBeGreaterThan(1);
+    expect(after.scale).toBeGreaterThan(1);
+    expect(Number.isFinite(before.translateX)).toBe(true);
+    expect(Number.isFinite(before.translateY)).toBe(true);
+    expect(Number.isFinite(after.translateX)).toBe(true);
+    expect(Number.isFinite(after.translateY)).toBe(true);
+    expect(before.captionScrimOpacity).toBe(after.captionScrimOpacity);
+  });
 });
