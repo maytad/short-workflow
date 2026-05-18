@@ -10,6 +10,7 @@
   "dependencies": {
     "@elevenlabs/elevenlabs-js": "2.47.0",
     "@google/genai": "^2.3.0",
+    "@short-workflow/shared": "workspace:*",
     "openai": "latest",
     "zod": "4.3.6"
   },
