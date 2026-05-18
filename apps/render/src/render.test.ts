@@ -93,8 +93,12 @@ describe("stageRenderInputAssets", () => {
     expect(stagedScene.captionTimingPath).toBe(
       "assets/00000000-0000-4000-8000-000000000031-caption_timing.json",
     );
+    const stagedCaptionTimingPath = stagedScene.captionTimingPath;
+    if (!stagedCaptionTimingPath) {
+      throw new Error("Expected captionTimingPath");
+    }
     await expect(
-      readFile(path.join(publicDir, stagedScene.captionTimingPath), "utf8"),
+      readFile(path.join(publicDir, stagedCaptionTimingPath), "utf8"),
     ).resolves.toBe('{"version":1}');
   });
 
