@@ -98,6 +98,7 @@ describe("runProjectFlow", () => {
         };
       },
       getCurrentReadySceneAsset: async () => null,
+      getLatestPromptVersion: async () => null,
       listProjectScenes: async () => {
         calls.push("list-scenes");
         return calls.includes("script") ? scenes : [];
@@ -152,6 +153,7 @@ describe("runProjectFlow", () => {
       },
       getCurrentReadySceneAsset: async (_db, input) =>
         asset(`${input.kind}-asset`, input.sceneId, input.kind as "image" | "audio"),
+      getLatestPromptVersion: async () => null,
       listProjectScenes: async () => scenes,
       markJobSucceeded: async (_db, _jobId, output) => {
         calls.push("succeeded");
@@ -173,5 +175,62 @@ describe("runProjectFlow", () => {
     });
 
     expect(calls).toEqual(["render", "succeeded"]);
+  });
+
+  test("includes script metadata from the latest script prompt on retry", async () => {
+    const metadataDraft = {
+      youtubeTitle: "Why springs remember",
+      description: "A compact explanation of stored mechanical energy.",
+      hashtags: ["#TinyMechanisms"],
+      disclosureHint: "AI-assisted script and visuals.",
+    };
+    const scenes = [scene(sceneAId, 1)];
+
+    await runProjectFlow({} as DbClient, job, {
+      generateCurrentSceneAudio: async () => {
+        throw new Error("audio_should_not_run");
+      },
+      generateCurrentSceneImage: async () => {
+        throw new Error("image_should_not_run");
+      },
+      generateProjectScript: async () => {
+        throw new Error("script_should_not_run");
+      },
+      getCurrentReadySceneAsset: async (_db, input) =>
+        asset(`${input.kind}-asset`, input.sceneId, input.kind as "image" | "audio"),
+      getLatestPromptVersion: async () => ({
+        id: "55555555-5555-4555-8555-555555555555",
+        projectId,
+        sceneId: null,
+        purpose: "script",
+        provider: "openai",
+        model: null,
+        revision: 1,
+        promptPayload: {},
+        responseText: JSON.stringify({
+          channelPresetId: "tiny_mechanisms",
+          episode: { seedId: "spring-memory" },
+          metadataDraft,
+        }),
+        responseMetadata: {},
+        createdAt: new Date("2026-05-19T00:00:00.000Z"),
+      }),
+      listProjectScenes: async () => scenes,
+      markJobSucceeded: async (_db, _jobId, output) => {
+        expect(output).toMatchObject({
+          scriptPromptVersionId: "55555555-5555-4555-8555-555555555555",
+          seedId: "spring-memory",
+          channelPresetId: "tiny_mechanisms",
+          metadataDraft,
+        });
+        return job;
+      },
+      renderProjectVideo: async () => ({
+        renderId: "render-1",
+        inputAssetId: "render-input-1",
+        outputAssetId: "render-output-1",
+        durationSeconds: 45,
+      }),
+    });
   });
 });

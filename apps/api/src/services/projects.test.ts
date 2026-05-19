@@ -5,6 +5,7 @@ import type { DbClient, JobRow, RenderRow } from "@short-workflow/db";
 import {
   buildRenderPreconditionReport,
   buildYoutubeUploadDescription,
+  latestYoutubeMetadata,
   queueMissingProjectAssets,
   queueProjectFullFlow,
 } from "./projects";
@@ -246,6 +247,37 @@ describe("buildYoutubeUploadDescription", () => {
         hashtags: ["#TinyMechanisms", "Engineering", "#Shorts"],
       }),
     ).toBe("A compact explanation of the mechanism.\n\n#TinyMechanisms #Engineering #Shorts");
+  });
+});
+
+describe("latestYoutubeMetadata", () => {
+  test("reads metadata from a succeeded project flow job", () => {
+    const metadataDraft = {
+      youtubeTitle: "Why springs remember",
+      description: "A compact explanation of stored mechanical energy.",
+      hashtags: ["#TinyMechanisms"],
+      disclosureHint: "AI-assisted script and visuals.",
+    };
+    const projectFlowJob: JobRow = {
+      id: "55555555-5555-4555-8555-555555555555",
+      projectId,
+      sceneId: null,
+      type: "run_project_flow",
+      status: "succeeded",
+      attempts: 1,
+      maxAttempts: 5,
+      parentJobId: null,
+      errorMessage: null,
+      input: { projectId },
+      output: { metadataDraft },
+      nextRetryAt: null,
+      createdAt: new Date("2026-05-19T00:00:00.000Z"),
+      startedAt: new Date("2026-05-19T00:00:00.000Z"),
+      finishedAt: new Date("2026-05-19T00:01:00.000Z"),
+      updatedAt: new Date("2026-05-19T00:01:00.000Z"),
+    };
+
+    expect(latestYoutubeMetadata([projectFlowJob])).toEqual(metadataDraft);
   });
 });
 

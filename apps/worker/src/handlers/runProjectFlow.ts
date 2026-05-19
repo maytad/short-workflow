@@ -1,10 +1,12 @@
 import {
   getCurrentReadySceneAsset,
+  getLatestPromptVersion,
   listProjectScenes,
   markJobSucceeded,
   type AssetRow,
   type DbClient,
   type JobRow,
+  type PromptVersionRow,
   type SceneRow,
 } from "@short-workflow/db";
 
@@ -23,6 +25,7 @@ type RunProjectFlowDeps = {
   generateCurrentSceneImage: typeof generateCurrentSceneImage;
   generateProjectScript: typeof generateProjectScript;
   getCurrentReadySceneAsset: (db: DbClient, input: CurrentAssetInput) => Promise<AssetRow | null>;
+  getLatestPromptVersion: typeof getLatestPromptVersion;
   listProjectScenes: typeof listProjectScenes;
   markJobSucceeded: typeof markJobSucceeded;
   renderProjectVideo: typeof renderProjectVideo;
@@ -33,6 +36,7 @@ const defaultDeps: RunProjectFlowDeps = {
   generateCurrentSceneImage,
   generateProjectScript,
   getCurrentReadySceneAsset,
+  getLatestPromptVersion,
   listProjectScenes,
   markJobSucceeded,
   renderProjectVideo,
@@ -67,16 +71,10 @@ export async function runProjectFlow(
   }
 
   const render = await deps.renderProjectVideo(db, job.projectId);
+  const scriptMetadata = await resolveScriptOutputMetadata(db, job, scriptResult, deps);
 
   await deps.markJobSucceeded(db, job.id, {
-    ...(scriptResult
-      ? {
-          scriptPromptVersionId: scriptResult.promptVersionId,
-          seedId: scriptResult.seedId,
-          channelPresetId: scriptResult.channelPresetId,
-          metadataDraft: scriptResult.metadataDraft,
-        }
-      : {}),
+    ...scriptMetadata,
     sceneIds: scenes.map((scene) => scene.id),
     imageAssetIds,
     audioAssetIds,
@@ -85,6 +83,59 @@ export async function runProjectFlow(
     outputAssetId: render.outputAssetId,
     durationSeconds: render.durationSeconds,
   });
+}
+
+async function resolveScriptOutputMetadata(
+  db: DbClient,
+  job: JobRow,
+  scriptResult: Awaited<ReturnType<typeof generateProjectScript>> | null,
+  deps: RunProjectFlowDeps,
+): Promise<Record<string, unknown>> {
+  if (scriptResult) {
+    return {
+      scriptPromptVersionId: scriptResult.promptVersionId,
+      seedId: scriptResult.seedId,
+      channelPresetId: scriptResult.channelPresetId,
+      metadataDraft: scriptResult.metadataDraft,
+    };
+  }
+
+  const latestScriptPrompt = await deps.getLatestPromptVersion(db, {
+    projectId: job.projectId,
+    sceneId: null,
+    purpose: "script",
+  });
+
+  if (!latestScriptPrompt) {
+    return {};
+  }
+
+  return scriptOutputMetadataFromPrompt(latestScriptPrompt);
+}
+
+function scriptOutputMetadataFromPrompt(promptVersion: PromptVersionRow): Record<string, unknown> {
+  const output: Record<string, unknown> = {
+    scriptPromptVersionId: promptVersion.id,
+  };
+  const parsed = parseJsonRecord(promptVersion.responseText);
+
+  if (!parsed) {
+    return output;
+  }
+
+  if (typeof parsed.channelPresetId === "string") {
+    output.channelPresetId = parsed.channelPresetId;
+  }
+
+  if (isJsonRecord(parsed.episode) && typeof parsed.episode.seedId === "string") {
+    output.seedId = parsed.episode.seedId;
+  }
+
+  if (isJsonRecord(parsed.metadataDraft)) {
+    output.metadataDraft = parsed.metadataDraft;
+  }
+
+  return output;
 }
 
 async function getOrGenerateSceneImage(
@@ -132,4 +183,21 @@ async function getOrGenerateSceneAudio(
 
 export async function handleRunProjectFlow(db: DbClient, job: JobRow) {
   await runProjectFlow(db, job);
+}
+
+function parseJsonRecord(value: string | null): Record<string, unknown> | null {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isJsonRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function isJsonRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

@@ -198,9 +198,12 @@ export async function getProjectDetail(db: DbClient, projectId: string) {
   };
 }
 
-function latestYoutubeMetadata(jobs: JobRow[]) {
+export function latestYoutubeMetadata(jobs: JobRow[]) {
   for (const job of jobs) {
-    if (job.type !== "generate_script" || job.status !== "succeeded") {
+    if (
+      (job.type !== "generate_script" && job.type !== "run_project_flow") ||
+      job.status !== "succeeded"
+    ) {
       continue;
     }
 
