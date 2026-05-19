@@ -9,6 +9,7 @@ import {
 } from "@short-workflow/ai";
 import {
   createPendingAsset,
+  getCurrentReadySceneAsset,
   getLatestPromptVersion,
   getProject,
   getScene,
@@ -24,13 +25,28 @@ import {
 import { sceneImagePath, writeAssetFile } from "../assets";
 import { resolveHandlerEnv, type HandlerEnv } from "./types";
 
-export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: HandlerEnv) {
-  if (!job.sceneId) {
-    throw new Error("scene_id_required");
+export type GenerateCurrentSceneImageResult = {
+  assetId: string;
+  promptVersionId: string | null;
+  reused: boolean;
+};
+
+export async function generateCurrentSceneImage(
+  db: DbClient,
+  sceneId: string,
+  env?: HandlerEnv,
+): Promise<GenerateCurrentSceneImageResult> {
+  const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "image" });
+  if (currentAsset) {
+    return {
+      assetId: currentAsset.id,
+      promptVersionId: null,
+      reused: true,
+    };
   }
 
   const handlerEnv = resolveHandlerEnv(env);
-  const scene = await getScene(db, job.sceneId);
+  const scene = await getScene(db, sceneId);
 
   if (!scene) {
     throw new Error("scene_not_found");
@@ -116,10 +132,11 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
       responseMetadata: generated.responseMetadata,
     });
 
-    await markJobSucceeded(db, job.id, {
+    return {
       assetId: asset.id,
       promptVersionId: promptVersion.id,
-    });
+      reused: false,
+    };
   } catch (error) {
     if (asset && !assetReady) {
       await markAssetFailed(db, asset.id, errorMessage(error));
@@ -127,6 +144,20 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
 
     throw error;
   }
+}
+
+export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: HandlerEnv) {
+  if (!job.sceneId) {
+    throw new Error("scene_id_required");
+  }
+
+  const result = await generateCurrentSceneImage(db, job.sceneId, env);
+
+  await markJobSucceeded(db, job.id, {
+    assetId: result.assetId,
+    promptVersionId: result.promptVersionId,
+    reused: result.reused,
+  });
 }
 
 function errorMessage(error: unknown) {

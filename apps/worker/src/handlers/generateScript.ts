@@ -88,8 +88,20 @@ async function reserveTinyMechanismsSeed(db: DbClient, projectId: string) {
   });
 }
 
-export async function handleGenerateScript(db: DbClient, job: JobRow) {
-  const { project, seed } = await reserveTinyMechanismsSeed(db, job.projectId);
+export type GenerateProjectScriptResult = {
+  sceneIds: string[];
+  promptVersionId: string;
+  seedId: string;
+  channelPresetId: string;
+  metadataDraft: unknown;
+};
+
+export async function generateProjectScript(
+  db: DbClient,
+  projectId: string,
+  options: { jobId?: string } = {},
+): Promise<GenerateProjectScriptResult> {
+  const { project, seed } = await reserveTinyMechanismsSeed(db, projectId);
   const scriptInput = {
     channelPresetId: TINY_MECHANISMS_PRESET_ID,
     seedId: seed.seedId,
@@ -97,7 +109,7 @@ export async function handleGenerateScript(db: DbClient, job: JobRow) {
   };
   const script = await generateScript(scriptInput);
 
-  await withDbTransaction(db, async (tx) => {
+  return withDbTransaction(db, async (tx) => {
     const promptVersion = await insertPromptVersion(tx, {
       projectId: project.id,
       sceneId: null,
@@ -114,12 +126,23 @@ export async function handleGenerateScript(db: DbClient, job: JobRow) {
       topic: encodeTinyMechanismsTopic(seed.seedId),
     });
     await setProjectStatus(tx, project.id, "ready");
-    await markJobSucceeded(tx, job.id, {
+
+    const result: GenerateProjectScriptResult = {
       sceneIds: scenes.map((scene) => scene.id),
       promptVersionId: promptVersion.id,
       seedId: seed.seedId,
       channelPresetId: script.channelPresetId,
       metadataDraft: script.metadataDraft,
-    });
+    };
+
+    if (options.jobId) {
+      await markJobSucceeded(tx, options.jobId, result);
+    }
+
+    return result;
   });
+}
+
+export async function handleGenerateScript(db: DbClient, job: JobRow) {
+  await generateProjectScript(db, job.projectId, { jobId: job.id });
 }

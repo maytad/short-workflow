@@ -8,6 +8,7 @@ import {
 } from "@short-workflow/ai";
 import {
   createPendingAsset,
+  getCurrentReadySceneAsset,
   getLatestPromptVersion,
   getScene,
   insertPromptVersion,
@@ -26,13 +27,30 @@ import { resolveHandlerEnv, type HandlerEnv } from "./types";
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
 const AUDIO_OVERFLOW_TOLERANCE_SECONDS = 0.5;
 
-export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: HandlerEnv) {
-  if (!job.sceneId) {
-    throw new Error("scene_id_required");
+export type GenerateCurrentSceneAudioResult = {
+  assetId: string;
+  captionTimingAssetId: string | null;
+  promptVersionId: string | null;
+  reused: boolean;
+};
+
+export async function generateCurrentSceneAudio(
+  db: DbClient,
+  sceneId: string,
+  env?: HandlerEnv,
+): Promise<GenerateCurrentSceneAudioResult> {
+  const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "audio" });
+  if (currentAsset) {
+    return {
+      assetId: currentAsset.id,
+      captionTimingAssetId: null,
+      promptVersionId: null,
+      reused: true,
+    };
   }
 
   const handlerEnv = resolveHandlerEnv(env);
-  const scene = await getScene(db, job.sceneId);
+  const scene = await getScene(db, sceneId);
   if (!scene) {
     throw new Error("scene_not_found");
   }
@@ -132,17 +150,33 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
       responseMetadata: generated.responseMetadata,
     });
 
-    await markJobSucceeded(db, job.id, {
+    return {
       assetId: audioAsset.id,
       captionTimingAssetId,
       promptVersionId: promptVersion.id,
-    });
+      reused: false,
+    };
   } catch (error) {
     if (audioAsset && !audioReady) {
       await markAssetFailed(db, audioAsset.id, errorMessage(error));
     }
     throw error;
   }
+}
+
+export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: HandlerEnv) {
+  if (!job.sceneId) {
+    throw new Error("scene_id_required");
+  }
+
+  const result = await generateCurrentSceneAudio(db, job.sceneId, env);
+
+  await markJobSucceeded(db, job.id, {
+    assetId: result.assetId,
+    captionTimingAssetId: result.captionTimingAssetId,
+    promptVersionId: result.promptVersionId,
+    reused: result.reused,
+  });
 }
 
 async function saveCaptionTiming(input: {
