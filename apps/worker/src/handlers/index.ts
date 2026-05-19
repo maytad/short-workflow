@@ -4,6 +4,7 @@ import { handleGenerateSceneAudio } from "./generateSceneAudio";
 import { handleGenerateSceneImage } from "./generateSceneImage";
 import { handleGenerateScript } from "./generateScript";
 import { handleRenderVideo } from "./renderVideo";
+import { handleRunProjectFlow } from "./runProjectFlow";
 import { handleUploadYoutube } from "./uploadYoutube";
 
 export async function handleJob(db: DbClient, job: JobRow): Promise<void> {
@@ -24,7 +25,8 @@ export async function handleJob(db: DbClient, job: JobRow): Promise<void> {
       await handleUploadYoutube(db, job);
       break;
     case "run_project_flow":
-      throw new Error("handler_not_implemented:run_project_flow");
+      await handleRunProjectFlow(db, job);
+      break;
     default: {
       const exhaustiveJobType: never = job.type;
       throw new Error(`handler_not_implemented:${exhaustiveJobType}`);
