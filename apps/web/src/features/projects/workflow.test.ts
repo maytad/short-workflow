@@ -11,6 +11,7 @@ import type {
 import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
 import { assetQueueFeedbackMessage, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
 import { applyOptimisticSceneUpdate } from "./hooks";
+import { isProjectFlowStartable } from "./ProjectWorkflow";
 import {
   canUploadYoutube,
   formatYoutubePublishTime,
@@ -213,6 +214,82 @@ describe("scene update helpers", () => {
     }
 
     expect(isAssetCurrentForScene(asset(), updatedScene)).toBe(false);
+  });
+});
+
+describe("project full-flow helpers", () => {
+  test("allows a fresh project to start full flow", () => {
+    const detail: ProjectDetailResponse = {
+      assets: [],
+      jobs: [],
+      project: {
+        createdAt: "2026-05-19T00:00:00.000Z",
+        format: "vertical_9_16",
+        id: "22222222-2222-4222-8222-222222222222",
+        language: "en",
+        status: "draft",
+        targetDurationSeconds: 45,
+        title: "Project",
+        topic: "Topic",
+        updatedAt: "2026-05-19T00:00:00.000Z",
+      },
+      renders: [],
+      scenes: [],
+      youtubeMetadata: null,
+      youtubeUpload: null,
+    };
+
+    expect(isProjectFlowStartable(detail, [])).toBe(true);
+  });
+
+  test("blocks full flow after generation has started", () => {
+    const detail: ProjectDetailResponse = {
+      assets: [],
+      jobs: [job({ status: "succeeded", type: "generate_script" })],
+      project: {
+        createdAt: "2026-05-19T00:00:00.000Z",
+        format: "vertical_9_16",
+        id: "22222222-2222-4222-8222-222222222222",
+        language: "en",
+        status: "draft",
+        targetDurationSeconds: 45,
+        title: "Project",
+        topic: "Topic",
+        updatedAt: "2026-05-19T00:00:00.000Z",
+      },
+      renders: [],
+      scenes: [],
+      youtubeMetadata: null,
+      youtubeUpload: null,
+    };
+
+    expect(isProjectFlowStartable(detail, [])).toBe(false);
+  });
+
+  test("blocks full flow while any job is active", () => {
+    const detail: ProjectDetailResponse = {
+      assets: [],
+      jobs: [],
+      project: {
+        createdAt: "2026-05-19T00:00:00.000Z",
+        format: "vertical_9_16",
+        id: "22222222-2222-4222-8222-222222222222",
+        language: "en",
+        status: "draft",
+        targetDurationSeconds: 45,
+        title: "Project",
+        topic: "Topic",
+        updatedAt: "2026-05-19T00:00:00.000Z",
+      },
+      renders: [],
+      scenes: [],
+      youtubeMetadata: null,
+      youtubeUpload: null,
+    };
+
+    expect(
+      isProjectFlowStartable(detail, [job({ status: "pending", type: "run_project_flow" })]),
+    ).toBe(false);
   });
 });
 

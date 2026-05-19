@@ -1,10 +1,10 @@
 import type { Job, ProjectDetailResponse, Scene } from "@short-workflow/shared";
-import { AlertCircle, Clapperboard, FileText, Loader2, Play } from "lucide-react";
+import { AlertCircle, Clapperboard, FileText, Loader2, Play, WandSparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { cn } from "../../lib/utils";
 import { AssetPanel } from "./AssetPanel";
-import { useGenerateScriptMutation, useProjectJobsQuery } from "./hooks";
+import { useGenerateScriptMutation, useProjectJobsQuery, useRunProjectFlowMutation } from "./hooks";
 import { RenderPanel } from "./RenderPanel";
 import { SceneEditor } from "./SceneEditor";
 import { YoutubeMetadataPanel } from "./YoutubeMetadataPanel";
@@ -25,12 +25,34 @@ function activeJobLabel(job: Job) {
   return job.type.replaceAll("_", " ");
 }
 
+const FLOW_STARTED_JOB_TYPES = new Set<Job["type"]>([
+  "run_project_flow",
+  "generate_script",
+  "generate_scene_image",
+  "generate_scene_audio",
+  "render_video",
+]);
+
+export function isProjectFlowStartable(detail: ProjectDetailResponse, activeJobs: Job[]) {
+  if (activeJobs.some((job) => job.status === "pending" || job.status === "processing")) {
+    return false;
+  }
+
+  return (
+    detail.scenes.length === 0 &&
+    detail.assets.length === 0 &&
+    detail.renders.length === 0 &&
+    !detail.jobs.some((job) => FLOW_STARTED_JOB_TYPES.has(job.type))
+  );
+}
+
 export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(
     detail.scenes[0]?.id ?? null,
   );
   const activeJobsQuery = useProjectJobsQuery(projectId, "active");
   const generateScript = useGenerateScriptMutation(projectId);
+  const runProjectFlow = useRunProjectFlowMutation(projectId);
   const activeJobs = activeJobsQuery.data ?? detail.jobs;
   const activeWorkflowJobs = activeJobs.filter(
     (job) => job.status === "pending" || job.status === "processing",
@@ -43,6 +65,8 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
     return detail.scenes.find((scene) => scene.id === selectedSceneId) ?? detail.scenes[0] ?? null;
   }, [detail.scenes, selectedSceneId]);
   const scriptJobActive = activeWorkflowJobs.some((job) => job.type === "generate_script");
+  const flowJobActive = activeWorkflowJobs.some((job) => job.type === "run_project_flow");
+  const flowStartable = isProjectFlowStartable(detail, activeWorkflowJobs);
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(280px,320px)]">
@@ -138,24 +162,45 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
                   Create the first scene list from this project topic.
                 </p>
               </div>
-              <button
-                className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={generateScript.isPending || scriptJobActive}
-                onClick={() => generateScript.mutate()}
-                type="button"
-              >
-                {generateScript.isPending || scriptJobActive ? (
-                  <Loader2 className="size-4 animate-spin" />
-                ) : (
-                  <Play className="size-4" />
-                )}
-                {scriptJobActive ? "Generating" : "Generate script"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!flowStartable || runProjectFlow.isPending || flowJobActive}
+                  onClick={() => runProjectFlow.mutate()}
+                  type="button"
+                >
+                  {runProjectFlow.isPending || flowJobActive ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <WandSparkles className="size-4" />
+                  )}
+                  {flowJobActive ? "Running full flow" : "Run full flow"}
+                </button>
+                <button
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={generateScript.isPending || scriptJobActive}
+                  onClick={() => generateScript.mutate()}
+                  type="button"
+                >
+                  {generateScript.isPending || scriptJobActive ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Play className="size-4" />
+                  )}
+                  {scriptJobActive ? "Generating" : "Generate script"}
+                </button>
+              </div>
             </div>
             {generateScript.error ? (
               <p className="mt-3 flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
                 <AlertCircle className="size-4" />
                 Script generation could not be queued.
+              </p>
+            ) : null}
+            {runProjectFlow.error ? (
+              <p className="mt-3 flex items-center gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
+                <AlertCircle className="size-4" />
+                Full flow could not be started.
               </p>
             ) : null}
           </section>

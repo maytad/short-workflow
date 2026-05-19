@@ -248,6 +248,18 @@ export function useGenerateScriptMutation(projectId: string) {
   });
 }
 
+export function useRunProjectFlowMutation(projectId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Job>(`/projects/${projectId}/run-flow`, {
+        method: "POST",
+      }),
+    onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
+  });
+}
+
 export function useGenerateSceneImageMutation(projectId: string, sceneId: string) {
   const queryClient = useQueryClient();
 
