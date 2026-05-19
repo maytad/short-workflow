@@ -129,6 +129,25 @@ const testDb = {
   execute: async () => [],
 } as never;
 
+function lockTrackingDb() {
+  const result = {
+    lockCalls: 0,
+    db: {
+      execute: async () => {
+        result.lockCalls += 1;
+        return [];
+      },
+    },
+  };
+
+  return {
+    get lockCalls() {
+      return result.lockCalls;
+    },
+    db: result.db,
+  };
+}
+
 function apiJob(row: typeof job) {
   return {
     ...row,
@@ -551,12 +570,13 @@ describe("createApp", () => {
     ];
 
     for (const path of paths) {
+      const lockTracker = lockTrackingDb();
       let createdJob = false;
       let queuedAssets = false;
       let checkedRenderPreconditions = false;
       let receivedStatus: "active" | undefined;
       const app = createApp({
-        db: testDb,
+        db: lockTracker.db as never,
         projectServices: createServices({
           listProjectJobs: async (_db, _projectId, status) => {
             receivedStatus = status;
@@ -594,6 +614,7 @@ describe("createApp", () => {
       expect(response.status).toBe(409);
       expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
       expect(receivedStatus).toBe("active");
+      expect(lockTracker.lockCalls).toBe(1);
       expect(createdJob).toBe(false);
       expect(queuedAssets).toBe(false);
       expect(checkedRenderPreconditions).toBe(false);
@@ -979,11 +1000,12 @@ describe("createApp", () => {
     ];
 
     for (const path of paths) {
+      const lockTracker = lockTrackingDb();
       let createdJob = false;
       let receivedProjectId: string | undefined;
       let receivedStatus: "active" | undefined;
       const app = createApp({
-        db: testDb,
+        db: lockTracker.db as never,
         projectServices: createServices({
           getScene: async () => scene,
           listProjectJobs: async (_db, projectId, status) => {
@@ -1004,6 +1026,7 @@ describe("createApp", () => {
       expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
       expect(receivedProjectId).toBe(project.id);
       expect(receivedStatus).toBe("active");
+      expect(lockTracker.lockCalls).toBe(1);
       expect(createdJob).toBe(false);
     }
   });

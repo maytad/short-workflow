@@ -167,6 +167,10 @@ async function hasActiveProjectFlowJob(
   return activeJobs.some((job) => job.type === "run_project_flow");
 }
 
+function projectFlowLockKey(projectId: string) {
+  return `project-flow:${projectId}`;
+}
+
 export function createProjectRoutes(services: ProjectRouteServices = defaultServices) {
   return new Elysia()
     .group("/projects", (projects) =>
@@ -303,72 +307,81 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         .post("/:projectId/generate-script", async (context) => {
           const { db, params, set } = withRouteContext(context);
           const projectId = requireRouteParam(params.projectId, "projectId");
-          const project = await services.getProject(db, projectId);
 
-          if (!project) {
-            return notFound(set);
-          }
+          return withAdvisoryTransactionLock(db, projectFlowLockKey(projectId), async (tx) => {
+            const project = await services.getProject(tx, projectId);
 
-          if (await hasActiveProjectFlowJob(db, services, project.id)) {
-            return conflict(set, "project_has_active_jobs");
-          }
+            if (!project) {
+              return notFound(set);
+            }
 
-          return services.createJobIdempotent(db, {
-            projectId: project.id,
-            sceneId: null,
-            type: "generate_script",
-            input: { projectId: project.id },
+            if (await hasActiveProjectFlowJob(tx, services, project.id)) {
+              return conflict(set, "project_has_active_jobs");
+            }
+
+            return services.createJobIdempotent(tx, {
+              projectId: project.id,
+              sceneId: null,
+              type: "generate_script",
+              input: { projectId: project.id },
+            });
           });
         })
         .post("/:projectId/generate-assets", async (context) => {
           const { db, params, set } = withRouteContext(context);
           const projectId = requireRouteParam(params.projectId, "projectId");
-          const project = await services.getProject(db, projectId);
 
-          if (!project) {
-            return notFound(set);
-          }
+          return withAdvisoryTransactionLock(db, projectFlowLockKey(projectId), async (tx) => {
+            const project = await services.getProject(tx, projectId);
 
-          if (await hasActiveProjectFlowJob(db, services, project.id)) {
-            return conflict(set, "project_has_active_jobs");
-          }
-
-          try {
-            return await services.queueMissingProjectAssets(db, project.id);
-          } catch (error) {
-            if (error instanceof Error && error.message === "project_has_no_scenes") {
-              return jsonError(set, 422, "project_has_no_scenes");
+            if (!project) {
+              return notFound(set);
             }
 
-            throw error;
-          }
+            if (await hasActiveProjectFlowJob(tx, services, project.id)) {
+              return conflict(set, "project_has_active_jobs");
+            }
+
+            try {
+              return await services.queueMissingProjectAssets(tx, project.id);
+            } catch (error) {
+              if (error instanceof Error && error.message === "project_has_no_scenes") {
+                return jsonError(set, 422, "project_has_no_scenes");
+              }
+
+              throw error;
+            }
+          });
         })
         .post("/:projectId/render", async (context) => {
           const { db, params, set } = withRouteContext(context);
           const projectId = requireRouteParam(params.projectId, "projectId");
-          const project = await services.getProject(db, projectId);
 
-          if (!project) {
-            return notFound(set);
-          }
+          return withAdvisoryTransactionLock(db, projectFlowLockKey(projectId), async (tx) => {
+            const project = await services.getProject(tx, projectId);
 
-          if (await hasActiveProjectFlowJob(db, services, project.id)) {
-            return conflict(set, "project_has_active_jobs");
-          }
+            if (!project) {
+              return notFound(set);
+            }
 
-          const report = await services.buildRenderPreconditionReport(db, project.id);
+            if (await hasActiveProjectFlowJob(tx, services, project.id)) {
+              return conflict(set, "project_has_active_jobs");
+            }
 
-          if (hasRenderPreconditionFailures(report)) {
-            return jsonError(set, 422, "render_preconditions_failed", {
-              details: report,
+            const report = await services.buildRenderPreconditionReport(tx, project.id);
+
+            if (hasRenderPreconditionFailures(report)) {
+              return jsonError(set, 422, "render_preconditions_failed", {
+                details: report,
+              });
+            }
+
+            return services.createJobIdempotent(tx, {
+              projectId: project.id,
+              sceneId: null,
+              type: "render_video",
+              input: { projectId: project.id },
             });
-          }
-
-          return services.createJobIdempotent(db, {
-            projectId: project.id,
-            sceneId: null,
-            type: "render_video",
-            input: { projectId: project.id },
           });
         })
         .post("/:projectId/youtube-upload", async (context) => {
@@ -555,15 +568,23 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         return notFound(set);
       }
 
-      if (await hasActiveProjectFlowJob(db, services, scene.projectId)) {
-        return conflict(set, "project_has_active_jobs");
-      }
+      return withAdvisoryTransactionLock(db, projectFlowLockKey(scene.projectId), async (tx) => {
+        const lockedScene = await services.getScene(tx, sceneId);
 
-      return services.createJobIdempotent(db, {
-        projectId: scene.projectId,
-        sceneId: scene.id,
-        type: "generate_scene_image",
-        input: { projectId: scene.projectId, sceneId: scene.id },
+        if (!lockedScene) {
+          return notFound(set);
+        }
+
+        if (await hasActiveProjectFlowJob(tx, services, lockedScene.projectId)) {
+          return conflict(set, "project_has_active_jobs");
+        }
+
+        return services.createJobIdempotent(tx, {
+          projectId: lockedScene.projectId,
+          sceneId: lockedScene.id,
+          type: "generate_scene_image",
+          input: { projectId: lockedScene.projectId, sceneId: lockedScene.id },
+        });
       });
     })
     .post("/scenes/:sceneId/generate-audio", async (context) => {
@@ -575,15 +596,23 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         return notFound(set);
       }
 
-      if (await hasActiveProjectFlowJob(db, services, scene.projectId)) {
-        return conflict(set, "project_has_active_jobs");
-      }
+      return withAdvisoryTransactionLock(db, projectFlowLockKey(scene.projectId), async (tx) => {
+        const lockedScene = await services.getScene(tx, sceneId);
 
-      return services.createJobIdempotent(db, {
-        projectId: scene.projectId,
-        sceneId: scene.id,
-        type: "generate_scene_audio",
-        input: { projectId: scene.projectId, sceneId: scene.id },
+        if (!lockedScene) {
+          return notFound(set);
+        }
+
+        if (await hasActiveProjectFlowJob(tx, services, lockedScene.projectId)) {
+          return conflict(set, "project_has_active_jobs");
+        }
+
+        return services.createJobIdempotent(tx, {
+          projectId: lockedScene.projectId,
+          sceneId: lockedScene.id,
+          type: "generate_scene_audio",
+          input: { projectId: lockedScene.projectId, sceneId: lockedScene.id },
+        });
       });
     })
     .post("/jobs/:jobId/retry", async (context) => {
