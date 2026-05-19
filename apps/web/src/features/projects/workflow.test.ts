@@ -10,8 +10,8 @@ import type {
 
 import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
 import { assetQueueFeedbackMessage, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
-import { applyOptimisticSceneUpdate } from "./hooks";
-import { isProjectFlowStartable } from "./ProjectWorkflow";
+import { applyOptimisticSceneUpdate, mergeActiveJobCache } from "./hooks";
+import { isGenerateScriptStartable, isProjectFlowStartable } from "./ProjectWorkflow";
 import {
   canUploadYoutube,
   formatYoutubePublishTime,
@@ -290,6 +290,33 @@ describe("project full-flow helpers", () => {
     expect(
       isProjectFlowStartable(detail, [job({ status: "pending", type: "run_project_flow" })]),
     ).toBe(false);
+  });
+
+  test("blocks manual script generation while full flow is active", () => {
+    expect(isGenerateScriptStartable([])).toBe(true);
+    expect(isGenerateScriptStartable([job({ status: "pending", type: "run_project_flow" })])).toBe(
+      false,
+    );
+  });
+
+  test("merges returned full-flow job into active job cache without duplicates", () => {
+    const existingJob = job({ id: "88888888-8888-4888-8888-888888888888" });
+    const returnedJob = job({
+      id: "99999999-9999-4999-8999-999999999999",
+      status: "pending",
+      type: "run_project_flow",
+    });
+    const updatedReturnedJob = job({
+      id: "99999999-9999-4999-8999-999999999999",
+      status: "processing",
+      type: "run_project_flow",
+    });
+
+    expect(mergeActiveJobCache(undefined, returnedJob)).toEqual([returnedJob]);
+    expect(mergeActiveJobCache([existingJob, returnedJob], updatedReturnedJob)).toEqual([
+      existingJob,
+      updatedReturnedJob,
+    ]);
   });
 });
 

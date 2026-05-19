@@ -46,6 +46,10 @@ export function isProjectFlowStartable(detail: ProjectDetailResponse, activeJobs
   );
 }
 
+export function isGenerateScriptStartable(activeJobs: Job[]) {
+  return !activeJobs.some((job) => job.status === "pending" || job.status === "processing");
+}
+
 export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(
     detail.scenes[0]?.id ?? null,
@@ -67,6 +71,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const scriptJobActive = activeWorkflowJobs.some((job) => job.type === "generate_script");
   const flowJobActive = activeWorkflowJobs.some((job) => job.type === "run_project_flow");
   const flowStartable = isProjectFlowStartable(detail, activeWorkflowJobs);
+  const scriptStartable = isGenerateScriptStartable(activeWorkflowJobs);
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(280px,320px)]">
@@ -178,7 +183,7 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
                 </button>
                 <button
                   className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={generateScript.isPending || scriptJobActive}
+                  disabled={!scriptStartable || generateScript.isPending || scriptJobActive}
                   onClick={() => generateScript.mutate()}
                   type="button"
                 >

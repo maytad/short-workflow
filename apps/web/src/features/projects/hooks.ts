@@ -28,21 +28,23 @@ function invalidateProjectWorkflow(
   queryClient: ReturnType<typeof useQueryClient>,
   projectId: string,
 ) {
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.projects.detail(projectId),
-  });
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.projects.scenes(projectId),
-  });
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.projects.assets(projectId),
-  });
-  void queryClient.invalidateQueries({
-    queryKey: queryKeys.projects.renders(projectId),
-  });
-  void queryClient.invalidateQueries({
-    queryKey: [...queryKeys.projects.detail(projectId), "jobs"],
-  });
+  return Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.projects.detail(projectId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.projects.scenes(projectId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.projects.assets(projectId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.projects.renders(projectId),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: [...queryKeys.projects.detail(projectId), "jobs"],
+    }),
+  ]);
 }
 
 const SCENE_CONTENT_FIELDS = [
@@ -113,6 +115,16 @@ function replaceScene(detail: ProjectDetailResponse, updatedScene: Scene): Proje
     ...detail,
     scenes: detail.scenes.map((scene) => (scene.id === updatedScene.id ? updatedScene : scene)),
   };
+}
+
+export function mergeActiveJobCache(currentJobs: Job[] | undefined, returnedJob: Job): Job[] {
+  const jobs = currentJobs ?? [];
+
+  if (jobs.some((job) => job.id === returnedJob.id)) {
+    return jobs.map((job) => (job.id === returnedJob.id ? returnedJob : job));
+  }
+
+  return [...jobs, returnedJob];
 }
 
 export function useProjectsQuery() {
@@ -256,7 +268,12 @@ export function useRunProjectFlowMutation(projectId: string) {
       apiFetch<Job>(`/projects/${projectId}/run-flow`, {
         method: "POST",
       }),
-    onSuccess: () => invalidateProjectWorkflow(queryClient, projectId),
+    onSuccess: async (job) => {
+      queryClient.setQueryData<Job[]>(queryKeys.projects.jobs(projectId, "active"), (jobs) =>
+        mergeActiveJobCache(jobs, job),
+      );
+      await invalidateProjectWorkflow(queryClient, projectId);
+    },
   });
 }
 
