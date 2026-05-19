@@ -125,6 +125,31 @@ const activeFullFlowJob: JobRow = {
   startedAt: new Date("2026-05-17T00:00:00.000Z"),
 };
 
+const failedFullFlowJob: JobRow = {
+  ...fullFlowJob,
+  status: "failed",
+  attempts: 5,
+  errorMessage: "flow failed",
+  finishedAt: new Date("2026-05-17T00:10:00.000Z"),
+};
+
+const activeScriptJob: JobRow = {
+  ...job,
+  type: "generate_script",
+  status: "processing",
+  attempts: 1,
+  startedAt: new Date("2026-05-17T00:00:00.000Z"),
+};
+
+const failedScriptJob: JobRow = {
+  ...job,
+  type: "generate_script",
+  status: "failed",
+  attempts: 5,
+  errorMessage: "script failed",
+  finishedAt: new Date("2026-05-17T00:10:00.000Z"),
+};
+
 const testDb = {
   execute: async () => [],
 } as never;
@@ -184,6 +209,7 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
     listProjectAssets: async () => [],
     listProjectRenders: async () => [],
     listProjectJobs: async () => [],
+    getJob: async () => null,
     getProject: async () => project,
     getScene: async () => null,
     updateScene: async () => scene,
@@ -1063,5 +1089,61 @@ describe("createApp", () => {
     expect(await response.json()).toEqual({
       error: "retry_requires_failed_job",
     });
+  });
+
+  test("blocks retrying full flow while another project job is active", async () => {
+    const lockTracker = lockTrackingDb();
+    let retried = false;
+    let receivedProjectId: string | undefined;
+    let receivedStatus: "active" | undefined;
+    const app = createApp({
+      db: lockTracker.db as never,
+      projectServices: createServices({
+        getJob: async () => failedFullFlowJob,
+        listProjectJobs: async (_db, projectId, status) => {
+          receivedProjectId = projectId;
+          receivedStatus = status;
+          return [activeScriptJob];
+        },
+        retryFailedJob: async () => {
+          retried = true;
+          return fullFlowJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(request(`/jobs/${fullFlowJob.id}/retry`, { method: "POST" }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
+    expect(receivedProjectId).toBe(project.id);
+    expect(receivedStatus).toBe("active");
+    expect(lockTracker.lockCalls).toBe(1);
+    expect(retried).toBe(false);
+  });
+
+  test("blocks retrying manual workflow jobs while project flow is active", async () => {
+    const lockTracker = lockTrackingDb();
+    let retried = false;
+    const app = createApp({
+      db: lockTracker.db as never,
+      projectServices: createServices({
+        getJob: async () => failedScriptJob,
+        listProjectJobs: async () => [activeFullFlowJob],
+        retryFailedJob: async () => {
+          retried = true;
+          return job;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/jobs/${failedScriptJob.id}/retry`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
+    expect(lockTracker.lockCalls).toBe(1);
+    expect(retried).toBe(false);
   });
 });

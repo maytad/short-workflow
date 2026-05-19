@@ -16,6 +16,7 @@ import {
   getProject,
   getYoutubeScheduleForJob,
   getScene,
+  getJob,
   listProjectAssets,
   listProjectRenders,
   listProjectScenes,
@@ -26,6 +27,7 @@ import {
   updateProject,
   updateScene,
   type DbClient,
+  type JobRow,
   withAdvisoryTransactionLock,
 } from "@short-workflow/db";
 import { Elysia } from "elysia";
@@ -91,6 +93,7 @@ export type ProjectRouteServices = {
   listProjectAssets: typeof listProjectAssets;
   listProjectRenders: typeof listProjectRenders;
   listProjectJobs: typeof listProjectJobs;
+  getJob: typeof getJob;
   getProject: typeof getProject;
   getScene: typeof getScene;
   updateScene: typeof updateScene;
@@ -126,6 +129,7 @@ const defaultServices: ProjectRouteServices = {
   listProjectAssets,
   listProjectRenders,
   listProjectJobs,
+  getJob,
   getProject,
   getScene,
   updateScene,
@@ -165,6 +169,22 @@ async function hasActiveProjectFlowJob(
 ) {
   const activeJobs = await services.listProjectJobs(db, projectId, "active");
   return activeJobs.some((job) => job.type === "run_project_flow");
+}
+
+const projectFlowRetryJobTypes = new Set<JobRow["type"]>([
+  "run_project_flow",
+  "generate_script",
+  "generate_scene_image",
+  "generate_scene_audio",
+  "render_video",
+]);
+
+function retryWouldConflictWithActiveJobs(jobType: JobRow["type"], activeJobs: JobRow[]) {
+  if (jobType === "run_project_flow") {
+    return activeJobs.length > 0;
+  }
+
+  return activeJobs.some((activeJob) => activeJob.type === "run_project_flow");
 }
 
 function projectFlowLockKey(projectId: string) {
@@ -623,6 +643,29 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
       const jobId = requireRouteParam(params.jobId, "jobId");
 
       try {
+        const job = await services.getJob(db, jobId);
+
+        if (job && projectFlowRetryJobTypes.has(job.type)) {
+          return await withAdvisoryTransactionLock(
+            db,
+            projectFlowLockKey(job.projectId),
+            async (tx) => {
+              const lockedJob = await services.getJob(tx, jobId);
+
+              if (!lockedJob || lockedJob.status !== "failed") {
+                return await services.retryFailedJob(tx, jobId);
+              }
+
+              const activeJobs = await services.listProjectJobs(tx, lockedJob.projectId, "active");
+              if (retryWouldConflictWithActiveJobs(lockedJob.type, activeJobs)) {
+                return conflict(set, "project_has_active_jobs");
+              }
+
+              return await services.retryFailedJob(tx, jobId);
+            },
+          );
+        }
+
         return await services.retryFailedJob(db, jobId);
       } catch (error) {
         if (error instanceof Error && error.message === "retry_requires_failed_job") {

@@ -20,8 +20,12 @@ import { queryKeys } from "../../api/queryKeys";
 
 const ACTIVE_JOB_STATUSES = new Set<Job["status"]>(["pending", "processing"]);
 
-function isActiveJob(job: Job) {
+export function isActiveJob(job: Job) {
   return ACTIVE_JOB_STATUSES.has(job.status);
+}
+
+export function hasActiveProjectFlowJob(activeJobs: Job[]) {
+  return activeJobs.some((job) => job.type === "run_project_flow" && isActiveJob(job));
 }
 
 function invalidateProjectWorkflow(

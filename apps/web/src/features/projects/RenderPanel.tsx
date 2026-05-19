@@ -7,12 +7,20 @@ import type {
   YoutubeUploadSummary,
 } from "@short-workflow/shared";
 import { renderPreconditionErrorSchema } from "@short-workflow/shared";
-import { AlertTriangle, Check, ExternalLink, Film, FolderOpen, Loader2, Youtube } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  ExternalLink,
+  Film,
+  FolderOpen,
+  Loader2,
+  Youtube,
+} from "lucide-react";
 import { useState } from "react";
 
 import { ApiError } from "../../api/client";
 import { assetPreviewUrl } from "./assetUrls";
-import { useRenderProjectMutation, useRevealAssetMutation } from "./hooks";
+import { hasActiveProjectFlowJob, useRenderProjectMutation, useRevealAssetMutation } from "./hooks";
 import { YoutubeUploadDialog } from "./YoutubeUploadDialog";
 
 type RenderPanelProps = {
@@ -118,6 +126,8 @@ export function RenderPanel({
     (job) =>
       job.type === "render_video" && (job.status === "pending" || job.status === "processing"),
   );
+  const projectFlowActive = hasActiveProjectFlowJob(activeJobs);
+  const renderBusy = renderMutation.isPending || activeRenderJob || projectFlowActive;
   const activeUploadJob =
     activeJobs.find(
       (job) =>
@@ -167,16 +177,16 @@ export function RenderPanel({
 
       <button
         className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={!acknowledged || renderMutation.isPending || activeRenderJob}
+        disabled={!acknowledged || renderBusy}
         onClick={() => renderMutation.mutate()}
         type="button"
       >
-        {renderMutation.isPending || activeRenderJob ? (
+        {renderBusy ? (
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
         ) : (
           <Check className="size-4" aria-hidden="true" />
         )}
-        {activeRenderJob ? "Rendering" : "Render video"}
+        {projectFlowActive ? "Running full flow" : activeRenderJob ? "Rendering" : "Render video"}
       </button>
 
       {preconditionError ? (
@@ -214,12 +224,15 @@ export function RenderPanel({
           </div>
 
           <div className="mt-3 overflow-hidden rounded-md border border-border bg-muted">
-            <video
-              className="aspect-[9/16] max-h-[520px] w-full bg-muted object-contain"
-              controls
-              preload="metadata"
-              src={assetPreviewUrl(outputAsset)}
-            />
+            {
+              // biome-ignore lint/a11y/useMediaCaption: MVP generated render previews do not have caption track assets.
+              <video
+                className="aspect-[9/16] max-h-[520px] w-full bg-muted object-contain"
+                controls
+                preload="metadata"
+                src={assetPreviewUrl(outputAsset)}
+              />
+            }
           </div>
 
           <div className="mt-3 grid gap-2">

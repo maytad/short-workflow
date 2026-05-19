@@ -3,6 +3,7 @@ import { Image, Layers3, Loader2, Music2, RefreshCw } from "lucide-react";
 
 import { assetPreviewUrl } from "./assetUrls";
 import {
+  hasActiveProjectFlowJob,
   useGenerateProjectAssetsMutation,
   useGenerateSceneAudioMutation,
   useGenerateSceneImageMutation,
@@ -72,17 +73,19 @@ function AssetStatusRow({
   onGenerate,
   scene,
   pending,
+  projectFlowActive,
 }: {
   activeJobs: Job[];
   asset: Asset | undefined;
   kind: AssetKind;
   onGenerate: () => void;
   pending: boolean;
+  projectFlowActive: boolean;
   scene: Scene;
 }) {
   const current = isAssetCurrentForScene(asset, scene);
   const jobActive = hasActiveJob(activeJobs, scene, kind);
-  const disabled = pending || jobActive;
+  const busy = pending || jobActive || projectFlowActive;
   const Icon = kind === "image" ? Image : Music2;
   const actionLabel = asset ? `Regenerate ${kind}` : `Generate ${kind}`;
 
@@ -99,16 +102,22 @@ function AssetStatusRow({
           </p>
         </div>
         <span className="shrink-0 rounded bg-muted px-2 py-1 text-xs font-medium capitalize text-muted-foreground">
-          {jobActive ? "queued" : current ? "current" : asset ? "stale" : "missing"}
+          {jobActive || projectFlowActive
+            ? "queued"
+            : current
+              ? "current"
+              : asset
+                ? "stale"
+                : "missing"}
         </span>
       </div>
       <button
         className="mt-3 inline-flex h-8 w-full min-w-0 items-center justify-center gap-2 overflow-hidden rounded-md border border-border bg-card px-3 text-sm font-medium transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
-        disabled={disabled}
+        disabled={busy}
         onClick={onGenerate}
         type="button"
       >
-        {pending || jobActive ? (
+        {busy ? (
           <Loader2 className="size-4 shrink-0 animate-spin" aria-hidden="true" />
         ) : (
           <RefreshCw className="size-4 shrink-0" aria-hidden="true" />
@@ -164,13 +173,16 @@ function AssetPreviewSection({
               <Music2 className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
               Audio preview
             </div>
-            <audio
-              aria-label={`Scene ${scene.position} generated audio preview`}
-              className="w-full"
-              controls
-              preload="metadata"
-              src={assetPreviewUrl(audioAsset)}
-            />
+            {
+              // biome-ignore lint/a11y/useMediaCaption: MVP generated audio previews do not have caption track assets.
+              <audio
+                aria-label={`Scene ${scene.position} generated audio preview`}
+                className="w-full"
+                controls
+                preload="metadata"
+                src={assetPreviewUrl(audioAsset)}
+              />
+            }
           </div>
         ) : null}
       </div>
@@ -219,6 +231,8 @@ export function AssetPanel({
   const projectAssetFeedback = projectAssetsMutation.data
     ? assetQueueFeedbackMessage(projectAssetsMutation.data)
     : null;
+  const projectFlowActive = hasActiveProjectFlowJob(activeJobs);
+  const projectAssetQueuePending = projectAssetsMutation.isPending || projectFlowActive;
   const queueProjectAssets = () => {
     projectAssetsMutation.reset();
     projectAssetsMutation.mutate();
@@ -229,9 +243,9 @@ export function AssetPanel({
       <section className="min-w-0 overflow-hidden rounded-lg border border-border bg-card p-4 shadow-sm">
         <h2 className="text-base font-semibold">Assets</h2>
         <ProjectAssetQueueButton
-          disabled={sceneCount === 0 || projectAssetsMutation.isPending}
+          disabled={sceneCount === 0 || projectAssetQueuePending}
           onGenerate={queueProjectAssets}
-          pending={projectAssetsMutation.isPending}
+          pending={projectAssetQueuePending}
         />
         {projectAssetFeedback ? (
           <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
@@ -271,9 +285,9 @@ export function AssetPanel({
       </div>
 
       <ProjectAssetQueueButton
-        disabled={sceneCount === 0 || projectAssetsMutation.isPending}
+        disabled={sceneCount === 0 || projectAssetQueuePending}
         onGenerate={queueProjectAssets}
-        pending={projectAssetsMutation.isPending}
+        pending={projectAssetQueuePending}
       />
       {projectAssetFeedback ? (
         <p className="mt-2 rounded-md border border-border bg-background px-3 py-2 text-sm text-muted-foreground">
@@ -288,6 +302,7 @@ export function AssetPanel({
           kind="image"
           onGenerate={() => imageMutation.mutate()}
           pending={imageMutation.isPending}
+          projectFlowActive={projectFlowActive}
           scene={selectedScene}
         />
         <AssetStatusRow
@@ -296,6 +311,7 @@ export function AssetPanel({
           kind="audio"
           onGenerate={() => audioMutation.mutate()}
           pending={audioMutation.isPending}
+          projectFlowActive={projectFlowActive}
           scene={selectedScene}
         />
       </div>

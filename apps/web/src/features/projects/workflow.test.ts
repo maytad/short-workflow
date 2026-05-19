@@ -14,7 +14,7 @@ import {
   getLatestSceneAsset,
   isAssetCurrentForScene,
 } from "./AssetPanel";
-import { applyOptimisticSceneUpdate, mergeActiveJobCache } from "./hooks";
+import { applyOptimisticSceneUpdate, hasActiveProjectFlowJob, mergeActiveJobCache } from "./hooks";
 import { isGenerateScriptStartable, isProjectFlowStartable } from "./ProjectWorkflow";
 import {
   canUploadYoutube,
@@ -299,6 +299,16 @@ describe("project full-flow helpers", () => {
   test("blocks manual script generation while full flow is active", () => {
     expect(isGenerateScriptStartable([])).toBe(true);
     expect(isGenerateScriptStartable([job({ status: "pending", type: "run_project_flow" })])).toBe(
+      false,
+    );
+  });
+
+  test("detects active project flow jobs for manual action blocking", () => {
+    expect(hasActiveProjectFlowJob([])).toBe(false);
+    expect(hasActiveProjectFlowJob([job({ status: "processing", type: "run_project_flow" })])).toBe(
+      true,
+    );
+    expect(hasActiveProjectFlowJob([job({ status: "succeeded", type: "run_project_flow" })])).toBe(
       false,
     );
   });

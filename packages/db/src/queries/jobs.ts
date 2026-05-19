@@ -58,6 +58,11 @@ export async function createJobIdempotent(db: DbClient, input: CreateJobInput) {
   return existing;
 }
 
+export async function getJob(db: DbClient, jobId: string) {
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  return job ?? null;
+}
+
 export async function claimNextJob(db: DbClient) {
   const rows = await db.execute(sql<JobRow>`
     select
@@ -152,7 +157,7 @@ export async function markJobFailedOrRetry(db: DbClient, job: JobRow, errorMessa
 }
 
 export async function retryFailedJob(db: DbClient, jobId: string) {
-  const [failedJob] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const failedJob = await getJob(db, jobId);
 
   if (!failedJob || failedJob.status !== "failed") {
     throw new Error("retry_requires_failed_job");
