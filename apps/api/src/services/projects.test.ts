@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import type { DbClient, JobRow } from "@short-workflow/db";
+import type { DbClient, JobRow, RenderRow } from "@short-workflow/db";
 
 import {
   buildRenderPreconditionReport,
   buildYoutubeUploadDescription,
   queueMissingProjectAssets,
+  queueProjectFullFlow,
 } from "./projects";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -245,5 +246,132 @@ describe("buildYoutubeUploadDescription", () => {
         hashtags: ["#TinyMechanisms", "Engineering", "#Shorts"],
       }),
     ).toBe("A compact explanation of the mechanism.\n\n#TinyMechanisms #Engineering #Shorts");
+  });
+});
+
+const fullFlowProject = {
+  id: "55555555-5555-4555-8555-555555555555",
+  title: "Fresh project",
+  topic: "A topic",
+  status: "draft",
+  targetDurationSeconds: 45,
+  language: "en",
+  format: "vertical_9_16",
+  createdAt: new Date("2026-05-19T00:00:00.000Z"),
+  updatedAt: new Date("2026-05-19T00:00:00.000Z"),
+} as const;
+
+const fullFlowJob = {
+  id: "66666666-6666-4666-8666-666666666666",
+  projectId: fullFlowProject.id,
+  sceneId: null,
+  type: "run_project_flow",
+  status: "pending",
+  attempts: 0,
+  maxAttempts: 5,
+  parentJobId: null,
+  errorMessage: null,
+  input: { projectId: fullFlowProject.id },
+  output: null,
+  nextRetryAt: null,
+  createdAt: new Date("2026-05-19T00:00:00.000Z"),
+  startedAt: null,
+  finishedAt: null,
+  updatedAt: new Date("2026-05-19T00:00:00.000Z"),
+} as const;
+
+function fullFlowDeps(
+  input: {
+    activeJobs?: JobRow[];
+    allJobs?: JobRow[];
+    assets?: ReturnType<typeof asset>[];
+    project?: typeof fullFlowProject | null;
+    renders?: RenderRow[];
+    scenes?: ReturnType<typeof scene>[];
+  } = {},
+) {
+  const createdInputs: {
+    projectId: string;
+    sceneId: string | null;
+    type: JobRow["type"];
+    input: Record<string, unknown>;
+    maxAttempts?: number;
+  }[] = [];
+
+  return {
+    createdInputs,
+    deps: {
+      createJobIdempotent: async (_db: DbClient, jobInput: (typeof createdInputs)[number]) => {
+        createdInputs.push(jobInput);
+        return fullFlowJob;
+      },
+      getProject: async () => ("project" in input ? input.project : fullFlowProject),
+      listProjectAssets: async () => input.assets ?? [],
+      listProjectJobs: async (_db: DbClient, _projectId: string, status?: "active") =>
+        status === "active" ? (input.activeJobs ?? []) : (input.allJobs ?? []),
+      listProjectRenders: async () => input.renders ?? [],
+      listProjectScenes: async () => input.scenes ?? [],
+      withAdvisoryTransactionLock: async <T>(
+        _db: DbClient,
+        _key: string,
+        callback: (tx: DbClient) => Promise<T>,
+      ) => callback({} as DbClient),
+    },
+  };
+}
+
+describe("queueProjectFullFlow", () => {
+  test("queues one-click flow for a fresh project", async () => {
+    const { createdInputs, deps } = fullFlowDeps();
+
+    const result = await queueProjectFullFlow({} as never, fullFlowProject.id, deps);
+
+    expect(result).toEqual({ status: "queued", job: fullFlowJob });
+    expect(createdInputs).toEqual([
+      {
+        projectId: fullFlowProject.id,
+        sceneId: null,
+        type: "run_project_flow",
+        input: { projectId: fullFlowProject.id },
+      },
+    ]);
+  });
+
+  test("returns not_found when the project is missing", async () => {
+    const { deps } = fullFlowDeps({ project: null });
+
+    await expect(queueProjectFullFlow({} as never, fullFlowProject.id, deps)).resolves.toEqual({
+      status: "not_found",
+    });
+  });
+
+  test("blocks while any project job is active", async () => {
+    const { createdInputs, deps } = fullFlowDeps({ activeJobs: [fullFlowJob] });
+
+    await expect(queueProjectFullFlow({} as never, fullFlowProject.id, deps)).resolves.toEqual({
+      status: "active_jobs",
+    });
+    expect(createdInputs).toEqual([]);
+  });
+
+  test("blocks when generation or render work already started", async () => {
+    const { createdInputs, deps } = fullFlowDeps({
+      allJobs: [{ ...fullFlowJob, status: "succeeded", type: "generate_script" }],
+    });
+
+    await expect(queueProjectFullFlow({} as never, fullFlowProject.id, deps)).resolves.toEqual({
+      status: "already_started",
+    });
+    expect(createdInputs).toEqual([]);
+  });
+
+  test("blocks when scenes already exist", async () => {
+    const { deps } = fullFlowDeps({
+      scenes: [scene(currentSceneId, "ready", "2026-05-19T00:00:00.000Z")],
+    });
+
+    await expect(queueProjectFullFlow({} as never, fullFlowProject.id, deps)).resolves.toEqual({
+      status: "already_started",
+    });
   });
 });

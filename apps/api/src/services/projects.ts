@@ -16,6 +16,7 @@ import {
   type JobRow,
   type SceneRow,
   type YoutubeUploadScheduleRow,
+  withAdvisoryTransactionLock,
 } from "@short-workflow/db";
 import {
   type BulkAssetQueueResponse,
@@ -61,6 +62,22 @@ type QueueMissingProjectAssetsDeps = {
   listProjectScenes: typeof listProjectScenes;
 };
 
+type QueueProjectFullFlowDeps = {
+  createJobIdempotent: typeof createJobIdempotent;
+  getProject: typeof getProject;
+  listProjectAssets: typeof listProjectAssets;
+  listProjectJobs: typeof listProjectJobs;
+  listProjectRenders: typeof listProjectRenders;
+  listProjectScenes: typeof listProjectScenes;
+  withAdvisoryTransactionLock: typeof withAdvisoryTransactionLock;
+};
+
+export type QueueProjectFullFlowResult =
+  | { status: "queued"; job: JobRow }
+  | { status: "not_found" }
+  | { status: "active_jobs" }
+  | { status: "already_started" };
+
 const assetQueueKinds: QueueAssetKind[] = ["image", "audio"];
 
 const assetJobTypeByKind: Record<QueueAssetKind, QueueAssetJobType> = {
@@ -68,9 +85,27 @@ const assetJobTypeByKind: Record<QueueAssetKind, QueueAssetJobType> = {
   audio: "generate_scene_audio",
 };
 
+const fullFlowStartedJobTypes = new Set<JobRow["type"]>([
+  "run_project_flow",
+  "generate_script",
+  "generate_scene_image",
+  "generate_scene_audio",
+  "render_video",
+]);
+
 const defaultRenderPreconditionDeps: RenderPreconditionDeps = {
   listProjectScenes,
   listProjectAssets,
+};
+
+const defaultQueueProjectFullFlowDeps: QueueProjectFullFlowDeps = {
+  createJobIdempotent,
+  getProject,
+  listProjectAssets,
+  listProjectJobs,
+  listProjectRenders,
+  listProjectScenes,
+  withAdvisoryTransactionLock,
 };
 
 const defaultQueueMissingProjectAssetsDeps: QueueMissingProjectAssetsDeps = {
@@ -277,6 +312,51 @@ export async function buildYoutubeUploadJobInput(
 }
 
 export const buildYoutubeUploadDescription = formatYoutubeDescriptionWithHashtags;
+
+export async function queueProjectFullFlow(
+  db: DbClient,
+  projectId: string,
+  deps: QueueProjectFullFlowDeps = defaultQueueProjectFullFlowDeps,
+): Promise<QueueProjectFullFlowResult> {
+  return deps.withAdvisoryTransactionLock(db, `project-flow:${projectId}`, async (tx) => {
+    const project = await deps.getProject(tx, projectId);
+
+    if (!project) {
+      return { status: "not_found" };
+    }
+
+    const activeJobs = await deps.listProjectJobs(tx, project.id, "active");
+    if (activeJobs.length > 0) {
+      return { status: "active_jobs" };
+    }
+
+    const [scenes, assets, renders, jobs] = await Promise.all([
+      deps.listProjectScenes(tx, project.id),
+      deps.listProjectAssets(tx, project.id),
+      deps.listProjectRenders(tx, project.id),
+      deps.listProjectJobs(tx, project.id),
+    ]);
+
+    const hasStarted =
+      scenes.length > 0 ||
+      assets.length > 0 ||
+      renders.length > 0 ||
+      jobs.some((job) => fullFlowStartedJobTypes.has(job.type));
+
+    if (hasStarted) {
+      return { status: "already_started" };
+    }
+
+    const job = await deps.createJobIdempotent(tx, {
+      projectId: project.id,
+      sceneId: null,
+      type: "run_project_flow",
+      input: { projectId: project.id },
+    });
+
+    return { status: "queued", job };
+  });
+}
 
 export async function queueMissingProjectAssets(
   db: DbClient,
