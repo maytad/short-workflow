@@ -158,6 +158,15 @@ function hasRenderPreconditionFailures(
   );
 }
 
+async function hasActiveProjectFlowJob(
+  db: DbClient,
+  services: ProjectRouteServices,
+  projectId: string,
+) {
+  const activeJobs = await services.listProjectJobs(db, projectId, "active");
+  return activeJobs.some((job) => job.type === "run_project_flow");
+}
+
 export function createProjectRoutes(services: ProjectRouteServices = defaultServices) {
   return new Elysia()
     .group("/projects", (projects) =>
@@ -300,6 +309,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
             return notFound(set);
           }
 
+          if (await hasActiveProjectFlowJob(db, services, project.id)) {
+            return conflict(set, "project_has_active_jobs");
+          }
+
           return services.createJobIdempotent(db, {
             projectId: project.id,
             sceneId: null,
@@ -314,6 +327,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
 
           if (!project) {
             return notFound(set);
+          }
+
+          if (await hasActiveProjectFlowJob(db, services, project.id)) {
+            return conflict(set, "project_has_active_jobs");
           }
 
           try {
@@ -333,6 +350,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
 
           if (!project) {
             return notFound(set);
+          }
+
+          if (await hasActiveProjectFlowJob(db, services, project.id)) {
+            return conflict(set, "project_has_active_jobs");
           }
 
           const report = await services.buildRenderPreconditionReport(db, project.id);
@@ -534,6 +555,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
         return notFound(set);
       }
 
+      if (await hasActiveProjectFlowJob(db, services, scene.projectId)) {
+        return conflict(set, "project_has_active_jobs");
+      }
+
       return services.createJobIdempotent(db, {
         projectId: scene.projectId,
         sceneId: scene.id,
@@ -548,6 +573,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
 
       if (!scene) {
         return notFound(set);
+      }
+
+      if (await hasActiveProjectFlowJob(db, services, scene.projectId)) {
+        return conflict(set, "project_has_active_jobs");
       }
 
       return services.createJobIdempotent(db, {

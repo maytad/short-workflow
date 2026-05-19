@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import type { JobRow } from "@short-workflow/db";
+
 import { createApp } from "./app";
 import type { ProjectRouteServices } from "./routes/projects";
 
@@ -115,6 +117,13 @@ const fullFlowJob = {
   type: "run_project_flow",
   input: { projectId: project.id },
 } as const;
+
+const activeFullFlowJob: JobRow = {
+  ...fullFlowJob,
+  status: "processing",
+  attempts: 1,
+  startedAt: new Date("2026-05-17T00:00:00.000Z"),
+};
 
 const testDb = {
   execute: async () => [],
@@ -534,6 +543,63 @@ describe("createApp", () => {
     });
   });
 
+  test("blocks manual project jobs while a project flow is active", async () => {
+    const paths = [
+      `/projects/${project.id}/generate-script`,
+      `/projects/${project.id}/generate-assets`,
+      `/projects/${project.id}/render`,
+    ];
+
+    for (const path of paths) {
+      let createdJob = false;
+      let queuedAssets = false;
+      let checkedRenderPreconditions = false;
+      let receivedStatus: "active" | undefined;
+      const app = createApp({
+        db: testDb,
+        projectServices: createServices({
+          listProjectJobs: async (_db, _projectId, status) => {
+            receivedStatus = status;
+            return [activeFullFlowJob];
+          },
+          createJobIdempotent: async () => {
+            createdJob = true;
+            return job;
+          },
+          queueMissingProjectAssets: async () => {
+            queuedAssets = true;
+            return {
+              jobs: [],
+              queuedCount: 0,
+              existingActiveCount: 0,
+              skippedCurrentCount: 0,
+            };
+          },
+          buildRenderPreconditionReport: async () => {
+            checkedRenderPreconditions = true;
+            return {
+              projectHasNoScenes: false,
+              scenesNotReady: [],
+              scenesMissingImage: [],
+              scenesMissingAudio: [],
+              scenesStaleImage: [],
+              scenesStaleAudio: [],
+            };
+          },
+        }),
+      });
+
+      const response = await app.handle(request(path, { method: "POST" }));
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
+      expect(receivedStatus).toBe("active");
+      expect(createdJob).toBe(false);
+      expect(queuedAssets).toBe(false);
+      expect(checkedRenderPreconditions).toBe(false);
+    }
+  });
+
   test("queues missing project assets", async () => {
     const app = createApp({
       db: testDb,
@@ -904,6 +970,42 @@ describe("createApp", () => {
       imagePrompt: "Updated image prompt",
       ssml: "<speak>Updated narration</speak>",
     });
+  });
+
+  test("blocks manual scene jobs while a project flow is active", async () => {
+    const paths = [
+      `/scenes/${scene.id}/generate-image`,
+      `/scenes/${scene.id}/generate-audio`,
+    ];
+
+    for (const path of paths) {
+      let createdJob = false;
+      let receivedProjectId: string | undefined;
+      let receivedStatus: "active" | undefined;
+      const app = createApp({
+        db: testDb,
+        projectServices: createServices({
+          getScene: async () => scene,
+          listProjectJobs: async (_db, projectId, status) => {
+            receivedProjectId = projectId;
+            receivedStatus = status;
+            return [activeFullFlowJob];
+          },
+          createJobIdempotent: async () => {
+            createdJob = true;
+            return job;
+          },
+        }),
+      });
+
+      const response = await app.handle(request(path, { method: "POST" }));
+
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
+      expect(receivedProjectId).toBe(project.id);
+      expect(receivedStatus).toBe("active");
+      expect(createdJob).toBe(false);
+    }
   });
 
   test("returns 400 for invalid scene update input", async () => {
