@@ -23,6 +23,8 @@ export async function handleJob(db: DbClient, job: JobRow): Promise<void> {
     case "upload_youtube":
       await handleUploadYoutube(db, job);
       break;
+    case "run_project_flow":
+      throw new Error("handler_not_implemented:run_project_flow");
     default: {
       const exhaustiveJobType: never = job.type;
       throw new Error(`handler_not_implemented:${exhaustiveJobType}`);
