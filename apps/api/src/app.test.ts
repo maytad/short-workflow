@@ -109,6 +109,13 @@ const youtubeSchedule = {
   updatedAt: new Date("2026-05-18T00:00:00.000Z"),
 } as const;
 
+const fullFlowJob = {
+  ...job,
+  id: "99999999-9999-4999-8999-999999999999",
+  type: "run_project_flow",
+  input: { projectId: project.id },
+} as const;
+
 const testDb = {
   execute: async () => [],
 } as never;
@@ -167,6 +174,7 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
     reserveNextYoutubeScheduleSlot: async () => youtubeSchedule,
     attachYoutubeScheduleJob: async () => ({ ...youtubeSchedule, jobId: youtubeJob.id }),
     getYoutubeScheduleForJob: async () => null,
+    queueProjectFullFlow: async () => ({ status: "queued", job: fullFlowJob }),
     queueMissingProjectAssets: async () => ({
       jobs: [],
       queuedCount: 0,
@@ -447,6 +455,57 @@ describe("createApp", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual([]);
     expect(receivedStatus).toBe("active");
+  });
+
+  test("queues a one-click project flow job", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        queueProjectFullFlow: async () => ({ status: "queued", job: fullFlowJob }),
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/run-flow`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      id: fullFlowJob.id,
+      type: "run_project_flow",
+    });
+  });
+
+  test("maps active jobs to one-click flow conflict", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        queueProjectFullFlow: async () => ({ status: "active_jobs" }),
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/run-flow`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "project_has_active_jobs" });
+  });
+
+  test("maps already-started projects to one-click flow conflict", async () => {
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        queueProjectFullFlow: async () => ({ status: "already_started" }),
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/run-flow`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "project_flow_already_started" });
   });
 
   test("creates a project script generation job", async () => {

@@ -39,6 +39,7 @@ import {
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
+  queueProjectFullFlow,
   queueMissingProjectAssets,
   readAssetFile,
   revealAssetFile,
@@ -98,6 +99,7 @@ export type ProjectRouteServices = {
   acknowledgeRenderDisclosure: typeof acknowledgeRenderDisclosure;
   buildRenderPreconditionReport: typeof buildRenderPreconditionReport;
   buildYoutubeUploadJobInput: typeof buildYoutubeUploadJobInput;
+  queueProjectFullFlow: typeof queueProjectFullFlow;
   queueMissingProjectAssets: typeof queueMissingProjectAssets;
   reserveNextYoutubeScheduleSlot: typeof reserveNextYoutubeScheduleSlot;
   attachYoutubeScheduleJob: typeof attachYoutubeScheduleJob;
@@ -132,6 +134,7 @@ const defaultServices: ProjectRouteServices = {
   acknowledgeRenderDisclosure,
   buildRenderPreconditionReport,
   buildYoutubeUploadJobInput,
+  queueProjectFullFlow,
   queueMissingProjectAssets,
   reserveNextYoutubeScheduleSlot,
   attachYoutubeScheduleJob,
@@ -267,6 +270,26 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
             projectId,
             query.status === "active" ? "active" : undefined,
           );
+        })
+        .post("/:projectId/run-flow", async (context) => {
+          const { db, params, set } = withRouteContext(context);
+          const projectId = requireRouteParam(params.projectId, "projectId");
+          const result = await services.queueProjectFullFlow(db, projectId);
+
+          switch (result.status) {
+            case "queued":
+              return result.job;
+            case "not_found":
+              return notFound(set);
+            case "active_jobs":
+              return conflict(set, "project_has_active_jobs");
+            case "already_started":
+              return conflict(set, "project_flow_already_started");
+            default: {
+              const exhaustiveResult: never = result;
+              throw new Error(`unknown_project_flow_result:${exhaustiveResult}`);
+            }
+          }
         })
         .post("/:projectId/generate-script", async (context) => {
           const { db, params, set } = withRouteContext(context);
