@@ -34,22 +34,29 @@ export type GenerateCurrentSceneAudioResult = {
   reused: boolean;
 };
 
+type GenerateCurrentSceneAudioOptions = {
+  env?: HandlerEnv | undefined;
+  reuseCurrent?: boolean;
+};
+
 export async function generateCurrentSceneAudio(
   db: DbClient,
   sceneId: string,
-  env?: HandlerEnv,
+  options: GenerateCurrentSceneAudioOptions = {},
 ): Promise<GenerateCurrentSceneAudioResult> {
-  const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "audio" });
-  if (currentAsset) {
-    return {
-      assetId: currentAsset.id,
-      captionTimingAssetId: null,
-      promptVersionId: null,
-      reused: true,
-    };
+  if (options.reuseCurrent === true) {
+    const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "audio" });
+    if (currentAsset) {
+      return {
+        assetId: currentAsset.id,
+        captionTimingAssetId: null,
+        promptVersionId: null,
+        reused: true,
+      };
+    }
   }
 
-  const handlerEnv = resolveHandlerEnv(env);
+  const handlerEnv = resolveHandlerEnv(options.env);
   const scene = await getScene(db, sceneId);
   if (!scene) {
     throw new Error("scene_not_found");
@@ -169,7 +176,7 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
     throw new Error("scene_id_required");
   }
 
-  const result = await generateCurrentSceneAudio(db, job.sceneId, env);
+  const result = await generateCurrentSceneAudio(db, job.sceneId, { env });
 
   await markJobSucceeded(db, job.id, {
     assetId: result.assetId,

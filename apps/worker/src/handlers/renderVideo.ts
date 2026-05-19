@@ -184,12 +184,17 @@ export type RenderProjectVideoResult = {
   durationSeconds: number;
 };
 
+type RenderProjectVideoOptions = {
+  env?: HandlerEnv | undefined;
+  jobId?: string;
+};
+
 export async function renderProjectVideo(
   db: DbClient,
   projectId: string,
-  env?: HandlerEnv,
+  options: RenderProjectVideoOptions = {},
 ): Promise<RenderProjectVideoResult> {
-  const handlerEnv = resolveHandlerEnv(env);
+  const handlerEnv = resolveHandlerEnv(options.env);
   const project = await getProject(db, projectId);
 
   if (!project) {
@@ -310,12 +315,22 @@ export async function renderProjectVideo(
     await markRenderSucceeded(db, render.id, inputAsset.id, outputAsset.id);
     await setProjectStatus(db, project.id, "done");
 
-    return {
+    const result: RenderProjectVideoResult = {
       renderId: render.id,
       inputAssetId: inputAsset.id,
       outputAssetId: outputAsset.id,
       durationSeconds: render.durationSeconds,
     };
+
+    if (options.jobId) {
+      await markJobSucceeded(db, options.jobId, {
+        renderId: result.renderId,
+        inputAssetId: result.inputAssetId,
+        outputAssetId: result.outputAssetId,
+      });
+    }
+
+    return result;
   } catch (error) {
     const message = errorMessage(error);
 
@@ -337,13 +352,7 @@ export async function renderProjectVideo(
 }
 
 export async function handleRenderVideo(db: DbClient, job: JobRow, env?: HandlerEnv) {
-  const result = await renderProjectVideo(db, job.projectId, env);
-
-  await markJobSucceeded(db, job.id, {
-    renderId: result.renderId,
-    inputAssetId: result.inputAssetId,
-    outputAssetId: result.outputAssetId,
-  });
+  await renderProjectVideo(db, job.projectId, { env, jobId: job.id });
 }
 
 async function runRenderCommand(input: { inputPath: string; outputPath: string }) {

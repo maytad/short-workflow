@@ -31,21 +31,28 @@ export type GenerateCurrentSceneImageResult = {
   reused: boolean;
 };
 
+type GenerateCurrentSceneImageOptions = {
+  env?: HandlerEnv | undefined;
+  reuseCurrent?: boolean;
+};
+
 export async function generateCurrentSceneImage(
   db: DbClient,
   sceneId: string,
-  env?: HandlerEnv,
+  options: GenerateCurrentSceneImageOptions = {},
 ): Promise<GenerateCurrentSceneImageResult> {
-  const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "image" });
-  if (currentAsset) {
-    return {
-      assetId: currentAsset.id,
-      promptVersionId: null,
-      reused: true,
-    };
+  if (options.reuseCurrent === true) {
+    const currentAsset = await getCurrentReadySceneAsset(db, { sceneId, kind: "image" });
+    if (currentAsset) {
+      return {
+        assetId: currentAsset.id,
+        promptVersionId: null,
+        reused: true,
+      };
+    }
   }
 
-  const handlerEnv = resolveHandlerEnv(env);
+  const handlerEnv = resolveHandlerEnv(options.env);
   const scene = await getScene(db, sceneId);
 
   if (!scene) {
@@ -151,7 +158,7 @@ export async function handleGenerateSceneImage(db: DbClient, job: JobRow, env?: 
     throw new Error("scene_id_required");
   }
 
-  const result = await generateCurrentSceneImage(db, job.sceneId, env);
+  const result = await generateCurrentSceneImage(db, job.sceneId, { env });
 
   await markJobSucceeded(db, job.id, {
     assetId: result.assetId,
