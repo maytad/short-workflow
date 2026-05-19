@@ -46,6 +46,7 @@ export const jobTypeEnum = pgEnum("job_type", [
   "generate_scene_audio",
   "render_video",
   "upload_youtube",
+  "run_project_flow",
 ]);
 export const jobStatusEnum = pgEnum("job_status", ["pending", "processing", "succeeded", "failed"]);
 export const renderStatusEnum = pgEnum("render_status", [
@@ -140,6 +141,7 @@ export const jobs = pgTable(
           when 'generate_script' then ${table.sceneId} is null
           when 'render_video' then ${table.sceneId} is null
           when 'upload_youtube' then ${table.sceneId} is null
+          when 'run_project_flow' then ${table.sceneId} is null
           when 'generate_scene_image' then ${table.sceneId} is not null
           when 'generate_scene_audio' then ${table.sceneId} is not null
           else false

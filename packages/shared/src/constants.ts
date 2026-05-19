@@ -25,6 +25,7 @@ export const JOB_TYPES = [
   "generate_scene_audio",
   "render_video",
   "upload_youtube",
+  "run_project_flow",
 ] as const;
 
 export const JOB_STATUSES = ["pending", "processing", "succeeded", "failed"] as const;
