@@ -436,9 +436,7 @@ describe("createApp", () => {
       projectServices: services,
     });
 
-    const response = await app.handle(
-      request(`/assets/${asset.id}/reveal`, { method: "POST" }),
-    );
+    const response = await app.handle(request(`/assets/${asset.id}/reveal`, { method: "POST" }));
 
     expect(response.status).toBe(404);
     expect(revealed).toBe(false);
@@ -994,10 +992,7 @@ describe("createApp", () => {
   });
 
   test("blocks manual scene jobs while a project flow is active", async () => {
-    const paths = [
-      `/scenes/${scene.id}/generate-image`,
-      `/scenes/${scene.id}/generate-audio`,
-    ];
+    const paths = [`/scenes/${scene.id}/generate-image`, `/scenes/${scene.id}/generate-audio`];
 
     for (const path of paths) {
       const lockTracker = lockTrackingDb();

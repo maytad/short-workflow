@@ -9,7 +9,11 @@ import type {
 } from "@short-workflow/shared";
 
 import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
-import { assetQueueFeedbackMessage, getLatestSceneAsset, isAssetCurrentForScene } from "./AssetPanel";
+import {
+  assetQueueFeedbackMessage,
+  getLatestSceneAsset,
+  isAssetCurrentForScene,
+} from "./AssetPanel";
 import { applyOptimisticSceneUpdate, mergeActiveJobCache } from "./hooks";
 import { isGenerateScriptStartable, isProjectFlowStartable } from "./ProjectWorkflow";
 import {
@@ -166,9 +170,9 @@ describe("workflow asset helpers", () => {
   });
 
   test("reports current project assets when no jobs were queued or already active", () => {
-    expect(
-      assetQueueFeedbackMessage(bulkAssetQueueResponse({ skippedCurrentCount: 4 })),
-    ).toBe("All assets are current.");
+    expect(assetQueueFeedbackMessage(bulkAssetQueueResponse({ skippedCurrentCount: 4 }))).toBe(
+      "All assets are current.",
+    );
   });
 });
 
@@ -411,8 +415,6 @@ describe("YouTube schedule helpers", () => {
     expect(formatYoutubePublishTime("2026-05-19T02:00:00.000Z", "Asia/Bangkok")).toContain(
       "May 19, 2026",
     );
-    expect(formatYoutubePublishTime("2026-05-19T02:00:00.000Z", "Asia/Bangkok")).toContain(
-      "09:00",
-    );
+    expect(formatYoutubePublishTime("2026-05-19T02:00:00.000Z", "Asia/Bangkok")).toContain("09:00");
   });
 });

@@ -103,10 +103,7 @@ function queueDeps(input: QueueDepsInput) {
         createdInputs.push(jobInput);
         return job(
           jobInput.sceneId ?? currentSceneId,
-          jobInput.type as Extract<
-            JobRow["type"],
-            "generate_scene_image" | "generate_scene_audio"
-          >,
+          jobInput.type as Extract<JobRow["type"], "generate_scene_image" | "generate_scene_audio">,
         );
       },
       listProjectAssets: async () => input.assets ?? [],

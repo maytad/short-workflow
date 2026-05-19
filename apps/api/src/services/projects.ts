@@ -451,11 +451,7 @@ function hasCurrentSceneAsset(
   );
 }
 
-function findActiveAssetJob(
-  activeJobs: JobRow[],
-  sceneId: string,
-  type: QueueAssetJobType,
-) {
+function findActiveAssetJob(activeJobs: JobRow[], sceneId: string, type: QueueAssetJobType) {
   return activeJobs.find(
     (job) =>
       job.sceneId === sceneId &&

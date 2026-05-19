@@ -72,7 +72,8 @@ export async function generateCurrentSceneAudio(
   const ordered = [...projectScenes].sort((a, b) => a.position - b.position);
   const myIndex = ordered.findIndex((s) => s.id === scene.id);
   const previousText = myIndex > 0 ? ordered[myIndex - 1]?.narration : undefined;
-  const nextText = myIndex >= 0 && myIndex < ordered.length - 1 ? ordered[myIndex + 1]?.narration : undefined;
+  const nextText =
+    myIndex >= 0 && myIndex < ordered.length - 1 ? ordered[myIndex + 1]?.narration : undefined;
 
   const latestScriptPrompt = await getLatestPromptVersion(db, {
     projectId: scene.projectId,
@@ -118,7 +119,11 @@ export async function generateCurrentSceneAudio(
     }
 
     const finalAudioPath = sceneAudioPath(scene.projectId, scene.id, audioAsset.id, "mp3");
-    const audioFile = await writeAssetFile(handlerEnv.LOCAL_ASSET_ROOT, finalAudioPath, generated.bytes);
+    const audioFile = await writeAssetFile(
+      handlerEnv.LOCAL_ASSET_ROOT,
+      finalAudioPath,
+      generated.bytes,
+    );
 
     await markAssetReady(db, audioAsset.id, {
       path: finalAudioPath,

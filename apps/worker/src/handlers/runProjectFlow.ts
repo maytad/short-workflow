@@ -138,11 +138,7 @@ function scriptOutputMetadataFromPrompt(promptVersion: PromptVersionRow): Record
   return output;
 }
 
-async function getOrGenerateSceneImage(
-  db: DbClient,
-  scene: SceneRow,
-  deps: RunProjectFlowDeps,
-) {
+async function getOrGenerateSceneImage(db: DbClient, scene: SceneRow, deps: RunProjectFlowDeps) {
   const current = await deps.getCurrentReadySceneAsset(db, {
     sceneId: scene.id,
     kind: "image",
@@ -159,11 +155,7 @@ async function getOrGenerateSceneImage(
   return deps.generateCurrentSceneImage(db, scene.id, { reuseCurrent: true });
 }
 
-async function getOrGenerateSceneAudio(
-  db: DbClient,
-  scene: SceneRow,
-  deps: RunProjectFlowDeps,
-) {
+async function getOrGenerateSceneAudio(db: DbClient, scene: SceneRow, deps: RunProjectFlowDeps) {
   const current = await deps.getCurrentReadySceneAsset(db, {
     sceneId: scene.id,
     kind: "audio",

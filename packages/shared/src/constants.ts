@@ -4,7 +4,14 @@ export const SCENE_STATUSES = ["draft", "ready"] as const;
 
 export const SCENE_ROLES = ["hook", "context", "point", "payoff", "cta"] as const;
 
-export const ASSET_KINDS = ["image", "audio", "render", "thumbnail", "render_input", "caption_timing"] as const;
+export const ASSET_KINDS = [
+  "image",
+  "audio",
+  "render",
+  "thumbnail",
+  "render_input",
+  "caption_timing",
+] as const;
 
 export const ASSET_STATUSES = ["pending", "ready", "failed"] as const;
 
