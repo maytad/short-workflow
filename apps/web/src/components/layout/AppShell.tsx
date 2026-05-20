@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Boxes, Home, Workflow } from "lucide-react";
+import { BarChart3, Boxes, Home, Workflow } from "lucide-react";
 import type { PropsWithChildren, ReactNode } from "react";
 
 import { cn } from "../../lib/utils";
@@ -19,6 +19,7 @@ export function AppShell({ children }: PropsWithChildren) {
           <nav className="flex items-center gap-1" aria-label="Primary">
             <NavLink icon={<Home className="size-4" />} label="Projects" to="/" />
             <NavLink icon={<Boxes className="size-4" />} label="Queue" to="/" />
+            <NavLink icon={<BarChart3 className="size-4" />} label="Analytics" to="/analytics" />
           </nav>
         </div>
       </header>
@@ -31,7 +32,7 @@ export function AppShell({ children }: PropsWithChildren) {
 type NavLinkProps = {
   icon: ReactNode;
   label: string;
-  to: "/";
+  to: "/" | "/analytics";
 };
 
 function NavLink({ icon, label, to }: NavLinkProps) {
