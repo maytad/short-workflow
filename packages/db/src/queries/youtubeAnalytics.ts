@@ -208,10 +208,19 @@ export async function listLatestYoutubeVideoDiagnoses(
     .select()
     .from(youtubeVideoDiagnoses)
     .where(where)
-    .orderBy(desc(youtubeVideoDiagnoses.createdAt));
+    .orderBy(desc(youtubeVideoDiagnoses.updatedAt));
 
-  const latestByLinkAndType = new Map<string, YoutubeVideoDiagnosisRow>();
-  for (const row of rows) {
+  return latestYoutubeVideoDiagnoses(rows);
+}
+
+export function latestYoutubeVideoDiagnoses<
+  T extends Pick<
+    YoutubeVideoDiagnosisRow,
+    "youtubeVideoLinkId" | "diagnosisType" | "createdAt" | "updatedAt"
+  >,
+>(rows: T[]) {
+  const latestByLinkAndType = new Map<string, T>();
+  for (const row of [...rows].sort(compareYoutubeDiagnosisRecency)) {
     const key = `${row.youtubeVideoLinkId}:${row.diagnosisType}`;
     if (!latestByLinkAndType.has(key)) {
       latestByLinkAndType.set(key, row);
@@ -219,6 +228,15 @@ export async function listLatestYoutubeVideoDiagnoses(
   }
 
   return [...latestByLinkAndType.values()];
+}
+
+function compareYoutubeDiagnosisRecency<
+  T extends Pick<YoutubeVideoDiagnosisRow, "createdAt" | "updatedAt">,
+>(a: T, b: T) {
+  return (
+    b.updatedAt.getTime() - a.updatedAt.getTime() ||
+    b.createdAt.getTime() - a.createdAt.getTime()
+  );
 }
 
 export async function listYoutubeUploadVideoMappings(db: DbClient) {

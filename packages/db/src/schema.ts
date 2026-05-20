@@ -333,9 +333,9 @@ export const youtubeVideoDiagnoses = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
   },
   (table) => [
-    index("youtube_video_diagnoses_link_created_idx").on(
+    index("youtube_video_diagnoses_link_updated_idx").on(
       table.youtubeVideoLinkId,
-      table.createdAt.desc(),
+      table.updatedAt.desc(),
     ),
     uniqueIndex("youtube_video_diagnoses_input_hash_idx").on(
       table.youtubeVideoLinkId,

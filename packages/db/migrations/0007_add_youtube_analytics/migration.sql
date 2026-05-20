@@ -70,8 +70,8 @@ create table youtube_video_diagnoses (
   constraint youtube_video_diagnoses_type_check check (diagnosis_type in ('rule_based', 'ai'))
 );
 
-create index youtube_video_diagnoses_link_created_idx
-on youtube_video_diagnoses (youtube_video_link_id, created_at desc);
+create index youtube_video_diagnoses_link_updated_idx
+on youtube_video_diagnoses (youtube_video_link_id, updated_at desc);
 
 create unique index youtube_video_diagnoses_input_hash_idx
 on youtube_video_diagnoses (youtube_video_link_id, diagnosis_type, input_hash);
