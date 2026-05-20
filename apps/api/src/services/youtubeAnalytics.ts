@@ -91,6 +91,27 @@ export type YoutubeVideoApiItem = {
   };
 };
 
+type YoutubeChannelApiItem = {
+  contentDetails?: {
+    relatedPlaylists?: {
+      uploads?: string;
+    };
+  };
+};
+
+type YoutubePlaylistItemApiItem = {
+  snippet?: {
+    publishedAt?: string;
+    resourceId?: {
+      videoId?: string;
+    };
+  };
+  contentDetails?: {
+    videoId?: string;
+    videoPublishedAt?: string;
+  };
+};
+
 type FetchJsonInput = {
   accessToken: string;
   url: URL;
@@ -365,21 +386,65 @@ export async function fetchRecentChannelVideos({
   fetchFn?: FetchFn;
 }): Promise<string[]> {
   const publishedAfter = new Date(new Date(now).getTime() - windowDays * 24 * 60 * 60 * 1000);
-  const url = new URL("https://www.googleapis.com/youtube/v3/search");
-  url.searchParams.set("part", "id");
-  url.searchParams.set("forMine", "true");
-  url.searchParams.set("type", "video");
-  url.searchParams.set("order", "date");
+  const uploadsPlaylistId = await fetchAuthenticatedUploadsPlaylistId({ accessToken, fetchFn });
+
+  if (!uploadsPlaylistId) {
+    return [];
+  }
+
+  const url = new URL("https://www.googleapis.com/youtube/v3/playlistItems");
+  url.searchParams.set("part", "snippet,contentDetails");
+  url.searchParams.set("playlistId", uploadsPlaylistId);
   url.searchParams.set("maxResults", "50");
-  url.searchParams.set("publishedAfter", publishedAfter.toISOString());
 
   const body = (await fetchJson({ accessToken, fetchFn, url })) as {
-    items?: { id?: { videoId?: string } }[];
+    items?: YoutubePlaylistItemApiItem[];
   } | null;
 
   return (body?.items ?? [])
-    .map((item) => item.id?.videoId)
-    .filter((videoId): videoId is string => Boolean(videoId));
+    .map((item) => ({
+      publishedAt: playlistItemPublishedAt(item),
+      videoId: playlistItemVideoId(item),
+    }))
+    .filter(
+      (item): item is { publishedAt: Date; videoId: string } =>
+        item.publishedAt !== null && item.videoId !== null && item.publishedAt >= publishedAfter,
+    )
+    .map((item) => item.videoId);
+}
+
+async function fetchAuthenticatedUploadsPlaylistId({
+  accessToken,
+  fetchFn,
+}: {
+  accessToken: string;
+  fetchFn?: FetchFn | undefined;
+}) {
+  const url = new URL("https://www.googleapis.com/youtube/v3/channels");
+  url.searchParams.set("part", "contentDetails");
+  url.searchParams.set("mine", "true");
+
+  const body = (await fetchJson({ accessToken, fetchFn, url })) as {
+    items?: YoutubeChannelApiItem[];
+  } | null;
+
+  return body?.items?.[0]?.contentDetails?.relatedPlaylists?.uploads ?? null;
+}
+
+function playlistItemVideoId(item: YoutubePlaylistItemApiItem) {
+  return item.contentDetails?.videoId ?? item.snippet?.resourceId?.videoId ?? null;
+}
+
+function playlistItemPublishedAt(item: YoutubePlaylistItemApiItem) {
+  const value = item.contentDetails?.videoPublishedAt ?? item.snippet?.publishedAt;
+
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 export async function fetchYoutubeVideoDetails({

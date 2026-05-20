@@ -356,12 +356,49 @@ describe("requiredScopeError", () => {
 });
 
 describe("fetchRecentChannelVideos", () => {
-  test("calls YouTube search endpoint with recent video params and returns ids", async () => {
-    const { calls, fetchFn } = recordingFetch(
-      jsonResponse({
-        items: [{ id: { videoId: "id1" } }, { id: { videoId: "id2" } }, { id: {} }],
-      }),
-    );
+  test("uses the authenticated channel uploads playlist and filters recent video ids", async () => {
+    const calls: { input: string | URL | Request; init?: RequestInit | undefined }[] = [];
+    const fetchFn: FetchFn = async (input, init) => {
+      calls.push({ input, init });
+      const url = calledUrl(input);
+
+      if (url.pathname.endsWith("/youtube/v3/channels")) {
+        return jsonResponse({
+          items: [
+            {
+              contentDetails: {
+                relatedPlaylists: {
+                  uploads: "uploads-playlist-id",
+                },
+              },
+            },
+          ],
+        });
+      }
+
+      return jsonResponse({
+        items: [
+          {
+            contentDetails: {
+              videoId: "id1",
+              videoPublishedAt: "2026-05-19T00:00:00.000Z",
+            },
+          },
+          {
+            snippet: {
+              publishedAt: "2026-05-18T00:00:00.000Z",
+              resourceId: { videoId: "id2" },
+            },
+          },
+          {
+            contentDetails: {
+              videoId: "old-id",
+              videoPublishedAt: "2026-05-01T00:00:00.000Z",
+            },
+          },
+        ],
+      });
+    };
 
     const ids = await fetchRecentChannelVideos({
       accessToken: "access-token",
@@ -371,16 +408,34 @@ describe("fetchRecentChannelVideos", () => {
     });
 
     expect(ids).toEqual(["id1", "id2"]);
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
 
     const url = calledUrl(calls[0]!.input);
-    expect(url.origin + url.pathname).toBe("https://www.googleapis.com/youtube/v3/search");
-    expect(url.searchParams.get("part")).toBe("id");
-    expect(url.searchParams.get("forMine")).toBe("true");
-    expect(url.searchParams.get("type")).toBe("video");
-    expect(url.searchParams.get("order")).toBe("date");
-    expect(url.searchParams.get("maxResults")).toBe("50");
-    expect(url.searchParams.get("publishedAfter")).toBe("2026-05-13T00:00:00.000Z");
+    expect(url.origin + url.pathname).toBe("https://www.googleapis.com/youtube/v3/channels");
+    expect(url.searchParams.get("part")).toBe("contentDetails");
+    expect(url.searchParams.get("mine")).toBe("true");
+
+    const playlistUrl = calledUrl(calls[1]!.input);
+    expect(playlistUrl.origin + playlistUrl.pathname).toBe(
+      "https://www.googleapis.com/youtube/v3/playlistItems",
+    );
+    expect(playlistUrl.searchParams.get("part")).toBe("snippet,contentDetails");
+    expect(playlistUrl.searchParams.get("playlistId")).toBe("uploads-playlist-id");
+    expect(playlistUrl.searchParams.get("maxResults")).toBe("50");
+  });
+
+  test("returns no recent channel videos when the authenticated channel has no uploads playlist", async () => {
+    const { calls, fetchFn } = recordingFetch(jsonResponse({ items: [] }));
+
+    const ids = await fetchRecentChannelVideos({
+      accessToken: "access-token",
+      fetchFn,
+      now: new Date("2026-05-20T00:00:00.000Z"),
+      windowDays: 7,
+    });
+
+    expect(ids).toEqual([]);
+    expect(calls).toHaveLength(1);
   });
 });
 
