@@ -54,7 +54,7 @@ export function AnalyticsDashboard() {
   }
 
   function handleReconnect() {
-    const authWindow = window.open("", "_blank", "noopener,noreferrer");
+    const authWindow = window.open("", "_blank");
 
     startYoutubeAuthMutation.mutate(undefined, {
       onError: () => {
@@ -62,6 +62,7 @@ export function AnalyticsDashboard() {
       },
       onSuccess: (response) => {
         if (authWindow && !authWindow.closed) {
+          authWindow.opener = null;
           authWindow.location.assign(response.authUrl);
           return;
         }
