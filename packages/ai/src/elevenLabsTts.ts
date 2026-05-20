@@ -12,6 +12,7 @@ export type ElevenLabsTtsInput = {
   nextText?: string;
   voiceId: string;
   modelId: string;
+  voiceSpeed?: number;
 };
 
 export type ElevenLabsTtsOutput = {
@@ -27,8 +28,11 @@ export const ELEVENLABS_VOICE_SETTINGS = {
   similarityBoost: 0.75,
   style: 0.4,
   useSpeakerBoost: true,
+  speed: 1,
 } as const;
 
+export const ELEVENLABS_MIN_VOICE_SPEED = 0.7;
+export const ELEVENLABS_MAX_VOICE_SPEED = 1.2;
 export const ELEVENLABS_OUTPUT_FORMAT = "mp3_44100_128" as const;
 
 export async function generateSpeechWithTimestamps(
@@ -44,7 +48,10 @@ export async function generateSpeechWithTimestamps(
   const response = await client.textToSpeech.convertWithTimestamps(input.voiceId, {
     text: input.narration,
     modelId: input.modelId,
-    voiceSettings: ELEVENLABS_VOICE_SETTINGS,
+    voiceSettings: {
+      ...ELEVENLABS_VOICE_SETTINGS,
+      speed: input.voiceSpeed ?? ELEVENLABS_VOICE_SETTINGS.speed,
+    },
     outputFormat: ELEVENLABS_OUTPUT_FORMAT,
     ...(input.previousText !== undefined && { previousText: input.previousText }),
     ...(input.nextText !== undefined && { nextText: input.nextText }),
@@ -68,6 +75,7 @@ export async function generateSpeechWithTimestamps(
     responseMetadata: {
       modelId: input.modelId,
       voiceId: input.voiceId,
+      voiceSpeed: input.voiceSpeed ?? ELEVENLABS_VOICE_SETTINGS.speed,
       outputFormat: ELEVENLABS_OUTPUT_FORMAT,
     },
   };

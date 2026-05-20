@@ -21,6 +21,9 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
   const response = await client.responses.create({
     model,
     input: compiled.messages,
+    reasoning: {
+      effort: "xhigh",
+    },
     text: {
       format: {
         type: "json_schema",

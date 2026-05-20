@@ -4,6 +4,8 @@ import {
   styleContextFromScriptResponseText,
   validateAlignment,
   validateCaptionTimingDoc,
+  ELEVENLABS_MAX_VOICE_SPEED,
+  ELEVENLABS_MIN_VOICE_SPEED,
   ELEVENLABS_VOICE_SETTINGS,
 } from "@short-workflow/ai";
 import {
@@ -26,6 +28,7 @@ import { resolveHandlerEnv, type HandlerEnv } from "./types";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
 const AUDIO_OVERFLOW_TOLERANCE_SECONDS = 0.5;
+const AUDIO_OVERFLOW_RETRY_HEADROOM = 1.03;
 
 export type GenerateCurrentSceneAudioResult = {
   assetId: string;
@@ -67,6 +70,7 @@ export async function generateCurrentSceneAudio(
     throw new Error("ELEVENLABS_VOICE_ID_missing");
   }
   const modelId = process.env.ELEVENLABS_MODEL_ID ?? DEFAULT_ELEVENLABS_MODEL_ID;
+  const configuredVoiceSpeed = parseElevenLabsVoiceSpeed(process.env.ELEVENLABS_VOICE_SPEED);
 
   const projectScenes = await listProjectScenes(db, scene.projectId);
   const ordered = [...projectScenes].sort((a, b) => a.position - b.position);
@@ -94,24 +98,16 @@ export async function generateCurrentSceneAudio(
       provider: "elevenlabs",
     });
 
-    const generated = await generateSpeechWithTimestamps({
+    const generation = await generateSceneSpeechWithOverflowRetry({
       narration: scene.narration,
-      ...(previousText !== undefined ? { previousText } : {}),
-      ...(nextText !== undefined ? { nextText } : {}),
+      previousText,
+      nextText,
       voiceId,
       modelId,
+      sceneDurationSeconds: scene.durationSeconds,
+      voiceSpeed: configuredVoiceSpeed,
     });
-
-    if (!generated.alignment) {
-      throw new Error("elevenlabs_alignment_missing");
-    }
-
-    const alignmentCheck = validateAlignment(generated.alignment);
-    if (!alignmentCheck.ok) {
-      throw new Error(`elevenlabs_alignment_invalid:${alignmentCheck.reason}`);
-    }
-
-    const audioDurationSeconds = Math.max(...generated.alignment.characterEndTimesSeconds);
+    const { generated, audioDurationSeconds, voiceSpeed, speedAttempts } = generation;
     if (audioDurationSeconds > scene.durationSeconds + AUDIO_OVERFLOW_TOLERANCE_SECONDS) {
       throw new Error(
         `audio_exceeds_scene_duration:${audioDurationSeconds.toFixed(3)}s>${scene.durationSeconds}s`,
@@ -155,7 +151,12 @@ export async function generateCurrentSceneAudio(
         nextText: nextText ?? null,
         voiceId,
         modelId,
-        voiceSettings: ELEVENLABS_VOICE_SETTINGS,
+        voiceSpeed,
+        voiceSpeedAttempts: speedAttempts,
+        voiceSettings: {
+          ...ELEVENLABS_VOICE_SETTINGS,
+          speed: voiceSpeed,
+        },
         audioAssetId: audioAsset.id,
         styleContext: styleContext ?? null,
       },
@@ -189,6 +190,138 @@ export async function handleGenerateSceneAudio(db: DbClient, job: JobRow, env?: 
     promptVersionId: result.promptVersionId,
     reused: result.reused,
   });
+}
+
+type GeneratedSpeech = Awaited<ReturnType<typeof generateSpeechWithTimestamps>>;
+type ValidGeneratedSpeech = GeneratedSpeech & {
+  alignment: NonNullable<GeneratedSpeech["alignment"]>;
+};
+
+type SpeechAttempt = {
+  generated: ValidGeneratedSpeech;
+  audioDurationSeconds: number;
+  voiceSpeed: number;
+};
+
+type SpeechSpeedAttempt = {
+  voiceSpeed: number;
+  audioDurationSeconds: number;
+};
+
+async function generateSceneSpeechWithOverflowRetry(input: {
+  narration: string;
+  previousText?: string | undefined;
+  nextText?: string | undefined;
+  voiceId: string;
+  modelId: string;
+  sceneDurationSeconds: number;
+  voiceSpeed: number;
+}): Promise<SpeechAttempt & { speedAttempts: SpeechSpeedAttempt[] }> {
+  const firstAttempt = await generateSpeechAttempt(input);
+  const speedAttempts: SpeechSpeedAttempt[] = [
+    {
+      voiceSpeed: firstAttempt.voiceSpeed,
+      audioDurationSeconds: firstAttempt.audioDurationSeconds,
+    },
+  ];
+
+  const maxAudioDurationSeconds = input.sceneDurationSeconds + AUDIO_OVERFLOW_TOLERANCE_SECONDS;
+  if (firstAttempt.audioDurationSeconds <= maxAudioDurationSeconds) {
+    return { ...firstAttempt, speedAttempts };
+  }
+
+  const retryVoiceSpeed = overflowRetryVoiceSpeed({
+    currentVoiceSpeed: firstAttempt.voiceSpeed,
+    audioDurationSeconds: firstAttempt.audioDurationSeconds,
+    maxAudioDurationSeconds,
+  });
+  if (retryVoiceSpeed === null) {
+    return { ...firstAttempt, speedAttempts };
+  }
+
+  const retryAttempt = await generateSpeechAttempt({
+    ...input,
+    voiceSpeed: retryVoiceSpeed,
+  });
+  speedAttempts.push({
+    voiceSpeed: retryAttempt.voiceSpeed,
+    audioDurationSeconds: retryAttempt.audioDurationSeconds,
+  });
+
+  return { ...retryAttempt, speedAttempts };
+}
+
+async function generateSpeechAttempt(input: {
+  narration: string;
+  previousText?: string | undefined;
+  nextText?: string | undefined;
+  voiceId: string;
+  modelId: string;
+  voiceSpeed: number;
+}): Promise<SpeechAttempt> {
+  const generated = await generateSpeechWithTimestamps({
+    narration: input.narration,
+    ...(input.previousText !== undefined ? { previousText: input.previousText } : {}),
+    ...(input.nextText !== undefined ? { nextText: input.nextText } : {}),
+    voiceId: input.voiceId,
+    modelId: input.modelId,
+    voiceSpeed: input.voiceSpeed,
+  });
+
+  const alignment = generated.alignment;
+  if (!alignment) {
+    throw new Error("elevenlabs_alignment_missing");
+  }
+
+  const alignmentCheck = validateAlignment(alignment);
+  if (!alignmentCheck.ok) {
+    throw new Error(`elevenlabs_alignment_invalid:${alignmentCheck.reason}`);
+  }
+
+  return {
+    generated: { ...generated, alignment },
+    audioDurationSeconds: Math.max(...alignment.characterEndTimesSeconds),
+    voiceSpeed: input.voiceSpeed,
+  };
+}
+
+function overflowRetryVoiceSpeed(input: {
+  currentVoiceSpeed: number;
+  audioDurationSeconds: number;
+  maxAudioDurationSeconds: number;
+}): number | null {
+  if (input.currentVoiceSpeed >= ELEVENLABS_MAX_VOICE_SPEED) {
+    return null;
+  }
+
+  const requiredSpeed =
+    input.currentVoiceSpeed *
+    (input.audioDurationSeconds / input.maxAudioDurationSeconds) *
+    AUDIO_OVERFLOW_RETRY_HEADROOM;
+  const retrySpeed = Math.min(ELEVENLABS_MAX_VOICE_SPEED, roundSpeedUp(requiredSpeed));
+
+  return retrySpeed > input.currentVoiceSpeed ? retrySpeed : null;
+}
+
+function parseElevenLabsVoiceSpeed(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") {
+    return ELEVENLABS_VOICE_SETTINGS.speed;
+  }
+
+  const parsed = Number(value);
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < ELEVENLABS_MIN_VOICE_SPEED ||
+    parsed > ELEVENLABS_MAX_VOICE_SPEED
+  ) {
+    throw new Error("ELEVENLABS_VOICE_SPEED_invalid");
+  }
+
+  return roundSpeedUp(parsed);
+}
+
+function roundSpeedUp(value: number): number {
+  return Math.ceil(value * 100) / 100;
 }
 
 async function saveCaptionTiming(input: {
