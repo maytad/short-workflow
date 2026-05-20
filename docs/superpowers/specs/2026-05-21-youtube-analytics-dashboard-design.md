@@ -14,6 +14,7 @@ The first version is API-based. It does not import YouTube Studio CSV files, doe
 - Store per-refresh analytics snapshots.
 - Generate automatic rule-based diagnosis from stored metrics.
 - Let the user request AI-assisted diagnosis for a selected video using the existing OpenAI configuration and `OPENAI_MODEL`, currently `gpt-5.5`.
+- Use reasoning effort `xhigh` for `gpt-5.5` AI diagnosis requests.
 - Return AI diagnosis as a Thai summary plus English title, hook, metadata, and prompt suggestions.
 - Keep all YouTube and OpenAI secrets server-side.
 - Document CSV import as future work for Shorts feed metrics not available through the APIs.
@@ -205,6 +206,7 @@ Fields:
 - `snapshot_id uuid not null references youtube_analytics_snapshots(id) on delete cascade`
 - `diagnosis_type text not null`
 - `model text`
+- `reasoning_effort text`
 - `input_hash text not null`
 - `summary_th text not null`
 - `suggestions_en jsonb not null default '{}'::jsonb`
@@ -278,7 +280,7 @@ Flow:
 3. Load linked project creative context when available.
 4. Compute `input_hash`.
 5. Return cached AI diagnosis if the hash already exists.
-6. Call `packages/ai` with the existing OpenAI Responses API pattern and `OPENAI_MODEL`.
+6. Call `packages/ai` with the existing OpenAI Responses API pattern, `OPENAI_MODEL`, and reasoning effort `xhigh` when the model is `gpt-5.5`.
 7. Store and return the AI diagnosis.
 
 Error cases:
@@ -348,6 +350,8 @@ The AI input should include:
 - rule-based diagnosis.
 
 The AI model comes from `OPENAI_MODEL`, currently `gpt-5.5` in the local project configuration. The diagnosis should use the existing OpenAI Responses API pattern already used for script generation.
+
+For `gpt-5.5`, AI diagnosis requests must set reasoning effort to `xhigh`. Store the effective reasoning effort on the diagnosis row so future reviews can compare outputs across model or effort changes.
 
 The AI output must be structured:
 
@@ -467,7 +471,7 @@ States:
 2. User clicks `Analyze with AI`.
 3. API loads snapshot and creative context.
 4. API returns cached AI diagnosis if input hash matches.
-5. Otherwise API calls OpenAI through `packages/ai`.
+5. Otherwise API calls OpenAI through `packages/ai` using reasoning effort `xhigh` for `gpt-5.5`.
 6. API stores and returns the AI diagnosis.
 7. UI displays Thai summary and English suggestions.
 
