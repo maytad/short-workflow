@@ -231,6 +231,84 @@ export const youtubeUploadSummarySchema = z
   })
   .strict();
 
+export const youtubeVideoLinkSourceSchema = z.enum(["db_upload", "channel_discovery"]);
+export const youtubeVideoLinkStatusSchema = z.enum(["linked", "unlinked"]);
+export const youtubeDiagnosisTypeSchema = z.enum(["rule_based", "ai"]);
+export const youtubeDiagnosisPrioritySchema = z.enum(["low", "medium", "high"]);
+
+export const youtubeVideoLinkSchema = z
+  .object({
+    id: uuidSchema,
+    youtubeVideoId: z.string().min(1),
+    projectId: nullableUuidSchema,
+    uploadJobId: nullableUuidSchema,
+    source: youtubeVideoLinkSourceSchema,
+    linkStatus: youtubeVideoLinkStatusSchema,
+    title: z.string().min(1),
+    description: nullableStringSchema,
+    publishedAt: nullableIsoDateSchema,
+    durationSeconds: z.number().int().positive().nullable(),
+    privacyStatus: nullableStringSchema,
+    lastSyncedAt: nullableIsoDateSchema,
+    createdAt: isoDateSchema,
+    updatedAt: isoDateSchema,
+  })
+  .strict();
+
+export const youtubeAnalyticsSnapshotSchema = z
+  .object({
+    id: uuidSchema,
+    youtubeVideoLinkId: uuidSchema,
+    youtubeVideoId: z.string().min(1),
+    snapshotAt: isoDateSchema,
+    windowDays: z.number().int().positive(),
+    views: z.number().int().nonnegative().nullable(),
+    engagedViews: z.number().int().nonnegative().nullable(),
+    likes: z.number().int().nonnegative().nullable(),
+    comments: z.number().int().nonnegative().nullable(),
+    shares: z.number().int().nonnegative().nullable(),
+    subscribersGained: z.number().int().nullable(),
+    averageViewDurationSeconds: z.number().int().nonnegative().nullable(),
+    averageViewPercentage: z.number().nullable(),
+    viewsPerHour: z.number().nullable(),
+    likeRate: z.number().nullable(),
+    createdAt: isoDateSchema,
+  })
+  .strict();
+
+export const youtubeVideoDiagnosisSchema = z
+  .object({
+    id: uuidSchema,
+    youtubeVideoLinkId: uuidSchema,
+    snapshotId: uuidSchema,
+    diagnosisType: youtubeDiagnosisTypeSchema,
+    model: nullableStringSchema,
+    reasoningEffort: nullableStringSchema,
+    inputHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    summaryTh: z.string().min(1),
+    suggestionsEn: jsonRecordSchema,
+    createdAt: isoDateSchema,
+    updatedAt: isoDateSchema,
+  })
+  .strict();
+
+export const youtubeAnalyticsCreativeContextSchema = z
+  .object({
+    projectId: uuidSchema,
+    projectTitle: z.string().min(1),
+    topic: z.string().min(1),
+    seedId: z.string().min(1).nullable(),
+    appealTier: z.string().min(1).nullable(),
+    mechanismFamily: z.string().min(1).nullable(),
+    visualHookArchetype: z.string().min(1).nullable(),
+    hookNarration: nullableStringSchema,
+    hookCaption: nullableStringSchema,
+    hookImagePrompt: nullableStringSchema,
+    scriptPromptVersion: z.number().int().positive().nullable(),
+    imagePromptVersion: z.number().int().positive().nullable(),
+  })
+  .strict();
+
 export const renderSchema = z
   .object({
     id: uuidSchema,
@@ -264,3 +342,13 @@ export type YoutubeUploadScheduleStatus = z.infer<typeof youtubeUploadScheduleSt
 export type YoutubeUploadJobInput = z.infer<typeof youtubeUploadJobInputSchema>;
 export type YoutubeUploadJobOutput = z.infer<typeof youtubeUploadJobOutputSchema>;
 export type YoutubeUploadSummary = z.infer<typeof youtubeUploadSummarySchema>;
+export type YoutubeVideoLinkSource = z.infer<typeof youtubeVideoLinkSourceSchema>;
+export type YoutubeVideoLinkStatus = z.infer<typeof youtubeVideoLinkStatusSchema>;
+export type YoutubeDiagnosisType = z.infer<typeof youtubeDiagnosisTypeSchema>;
+export type YoutubeDiagnosisPriority = z.infer<typeof youtubeDiagnosisPrioritySchema>;
+export type YoutubeVideoLink = z.infer<typeof youtubeVideoLinkSchema>;
+export type YoutubeAnalyticsSnapshot = z.infer<typeof youtubeAnalyticsSnapshotSchema>;
+export type YoutubeVideoDiagnosis = z.infer<typeof youtubeVideoDiagnosisSchema>;
+export type YoutubeAnalyticsCreativeContext = z.infer<
+  typeof youtubeAnalyticsCreativeContextSchema
+>;

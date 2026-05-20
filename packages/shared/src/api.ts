@@ -8,7 +8,11 @@ import {
   projectSchema,
   renderSchema,
   sceneSchema,
+  youtubeAnalyticsCreativeContextSchema,
+  youtubeAnalyticsSnapshotSchema,
   youtubeMetadataSchema,
+  youtubeVideoDiagnosisSchema,
+  youtubeVideoLinkSchema,
   youtubeUploadScheduleSchema,
   youtubeUploadSummarySchema,
   uuidSchema,
@@ -73,6 +77,61 @@ export const youtubeUploadResponseSchema = z
   })
   .strict();
 
+export const youtubeAnalyticsRefreshRequestSchema = z
+  .object({
+    windowDays: z.number().int().min(1).max(90).default(30),
+  })
+  .strict();
+
+export const youtubeAnalyticsAuthStatusSchema = z
+  .object({
+    connected: z.boolean(),
+    hasRequiredScopes: z.boolean(),
+    reconnectRequired: z.boolean(),
+  })
+  .strict();
+
+export const youtubeAnalyticsAggregatesSchema = z
+  .object({
+    recentVideoCount: z.number().int().nonnegative(),
+    totalViews: z.number().int().nonnegative(),
+    needsAttentionCount: z.number().int().nonnegative(),
+    medianAverageViewPercentage: z.number().nullable(),
+    bestPerformerVideoId: z.string().min(1).nullable(),
+  })
+  .strict();
+
+export const youtubeAnalyticsVideoSummarySchema = z
+  .object({
+    link: youtubeVideoLinkSchema,
+    latestSnapshot: youtubeAnalyticsSnapshotSchema.nullable(),
+    latestRuleDiagnosis: youtubeVideoDiagnosisSchema.nullable(),
+    latestAiDiagnosis: youtubeVideoDiagnosisSchema.nullable(),
+    creativeContext: youtubeAnalyticsCreativeContextSchema.nullable(),
+  })
+  .strict();
+
+export const youtubeAnalyticsDashboardResponseSchema = z
+  .object({
+    auth: youtubeAnalyticsAuthStatusSchema,
+    windowDays: z.number().int().min(1).max(90),
+    aggregates: youtubeAnalyticsAggregatesSchema,
+    videos: z.array(youtubeAnalyticsVideoSummarySchema),
+  })
+  .strict();
+
+export const youtubeAiDiagnosisRequestSchema = z
+  .object({
+    youtubeVideoId: z.string().min(1),
+  })
+  .strict();
+
+export const youtubeAiDiagnosisResponseSchema = z
+  .object({
+    diagnosis: youtubeVideoDiagnosisSchema,
+  })
+  .strict();
+
 export const renderPreconditionErrorSchema = z
   .object({
     error: z.literal("render_preconditions_failed"),
@@ -98,4 +157,13 @@ export type UpdateSceneRequest = z.infer<typeof updateSceneRequestSchema>;
 export type ProjectDetailResponse = z.infer<typeof projectDetailResponseSchema>;
 export type BulkAssetQueueResponse = z.infer<typeof bulkAssetQueueResponseSchema>;
 export type YoutubeUploadResponse = z.infer<typeof youtubeUploadResponseSchema>;
+export type YoutubeAnalyticsRefreshRequest = z.infer<
+  typeof youtubeAnalyticsRefreshRequestSchema
+>;
+export type YoutubeAnalyticsDashboardResponse = z.infer<
+  typeof youtubeAnalyticsDashboardResponseSchema
+>;
+export type YoutubeAnalyticsVideoSummary = z.infer<typeof youtubeAnalyticsVideoSummarySchema>;
+export type YoutubeAiDiagnosisRequest = z.infer<typeof youtubeAiDiagnosisRequestSchema>;
+export type YoutubeAiDiagnosisResponse = z.infer<typeof youtubeAiDiagnosisResponseSchema>;
 export type RenderPreconditionError = z.infer<typeof renderPreconditionErrorSchema>;
