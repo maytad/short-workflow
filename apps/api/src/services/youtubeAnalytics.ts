@@ -124,6 +124,14 @@ export function median(values: Array<number | null | undefined>) {
     return null;
   }
 
+  if (numeric.length % 2 === 0) {
+    const rightIndex = numeric.length / 2;
+    const left = numeric[rightIndex - 1];
+    const right = numeric[rightIndex];
+
+    return left === undefined || right === undefined ? null : (left + right) / 2;
+  }
+
   return numeric[Math.floor(numeric.length / 2)] ?? null;
 }
 
@@ -308,10 +316,10 @@ async function fetchJson({ accessToken, fetchFn = fetch, url }: FetchJsonInput):
     },
   });
   const text = await response.text();
-  const body = text.length > 0 ? JSON.parse(text) : null;
+  const body = parseMaybeJson(text);
 
   if (!response.ok) {
-    const message = typeof body === "object" && body !== null ? JSON.stringify(body) : text;
+    const message = typeof body === "object" && body !== null ? JSON.stringify(body) : String(body);
 
     if (requiredScopeError(message)) {
       throw new Error("youtube_reconnect_required");
@@ -321,6 +329,18 @@ async function fetchJson({ accessToken, fetchFn = fetch, url }: FetchJsonInput):
   }
 
   return body;
+}
+
+function parseMaybeJson(text: string): unknown {
+  if (text.length === 0) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 export async function fetchRecentChannelVideos({
@@ -478,6 +498,21 @@ function toApiDiagnosis(row: YoutubeVideoDiagnosisRow) {
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
+}
+
+export function findCachedAiDiagnosis(
+  diagnoses: YoutubeVideoDiagnosisRow[],
+  inputHash: string,
+): YoutubeVideoDiagnosisRow | null {
+  return (
+    diagnoses.find(
+      (diagnosis) => diagnosis.diagnosisType === "ai" && diagnosis.inputHash === inputHash,
+    ) ?? null
+  );
+}
+
+export function toYoutubeAiDiagnosisError(_error: unknown) {
+  return new Error("youtube_ai_diagnosis_failed");
 }
 
 function dateOnly(value: Date) {
@@ -723,6 +758,15 @@ async function analyzeYoutubeVideoWithAi(
     link: toApiVideoLink(link),
   };
   const inputHash = buildYoutubeDiagnosisInputHash(diagnosisInput);
+  const latestAiDiagnoses = await listLatestYoutubeVideoDiagnoses(db, {
+    diagnosisType: "ai",
+    youtubeVideoLinkIds: [link.id],
+  });
+  const cachedDiagnosis = findCachedAiDiagnosis(latestAiDiagnoses, inputHash);
+
+  if (cachedDiagnosis) {
+    return { diagnosis: toApiDiagnosis(cachedDiagnosis) };
+  }
 
   try {
     const ai = await diagnoseYoutubeVideo({ diagnosisInput });
@@ -744,11 +788,7 @@ async function analyzeYoutubeVideoWithAi(
 
     return { diagnosis: toApiDiagnosis(row) };
   } catch (error) {
-    if (error instanceof Error && error.message === "OPENAI_API_KEY_missing") {
-      throw error;
-    }
-
-    throw new Error("youtube_ai_diagnosis_failed");
+    throw toYoutubeAiDiagnosisError(error);
   }
 }
 

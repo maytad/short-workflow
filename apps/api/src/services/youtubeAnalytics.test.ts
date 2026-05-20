@@ -7,16 +7,26 @@ import {
   fetchRecentChannelVideos,
   fetchYoutubeAnalyticsRows,
   fetchYoutubeVideoDetails,
+  findCachedAiDiagnosis,
   median,
   parseIso8601DurationSeconds,
   requiredScopeError,
+  toYoutubeAiDiagnosisError,
   type FetchFn,
 } from "./youtubeAnalytics";
+import type { YoutubeVideoDiagnosisRow } from "@short-workflow/db";
 import type { YoutubeAnalyticsVideoSummary } from "@short-workflow/shared";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     headers: { "content-type": "application/json" },
+    status,
+  });
+}
+
+function textResponse(body: string, status = 200) {
+  return new Response(body, {
+    headers: { "content-type": "text/plain" },
     status,
   });
 }
@@ -40,8 +50,58 @@ describe("median", () => {
     expect(median([3, 1, 2])).toBe(2);
   });
 
+  test("averages the middle values for even-length numeric values", () => {
+    expect(median([1, 3])).toBe(2);
+  });
+
   test("returns null when all values are nullish", () => {
     expect(median([null, undefined])).toBeNull();
+  });
+});
+
+describe("findCachedAiDiagnosis", () => {
+  test("returns an existing AI diagnosis with the same input hash", () => {
+    const matching = diagnosisRow({
+      diagnosisType: "ai",
+      inputHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    });
+    const stale = diagnosisRow({
+      diagnosisType: "ai",
+      inputHash: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    });
+
+    expect(
+      findCachedAiDiagnosis([
+        stale,
+        diagnosisRow({
+          diagnosisType: "rule_based",
+          inputHash: matching.inputHash,
+        }),
+        matching,
+      ], matching.inputHash),
+    ).toBe(matching);
+  });
+
+  test("returns null when the current AI diagnosis input changed", () => {
+    const stale = diagnosisRow({
+      diagnosisType: "ai",
+      inputHash: "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    });
+
+    expect(
+      findCachedAiDiagnosis(
+        [stale],
+        "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("toYoutubeAiDiagnosisError", () => {
+  test("maps OpenAI configuration failures to the analytics AI diagnosis error", () => {
+    expect(toYoutubeAiDiagnosisError(new Error("OPENAI_API_KEY_missing")).message).toBe(
+      "youtube_ai_diagnosis_failed",
+    );
   });
 });
 
@@ -383,4 +443,38 @@ describe("fetchYoutubeAnalyticsRows", () => {
       }),
     ).rejects.toThrow("youtube_analytics_fetch_failed:429");
   });
+
+  test("maps non-json error responses to analytics fetch failed", async () => {
+    const { fetchFn } = recordingFetch(textResponse("Bad Gateway", 502));
+
+    await expect(
+      fetchYoutubeAnalyticsRows({
+        accessToken: "access-token",
+        endDate: "2026-05-20",
+        fetchFn,
+        startDate: "2026-05-19",
+        youtubeVideoIds: ["id1"],
+      }),
+    ).rejects.toThrow("youtube_analytics_fetch_failed:502");
+  });
 });
+
+function diagnosisRow(
+  overrides: Partial<YoutubeVideoDiagnosisRow> = {},
+): YoutubeVideoDiagnosisRow {
+  return {
+    id: "55555555-5555-4555-8555-555555555555",
+    youtubeVideoLinkId: "11111111-1111-4111-8111-111111111111",
+    snapshotId: "44444444-4444-4444-8444-444444444444",
+    diagnosisType: "ai",
+    model: "gpt-5.5",
+    reasoningEffort: "xhigh",
+    inputHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    summaryTh: "The opening is clear but the payoff lands late.",
+    suggestionsEn: { hook: "Open with the failed phone moment." },
+    rawOutput: {},
+    createdAt: new Date("2026-05-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-05-20T00:05:00.000Z"),
+    ...overrides,
+  };
+}
