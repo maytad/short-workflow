@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -7,7 +7,11 @@ import type { JobRow } from "@short-workflow/db";
 
 import { createApp } from "./app";
 import type { ProjectRouteServices } from "./routes/projects";
-import { hasRequiredYoutubeScopes } from "./services/youtubeAuth";
+import {
+  hasRequiredYoutubeScopes,
+  refreshYoutubeToken,
+  youtubeTokenPath,
+} from "./services/youtubeAuth";
 
 const project = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -396,6 +400,54 @@ describe("createApp", () => {
     expect(
       hasRequiredYoutubeScopes("https://www.googleapis.com/auth/youtube.upload"),
     ).toBe(false);
+  });
+
+  test("refresh rejects reduced YouTube OAuth scopes", async () => {
+    const assetRoot = await mkdtemp(path.join(tmpdir(), "short-workflow-youtube-refresh-"));
+    const requiredScopes = [
+      "https://www.googleapis.com/auth/youtube.upload",
+      "https://www.googleapis.com/auth/youtube.readonly",
+      "https://www.googleapis.com/auth/yt-analytics.readonly",
+    ].join(" ");
+
+    try {
+      await expect(
+        refreshYoutubeToken({
+          env: {
+            DATABASE_URL: "postgres://user:pass@localhost:5432/db",
+            LOCAL_ASSET_ROOT: assetRoot,
+            API_HOST: "127.0.0.1",
+            API_PORT: 3001,
+            YOUTUBE_OAUTH_CLIENT_ID: "youtube-client-id",
+          },
+          fetchFn: (async () =>
+            new Response(
+              JSON.stringify({
+                access_token: "reduced-scope-access-token",
+                expires_in: 3600,
+                scope: "https://www.googleapis.com/auth/youtube.upload",
+                token_type: "Bearer",
+              }),
+              {
+                headers: { "content-type": "application/json" },
+                status: 200,
+              },
+            )) as unknown as typeof fetch,
+          now: Date.parse("2026-05-21T00:00:00.000Z"),
+          token: {
+            access_token: "complete-scope-access-token",
+            expires_at: "2026-05-21T01:00:00.000Z",
+            refresh_token: "youtube-refresh-token",
+            scope: requiredScopes,
+            token_type: "Bearer",
+          },
+        }),
+      ).rejects.toThrow("youtube_reconnect_required");
+
+      await expect(readFile(youtubeTokenPath(assetRoot), "utf8")).rejects.toThrow();
+    } finally {
+      await rm(assetRoot, { force: true, recursive: true });
+    }
   });
 
   test("maps missing YouTube OAuth env to conflict", async () => {

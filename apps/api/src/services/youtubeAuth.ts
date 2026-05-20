@@ -317,6 +317,10 @@ export async function refreshYoutubeToken({
     expires_at: new Date(now + (parsed.data.expires_in ?? 3600) * 1000).toISOString(),
   });
 
+  if (!hasRequiredYoutubeScopes(refreshed.scope)) {
+    throw new Error("youtube_reconnect_required");
+  }
+
   await writeYoutubeToken(env, refreshed);
 
   return refreshed;
