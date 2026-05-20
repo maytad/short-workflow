@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -244,6 +245,107 @@ export const youtubeUploadSchedules = pgTable(
   ],
 );
 
+export const youtubeVideoLinks = pgTable(
+  "youtube_video_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    youtubeVideoId: text("youtube_video_id").notNull(),
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "set null" }),
+    uploadJobId: uuid("upload_job_id").references(() => jobs.id, { onDelete: "set null" }),
+    source: text("source").notNull(),
+    linkStatus: text("link_status").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    durationSeconds: integer("duration_seconds"),
+    privacyStatus: text("privacy_status"),
+    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (table) => [
+    uniqueIndex("youtube_video_links_video_id_idx").on(table.youtubeVideoId),
+    index("youtube_video_links_project_idx").on(table.projectId),
+    index("youtube_video_links_published_at_idx").on(table.publishedAt.desc()),
+    check(
+      "youtube_video_links_source_check",
+      sql`${table.source} in ('db_upload', 'channel_discovery')`,
+    ),
+    check("youtube_video_links_status_check", sql`${table.linkStatus} in ('linked', 'unlinked')`),
+  ],
+);
+
+export const youtubeAnalyticsSnapshots = pgTable(
+  "youtube_analytics_snapshots",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    youtubeVideoLinkId: uuid("youtube_video_link_id")
+      .notNull()
+      .references(() => youtubeVideoLinks.id, { onDelete: "cascade" }),
+    youtubeVideoId: text("youtube_video_id").notNull(),
+    snapshotAt: timestamp("snapshot_at", { withTimezone: true }).notNull().default(now),
+    windowDays: integer("window_days").notNull(),
+    views: integer("views"),
+    engagedViews: integer("engaged_views"),
+    likes: integer("likes"),
+    comments: integer("comments"),
+    shares: integer("shares"),
+    subscribersGained: integer("subscribers_gained"),
+    averageViewDurationSeconds: integer("average_view_duration_seconds"),
+    averageViewPercentage: numeric("average_view_percentage", { mode: "number" }),
+    viewsPerHour: numeric("views_per_hour", { mode: "number" }),
+    likeRate: numeric("like_rate", { mode: "number" }),
+    rawDataApi: jsonb("raw_data_api").notNull().default({}),
+    rawAnalyticsApi: jsonb("raw_analytics_api").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+  },
+  (table) => [
+    index("youtube_analytics_snapshots_link_time_idx").on(
+      table.youtubeVideoLinkId,
+      table.snapshotAt.desc(),
+    ),
+    index("youtube_analytics_snapshots_video_time_idx").on(
+      table.youtubeVideoId,
+      table.snapshotAt.desc(),
+    ),
+    check("youtube_analytics_snapshots_window_days_check", sql`${table.windowDays} > 0`),
+  ],
+);
+
+export const youtubeVideoDiagnoses = pgTable(
+  "youtube_video_diagnoses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    youtubeVideoLinkId: uuid("youtube_video_link_id")
+      .notNull()
+      .references(() => youtubeVideoLinks.id, { onDelete: "cascade" }),
+    snapshotId: uuid("snapshot_id")
+      .notNull()
+      .references(() => youtubeAnalyticsSnapshots.id, { onDelete: "cascade" }),
+    diagnosisType: text("diagnosis_type").notNull(),
+    model: text("model"),
+    reasoningEffort: text("reasoning_effort"),
+    inputHash: text("input_hash").notNull(),
+    summaryTh: text("summary_th").notNull(),
+    suggestionsEn: jsonb("suggestions_en").notNull().default({}),
+    rawOutput: jsonb("raw_output").notNull().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(now),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(now),
+  },
+  (table) => [
+    index("youtube_video_diagnoses_link_created_idx").on(
+      table.youtubeVideoLinkId,
+      table.createdAt.desc(),
+    ),
+    uniqueIndex("youtube_video_diagnoses_input_hash_idx").on(
+      table.youtubeVideoLinkId,
+      table.diagnosisType,
+      table.inputHash,
+    ),
+    check("youtube_video_diagnoses_type_check", sql`${table.diagnosisType} in ('rule_based', 'ai')`),
+  ],
+);
+
 export const promptVersions = pgTable(
   "prompt_versions",
   {
@@ -286,4 +388,7 @@ export type AssetRow = typeof assets.$inferSelect;
 export type JobRow = typeof jobs.$inferSelect;
 export type RenderRow = typeof renders.$inferSelect;
 export type YoutubeUploadScheduleRow = typeof youtubeUploadSchedules.$inferSelect;
+export type YoutubeVideoLinkRow = typeof youtubeVideoLinks.$inferSelect;
+export type YoutubeAnalyticsSnapshotRow = typeof youtubeAnalyticsSnapshots.$inferSelect;
+export type YoutubeVideoDiagnosisRow = typeof youtubeVideoDiagnoses.$inferSelect;
 export type PromptVersionRow = typeof promptVersions.$inferSelect;

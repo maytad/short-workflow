@@ -6,5 +6,6 @@ export * from "./queries/promptVersions";
 export * from "./queries/renders";
 export * from "./queries/scenes";
 export * from "./queries/youtubeSchedules";
+export * from "./queries/youtubeAnalytics";
 export * from "./schema";
 export * from "./transaction";
