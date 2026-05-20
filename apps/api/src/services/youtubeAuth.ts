@@ -173,6 +173,14 @@ export async function createYoutubeAuthUrl(
   return { authUrl: authUrl.toString() };
 }
 
+async function writeYoutubeToken(env: Env, token: YoutubeToken) {
+  await mkdir(youtubeDir(env.LOCAL_ASSET_ROOT), { recursive: true, mode: 0o700 });
+  const tokenPath = youtubeTokenPath(env.LOCAL_ASSET_ROOT);
+
+  await writeFile(tokenPath, JSON.stringify(token, null, 2), { mode: 0o600 });
+  await chmod(tokenPath, 0o600);
+}
+
 export async function handleYoutubeOAuthCallback(
   input: YoutubeOAuthCallbackInput,
   env: Env = parseEnv(),
@@ -225,10 +233,7 @@ export async function handleYoutubeOAuthCallback(
     expires_at: new Date(Date.now() + (parsed.expires_in ?? 3600) * 1000).toISOString(),
   };
 
-  await mkdir(youtubeDir(env.LOCAL_ASSET_ROOT), { recursive: true, mode: 0o700 });
-  await writeFile(youtubeTokenPath(env.LOCAL_ASSET_ROOT), JSON.stringify(token, null, 2), {
-    mode: 0o600,
-  });
+  await writeYoutubeToken(env, storedTokenSchema.parse(token));
   await rm(youtubeStatePath(env.LOCAL_ASSET_ROOT), { force: true });
 }
 
@@ -259,14 +264,6 @@ export async function readYoutubeToken(env: Env = parseEnv()): Promise<YoutubeTo
 
 export function isYoutubeTokenExpired(token: YoutubeToken, now = Date.now()) {
   return new Date(token.expires_at).getTime() <= now + 60_000;
-}
-
-async function writeYoutubeToken(env: Env, token: YoutubeToken) {
-  await mkdir(youtubeDir(env.LOCAL_ASSET_ROOT), { recursive: true, mode: 0o700 });
-  const tokenPath = youtubeTokenPath(env.LOCAL_ASSET_ROOT);
-
-  await writeFile(tokenPath, JSON.stringify(token, null, 2), { mode: 0o600 });
-  await chmod(tokenPath, 0o600);
 }
 
 export async function refreshYoutubeToken({

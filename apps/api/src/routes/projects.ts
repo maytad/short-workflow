@@ -441,6 +441,10 @@ export function createProjectRoutes(services: ProjectRouteServices = defaultServ
                   return conflict(set, "youtube_not_connected");
                 }
 
+                if (authStatus.reconnectRequired || !authStatus.hasRequiredScopes) {
+                  return conflict(set, "youtube_reconnect_required");
+                }
+
                 const uploadInput = await services.buildYoutubeUploadJobInput(
                   tx,
                   project.id,

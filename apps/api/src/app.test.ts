@@ -922,6 +922,32 @@ describe("createApp", () => {
     expect(createdJob).toBe(false);
   });
 
+  test("returns reconnect required when YouTube token is missing required scopes", async () => {
+    let createdJob = false;
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices({
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: false,
+          reconnectRequired: true,
+        }),
+        createJobIdempotent: async () => {
+          createdJob = true;
+          return youtubeJob;
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request(`/projects/${project.id}/youtube-upload`, { method: "POST" }),
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: "youtube_reconnect_required" });
+    expect(createdJob).toBe(false);
+  });
+
   test("returns an existing active YouTube upload before auth and precondition checks", async () => {
     let checkedAuth = false;
     let builtInput = false;
