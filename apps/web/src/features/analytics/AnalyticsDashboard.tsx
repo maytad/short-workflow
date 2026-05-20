@@ -5,8 +5,8 @@ import type {
 import { AlertCircle, Loader2, RefreshCw, ShieldAlert, VideoOff } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { ApiError } from "../../api/client";
 import { useStartYoutubeAuthMutation } from "../projects/hooks";
+import { analyticsErrorMessage, isReconnectError } from "./analyticsErrors";
 import { formatMetric } from "./analyticsFormat";
 import { AnalyticsDetailPanel } from "./AnalyticsDetailPanel";
 import { AnalyticsTable } from "./AnalyticsTable";
@@ -17,12 +17,6 @@ import {
 } from "./hooks";
 
 const ANALYTICS_WINDOW_DAYS = 30;
-const RECONNECT_ERROR_CODES = new Set([
-  "youtube_reconnect_required",
-  "youtube_analytics_scope_missing",
-  "youtube_token_missing",
-  "youtube_token_invalid",
-]);
 const SUMMARY_SKELETON_KEYS = ["total", "median", "linked", "unlinked"];
 const TABLE_SKELETON_KEYS = ["one", "two", "three", "four", "five", "six"];
 const PANEL_SKELETON_KEYS = ["views", "hour", "average", "likes"];
@@ -41,7 +35,8 @@ export function AnalyticsDashboard() {
   );
   const metrics = useMemo(() => summarizeDashboard(dashboard), [dashboard]);
   const reconnectRequired =
-    reconnectCodeFromError(analyticsQuery.error) !== null ||
+    isReconnectError(analyticsQuery.error) ||
+    isReconnectError(refreshMutation.error) ||
     Boolean(dashboard?.auth.reconnectRequired) ||
     Boolean(dashboard && (!dashboard.auth.connected || !dashboard.auth.hasRequiredScopes));
 
@@ -101,19 +96,21 @@ export function AnalyticsDashboard() {
         />
       ) : null}
       {refreshMutation.error ? (
-        <InlineError message="Analytics refresh failed. Check the API logs and retry." />
+        <InlineError message={analyticsErrorMessage("Refresh", refreshMutation.error)} />
       ) : null}
       {analyzeMutation.error ? (
-        <InlineError message="AI diagnosis could not be started for this video." />
+        <InlineError message={analyticsErrorMessage("AI diagnosis", analyzeMutation.error)} />
       ) : null}
       {startYoutubeAuthMutation.error ? (
-        <InlineError message="YouTube reconnect could not be started." />
+        <InlineError
+          message={analyticsErrorMessage("YouTube reconnect", startYoutubeAuthMutation.error)}
+        />
       ) : null}
 
       {analyticsQuery.isLoading ? (
         <AnalyticsSkeleton />
       ) : analyticsQuery.error && !dashboard ? (
-        <InlineError message="Analytics could not be loaded. Check the API connection and YouTube access." />
+        <InlineError message={analyticsErrorMessage("Load analytics", analyticsQuery.error)} />
       ) : !dashboard || dashboard.videos.length === 0 ? (
         <EmptyState />
       ) : (
@@ -191,24 +188,6 @@ function medianFromSortedViews(views: number[]) {
   const lower = views[middleIndex - 1];
 
   return lower === undefined ? null : (lower + upper) / 2;
-}
-
-function reconnectCodeFromError(error: unknown) {
-  if (!(error instanceof ApiError)) {
-    return null;
-  }
-
-  if (
-    typeof error.payload === "object" &&
-    error.payload !== null &&
-    "error" in error.payload &&
-    typeof error.payload.error === "string" &&
-    RECONNECT_ERROR_CODES.has(error.payload.error)
-  ) {
-    return error.payload.error;
-  }
-
-  return null;
 }
 
 function SummaryStrip({ metrics }: { metrics: ReturnType<typeof summarizeDashboard> }) {

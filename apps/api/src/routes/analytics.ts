@@ -72,8 +72,9 @@ function queryInput(query: AnalyticsRouteContext["query"]) {
   };
 }
 
-function mapAnalyticsError(set: StatusSetter, error: unknown) {
+function mapAnalyticsError(set: StatusSetter, error: unknown, operation: string) {
   if (!(error instanceof Error)) {
+    logAnalyticsRouteError(operation, error);
     throw error;
   }
 
@@ -93,10 +94,42 @@ function mapAnalyticsError(set: StatusSetter, error: unknown) {
     error.message.startsWith("youtube_analytics_fetch_failed") ||
     error.message === "youtube_ai_diagnosis_failed"
   ) {
+    logAnalyticsRouteError(operation, error);
     return jsonError(set, 502, error.message);
   }
 
+  logAnalyticsRouteError(operation, error);
+
   return internalError(set);
+}
+
+function logAnalyticsRouteError(operation: string, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  const stack = error instanceof Error ? error.stack : undefined;
+  const metadata = error instanceof Error ? analyticsErrorMetadata(error) : {};
+
+  console.error("[analytics] route error", {
+    message,
+    operation,
+    stack,
+    ...metadata,
+  });
+}
+
+function analyticsErrorMetadata(error: Error) {
+  const candidate = error as Error & {
+    upstreamBody?: unknown;
+    upstreamStatus?: unknown;
+    upstreamUrl?: unknown;
+  };
+
+  return {
+    ...(candidate.upstreamStatus === undefined
+      ? {}
+      : { upstreamStatus: candidate.upstreamStatus }),
+    ...(candidate.upstreamUrl === undefined ? {} : { upstreamUrl: candidate.upstreamUrl }),
+    ...(candidate.upstreamBody === undefined ? {} : { upstreamBody: candidate.upstreamBody }),
+  };
 }
 
 export function createAnalyticsRoutes(services: AnalyticsRouteServices = unavailableServices) {
@@ -112,7 +145,7 @@ export function createAnalyticsRoutes(services: AnalyticsRouteServices = unavail
       try {
         return await services.getDashboard(db, result.data);
       } catch (error) {
-        return mapAnalyticsError(set, error);
+        return mapAnalyticsError(set, error, "getDashboard");
       }
     })
     .post("/youtube/refresh", async (context) => {
@@ -126,7 +159,7 @@ export function createAnalyticsRoutes(services: AnalyticsRouteServices = unavail
       try {
         return await services.refreshDashboard(db, result.data);
       } catch (error) {
-        return mapAnalyticsError(set, error);
+        return mapAnalyticsError(set, error, "refreshDashboard");
       }
     })
     .post("/youtube/videos/:youtubeVideoId/analyze", async (context) => {
@@ -142,7 +175,7 @@ export function createAnalyticsRoutes(services: AnalyticsRouteServices = unavail
       try {
         return await services.analyzeVideo(db, result.data);
       } catch (error) {
-        return mapAnalyticsError(set, error);
+        return mapAnalyticsError(set, error, "analyzeVideo");
       }
     })
     .onError(({ set }) => internalError(set));

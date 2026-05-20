@@ -193,7 +193,55 @@ describe("analytics routes", () => {
     expect(await response.json()).toEqual({ error: "youtube_reconnect_required" });
   });
 
+  test("POST refresh maps analytics fetch failures to bad gateway and logs metadata", async () => {
+    const originalConsoleError = console.error;
+    const errorLogs: unknown[][] = [];
+    const upstreamError = new Error("youtube_analytics_fetch_failed:400");
+    Object.assign(upstreamError, {
+      upstreamBody: { error: { message: "Invalid query." } },
+      upstreamStatus: 400,
+      upstreamUrl: "https://youtubeanalytics.googleapis.com/v2/reports",
+    });
+    const app = createApp({
+      db: testDb,
+      analyticsServices: services({
+        refreshDashboard: async () => {
+          throw upstreamError;
+        },
+      }),
+    });
+
+    console.error = (...args: unknown[]) => {
+      errorLogs.push(args);
+    };
+
+    try {
+      const response = await app.handle(
+        request("/analytics/youtube/refresh", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ windowDays: 30 }),
+        }),
+      );
+
+      expect(response.status).toBe(502);
+      expect(await response.json()).toEqual({ error: "youtube_analytics_fetch_failed:400" });
+      expect(errorLogs).toHaveLength(1);
+      expect(errorLogs[0]?.[0]).toBe("[analytics] route error");
+      expect(errorLogs[0]?.[1]).toMatchObject({
+        message: "youtube_analytics_fetch_failed:400",
+        operation: "refreshDashboard",
+        upstreamStatus: 400,
+        upstreamUrl: "https://youtubeanalytics.googleapis.com/v2/reports",
+      });
+    } finally {
+      console.error = originalConsoleError;
+    }
+  });
+
   test("GET /analytics/youtube maps unknown service errors to internal envelope", async () => {
+    const originalConsoleError = console.error;
+    const errorLogs: unknown[][] = [];
     const app = createApp({
       db: testDb,
       analyticsServices: services({
@@ -203,10 +251,24 @@ describe("analytics routes", () => {
       }),
     });
 
-    const response = await app.handle(request("/analytics/youtube"));
+    console.error = (...args: unknown[]) => {
+      errorLogs.push(args);
+    };
 
-    expect(response.status).toBe(500);
-    expect(await response.json()).toEqual({ error: "internal_error" });
+    try {
+      const response = await app.handle(request("/analytics/youtube"));
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toEqual({ error: "internal_error" });
+      expect(errorLogs).toHaveLength(1);
+      expect(errorLogs[0]?.[0]).toBe("[analytics] route error");
+      expect(errorLogs[0]?.[1]).toMatchObject({
+        message: "boom",
+        operation: "getDashboard",
+      });
+    } finally {
+      console.error = originalConsoleError;
+    }
   });
 
   test("POST /analytics/youtube/videos/:youtubeVideoId/analyze returns AI diagnosis", async () => {

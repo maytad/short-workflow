@@ -328,7 +328,14 @@ async function fetchJson({ accessToken, fetchFn = fetch, url }: FetchJsonInput):
       throw new Error("youtube_reconnect_required");
     }
 
-    throw new Error(`youtube_analytics_fetch_failed:${response.status}`);
+    const error = new Error(`youtube_analytics_fetch_failed:${response.status}`);
+    Object.assign(error, {
+      upstreamBody: body,
+      upstreamStatus: response.status,
+      upstreamUrl: `${url.origin}${url.pathname}`,
+    });
+
+    throw error;
   }
 
   return body;
