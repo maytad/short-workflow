@@ -16,6 +16,7 @@ import {
   type YoutubeVideoLinkRow,
 } from "@short-workflow/db";
 import type {
+  YoutubeAnalyticsCreativeContext,
   YoutubeAiDiagnosisResponse,
   YoutubeAnalyticsDashboardResponse,
   YoutubeAnalyticsVideoSummary,
@@ -24,6 +25,8 @@ import type {
 import { getYoutubeAuthStatus, readFreshYoutubeAccessToken } from "./youtubeAuth";
 
 export type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
+
+const DEFAULT_ANALYTICS_WINDOW_DAYS = 30;
 
 export type DerivedMetricInput = {
   views: number | null;
@@ -478,6 +481,68 @@ function toApiSnapshot(row: YoutubeAnalyticsSnapshotRow) {
   };
 }
 
+function toDiagnosisLinkInput(row: YoutubeVideoLinkRow) {
+  return {
+    youtubeVideoId: row.youtubeVideoId,
+    projectId: row.projectId,
+    uploadJobId: row.uploadJobId,
+    source: row.source,
+    linkStatus: row.linkStatus,
+    title: row.title,
+    description: row.description,
+    publishedAt: toIso(row.publishedAt),
+    durationSeconds: row.durationSeconds,
+    privacyStatus: row.privacyStatus,
+  };
+}
+
+function toDiagnosisSnapshotInput(row: YoutubeAnalyticsSnapshotRow) {
+  return {
+    youtubeVideoId: row.youtubeVideoId,
+    windowDays: row.windowDays,
+    views: row.views,
+    engagedViews: row.engagedViews,
+    likes: row.likes,
+    comments: row.comments,
+    shares: row.shares,
+    subscribersGained: row.subscribersGained,
+    averageViewDurationSeconds: row.averageViewDurationSeconds,
+    averageViewPercentage: row.averageViewPercentage,
+    viewsPerHour: row.viewsPerHour,
+    likeRate: row.likeRate,
+  };
+}
+
+function toDiagnosisRuleInput(row: YoutubeVideoDiagnosisRow) {
+  return {
+    diagnosisType: row.diagnosisType,
+    model: row.model,
+    reasoningEffort: row.reasoningEffort,
+    inputHash: row.inputHash,
+    summaryTh: row.summaryTh,
+    suggestionsEn: toRecord(row.suggestionsEn),
+  };
+}
+
+export function buildYoutubeAiDiagnosisInput({
+  creativeContext,
+  latestRuleDiagnosis,
+  link,
+  snapshot,
+}: {
+  creativeContext: YoutubeAnalyticsCreativeContext | null;
+  latestRuleDiagnosis: YoutubeVideoDiagnosisRow | null;
+  link: YoutubeVideoLinkRow;
+  snapshot: YoutubeAnalyticsSnapshotRow;
+}) {
+  return {
+    creativeContext,
+    latestRuleDiagnosis: latestRuleDiagnosis ? toDiagnosisRuleInput(latestRuleDiagnosis) : null,
+    latestSnapshot: toDiagnosisSnapshotInput(snapshot),
+    link: toDiagnosisLinkInput(link),
+  };
+}
+
 function toRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -562,8 +627,11 @@ async function loadDashboard(
   const since = new Date(Date.now() - input.windowDays * 24 * 60 * 60 * 1000);
   const links = await listRecentYoutubeVideoLinks(db, since);
   const linkIds = links.map((link) => link.id);
-  const snapshots = await listLatestYoutubeAnalyticsSnapshots(db, linkIds);
+  const snapshots = await listLatestYoutubeAnalyticsSnapshots(db, linkIds, {
+    windowDays: input.windowDays,
+  });
   const diagnoses = await listLatestYoutubeVideoDiagnoses(db, {
+    windowDays: input.windowDays,
     youtubeVideoLinkIds: linkIds,
   });
   const creativeContexts = await Promise.all(
@@ -740,7 +808,9 @@ async function analyzeYoutubeVideoWithAi(
     throw new Error("youtube_video_not_found");
   }
 
-  const [snapshot] = await listLatestYoutubeAnalyticsSnapshots(db, [link.id]);
+  const [snapshot] = await listLatestYoutubeAnalyticsSnapshots(db, [link.id], {
+    windowDays: DEFAULT_ANALYTICS_WINDOW_DAYS,
+  });
 
   if (!snapshot) {
     throw new Error("youtube_analytics_snapshot_missing");
@@ -748,18 +818,20 @@ async function analyzeYoutubeVideoWithAi(
 
   const [latestRuleDiagnosis] = await listLatestYoutubeVideoDiagnoses(db, {
     diagnosisType: "rule_based",
+    windowDays: snapshot.windowDays,
     youtubeVideoLinkIds: [link.id],
   });
   const creativeContext = await getYoutubeCreativeContext(db, input.youtubeVideoId);
-  const diagnosisInput = {
+  const diagnosisInput = buildYoutubeAiDiagnosisInput({
     creativeContext,
-    latestRuleDiagnosis: latestRuleDiagnosis ? toApiDiagnosis(latestRuleDiagnosis) : null,
-    latestSnapshot: toApiSnapshot(snapshot),
-    link: toApiVideoLink(link),
-  };
+    latestRuleDiagnosis: latestRuleDiagnosis ?? null,
+    link,
+    snapshot,
+  });
   const inputHash = buildYoutubeDiagnosisInputHash(diagnosisInput);
   const latestAiDiagnoses = await listLatestYoutubeVideoDiagnoses(db, {
     diagnosisType: "ai",
+    windowDays: snapshot.windowDays,
     youtubeVideoLinkIds: [link.id],
   });
   const cachedDiagnosis = findCachedAiDiagnosis(latestAiDiagnoses, inputHash);

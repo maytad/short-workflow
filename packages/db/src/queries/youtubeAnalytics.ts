@@ -168,19 +168,36 @@ export async function listRecentYoutubeVideoLinks(db: DbClient, since: Date) {
 export async function listLatestYoutubeAnalyticsSnapshots(
   db: DbClient,
   youtubeVideoLinkIds: string[],
+  options: { windowDays?: number } = {},
 ) {
   if (youtubeVideoLinkIds.length === 0) {
     return [];
   }
 
+  const where =
+    options.windowDays === undefined
+      ? inArray(youtubeAnalyticsSnapshots.youtubeVideoLinkId, youtubeVideoLinkIds)
+      : and(
+          inArray(youtubeAnalyticsSnapshots.youtubeVideoLinkId, youtubeVideoLinkIds),
+          eq(youtubeAnalyticsSnapshots.windowDays, options.windowDays),
+        );
+
   const rows = await db
     .select()
     .from(youtubeAnalyticsSnapshots)
-    .where(inArray(youtubeAnalyticsSnapshots.youtubeVideoLinkId, youtubeVideoLinkIds))
+    .where(where)
     .orderBy(desc(youtubeAnalyticsSnapshots.snapshotAt));
 
-  const latestByLinkId = new Map<string, YoutubeAnalyticsSnapshotRow>();
-  for (const row of rows) {
+  return latestYoutubeAnalyticsSnapshots(rows);
+}
+
+export function latestYoutubeAnalyticsSnapshots<
+  T extends Pick<YoutubeAnalyticsSnapshotRow, "youtubeVideoLinkId" | "snapshotAt">,
+>(rows: T[]) {
+  const latestByLinkId = new Map<string, T>();
+  for (const row of [...rows].sort(
+    (left, right) => right.snapshotAt.getTime() - left.snapshotAt.getTime(),
+  )) {
     if (!latestByLinkId.has(row.youtubeVideoLinkId)) {
       latestByLinkId.set(row.youtubeVideoLinkId, row);
     }
@@ -191,7 +208,11 @@ export async function listLatestYoutubeAnalyticsSnapshots(
 
 export async function listLatestYoutubeVideoDiagnoses(
   db: DbClient,
-  input: { youtubeVideoLinkIds: string[]; diagnosisType?: "rule_based" | "ai" },
+  input: {
+    youtubeVideoLinkIds: string[];
+    diagnosisType?: "rule_based" | "ai";
+    windowDays?: number;
+  },
 ) {
   if (input.youtubeVideoLinkIds.length === 0) {
     return [];
@@ -204,11 +225,24 @@ export async function listLatestYoutubeVideoDiagnoses(
       )
     : inArray(youtubeVideoDiagnoses.youtubeVideoLinkId, input.youtubeVideoLinkIds);
 
-  const rows = await db
-    .select()
-    .from(youtubeVideoDiagnoses)
-    .where(where)
-    .orderBy(desc(youtubeVideoDiagnoses.updatedAt));
+  const rows =
+    input.windowDays === undefined
+      ? await db
+          .select()
+          .from(youtubeVideoDiagnoses)
+          .where(where)
+          .orderBy(desc(youtubeVideoDiagnoses.updatedAt))
+      : (
+          await db
+            .select({ diagnosis: youtubeVideoDiagnoses })
+            .from(youtubeVideoDiagnoses)
+            .innerJoin(
+              youtubeAnalyticsSnapshots,
+              eq(youtubeVideoDiagnoses.snapshotId, youtubeAnalyticsSnapshots.id),
+            )
+            .where(and(where, eq(youtubeAnalyticsSnapshots.windowDays, input.windowDays)))
+            .orderBy(desc(youtubeVideoDiagnoses.updatedAt))
+        ).map((row) => row.diagnosis);
 
   return latestYoutubeVideoDiagnoses(rows);
 }

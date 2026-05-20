@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
+import { buildYoutubeDiagnosisInputHash } from "@short-workflow/ai";
 
 import {
   buildAnalyticsDashboard,
   buildRuleDiagnosis,
+  buildYoutubeAiDiagnosisInput,
   deriveSnapshotMetrics,
   fetchRecentChannelVideos,
   fetchYoutubeAnalyticsRows,
@@ -14,7 +16,11 @@ import {
   toYoutubeAiDiagnosisError,
   type FetchFn,
 } from "./youtubeAnalytics";
-import type { YoutubeVideoDiagnosisRow } from "@short-workflow/db";
+import type {
+  YoutubeAnalyticsSnapshotRow,
+  YoutubeVideoDiagnosisRow,
+  YoutubeVideoLinkRow,
+} from "@short-workflow/db";
 import type { YoutubeAnalyticsVideoSummary } from "@short-workflow/shared";
 
 function jsonResponse(body: unknown, status = 200) {
@@ -94,6 +100,70 @@ describe("findCachedAiDiagnosis", () => {
         "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
       ),
     ).toBeNull();
+  });
+});
+
+describe("buildYoutubeAiDiagnosisInput", () => {
+  test("keeps the AI cache hash stable across refresh-only row changes", () => {
+    const firstInput = buildYoutubeAiDiagnosisInput({
+      creativeContext: null,
+      latestRuleDiagnosis: diagnosisRow({
+        id: "55555555-5555-4555-8555-555555555555",
+        snapshotId: "44444444-4444-4444-8444-444444444444",
+        createdAt: new Date("2026-05-20T00:00:00.000Z"),
+        updatedAt: new Date("2026-05-20T00:00:00.000Z"),
+      }),
+      link: videoLinkRow({
+        lastSyncedAt: new Date("2026-05-20T00:00:00.000Z"),
+        updatedAt: new Date("2026-05-20T00:00:00.000Z"),
+      }),
+      snapshot: snapshotRow({
+        id: "44444444-4444-4444-8444-444444444444",
+        snapshotAt: new Date("2026-05-20T00:00:00.000Z"),
+        createdAt: new Date("2026-05-20T00:00:00.000Z"),
+      }),
+    });
+    const refreshedInput = buildYoutubeAiDiagnosisInput({
+      creativeContext: null,
+      latestRuleDiagnosis: diagnosisRow({
+        id: "66666666-6666-4666-8666-666666666666",
+        snapshotId: "77777777-7777-4777-8777-777777777777",
+        createdAt: new Date("2026-05-20T01:00:00.000Z"),
+        updatedAt: new Date("2026-05-20T01:00:00.000Z"),
+      }),
+      link: videoLinkRow({
+        lastSyncedAt: new Date("2026-05-20T01:00:00.000Z"),
+        updatedAt: new Date("2026-05-20T01:00:00.000Z"),
+      }),
+      snapshot: snapshotRow({
+        id: "77777777-7777-4777-8777-777777777777",
+        snapshotAt: new Date("2026-05-20T01:00:00.000Z"),
+        createdAt: new Date("2026-05-20T01:00:00.000Z"),
+      }),
+    });
+
+    expect(buildYoutubeDiagnosisInputHash(refreshedInput)).toBe(
+      buildYoutubeDiagnosisInputHash(firstInput),
+    );
+  });
+
+  test("changes the AI cache hash when analytics metrics change", () => {
+    const baselineInput = buildYoutubeAiDiagnosisInput({
+      creativeContext: null,
+      latestRuleDiagnosis: diagnosisRow(),
+      link: videoLinkRow(),
+      snapshot: snapshotRow({ views: 100 }),
+    });
+    const changedInput = buildYoutubeAiDiagnosisInput({
+      creativeContext: null,
+      latestRuleDiagnosis: diagnosisRow(),
+      link: videoLinkRow(),
+      snapshot: snapshotRow({ views: 120 }),
+    });
+
+    expect(buildYoutubeDiagnosisInputHash(changedInput)).not.toBe(
+      buildYoutubeDiagnosisInputHash(baselineInput),
+    );
   });
 });
 
@@ -475,6 +545,52 @@ function diagnosisRow(
     rawOutput: {},
     createdAt: new Date("2026-05-20T00:00:00.000Z"),
     updatedAt: new Date("2026-05-20T00:05:00.000Z"),
+    ...overrides,
+  };
+}
+
+function videoLinkRow(overrides: Partial<YoutubeVideoLinkRow> = {}): YoutubeVideoLinkRow {
+  return {
+    id: "11111111-1111-4111-8111-111111111111",
+    youtubeVideoId: "abc123def45",
+    projectId: "22222222-2222-4222-8222-222222222222",
+    uploadJobId: "33333333-3333-4333-8333-333333333333",
+    source: "db_upload",
+    linkStatus: "linked",
+    title: "Why cold batteries fade fast",
+    description: "A compact explanation.",
+    publishedAt: new Date("2026-05-19T02:00:00.000Z"),
+    durationSeconds: 38,
+    privacyStatus: "private",
+    lastSyncedAt: new Date("2026-05-20T00:10:00.000Z"),
+    createdAt: new Date("2026-05-20T00:00:00.000Z"),
+    updatedAt: new Date("2026-05-20T00:05:00.000Z"),
+    ...overrides,
+  };
+}
+
+function snapshotRow(
+  overrides: Partial<YoutubeAnalyticsSnapshotRow> = {},
+): YoutubeAnalyticsSnapshotRow {
+  return {
+    id: "44444444-4444-4444-8444-444444444444",
+    youtubeVideoLinkId: "11111111-1111-4111-8111-111111111111",
+    youtubeVideoId: "abc123def45",
+    snapshotAt: new Date("2026-05-20T00:10:00.000Z"),
+    windowDays: 30,
+    views: 100,
+    engagedViews: 70,
+    likes: 5,
+    comments: 1,
+    shares: 2,
+    subscribersGained: 3,
+    averageViewDurationSeconds: 21,
+    averageViewPercentage: 55,
+    viewsPerHour: 4.2,
+    likeRate: 5,
+    rawDataApi: {},
+    rawAnalyticsApi: {},
+    createdAt: new Date("2026-05-20T00:10:00.000Z"),
     ...overrides,
   };
 }
