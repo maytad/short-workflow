@@ -3,6 +3,9 @@ import type { Job } from "@short-workflow/shared";
 type JobStatusFilter = "active" | Job["status"] | undefined;
 
 export const queryKeys = {
+  analytics: {
+    youtube: (windowDays: number) => ["analytics", "youtube", { windowDays }] as const,
+  },
   projects: {
     all: ["projects"] as const,
     assets: (projectId: string) => [...queryKeys.projects.detail(projectId), "assets"] as const,
