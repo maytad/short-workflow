@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  buildAnalyticsDashboard,
   buildRuleDiagnosis,
   deriveSnapshotMetrics,
   fetchRecentChannelVideos,
   fetchYoutubeAnalyticsRows,
   fetchYoutubeVideoDetails,
+  median,
   parseIso8601DurationSeconds,
   requiredScopeError,
   type FetchFn,
 } from "./youtubeAnalytics";
+import type { YoutubeAnalyticsVideoSummary } from "@short-workflow/shared";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -31,6 +34,85 @@ function recordingFetch(response: Response) {
 function calledUrl(input: string | URL | Request) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
+
+describe("median", () => {
+  test("returns the middle value after sorting numeric values", () => {
+    expect(median([3, 1, 2])).toBe(2);
+  });
+
+  test("returns null when all values are nullish", () => {
+    expect(median([null, undefined])).toBeNull();
+  });
+});
+
+describe("buildAnalyticsDashboard", () => {
+  test("summarizes a single YouTube analytics video", () => {
+    const video: YoutubeAnalyticsVideoSummary = {
+      link: {
+        id: "11111111-1111-4111-8111-111111111111",
+        youtubeVideoId: "abc123def45",
+        projectId: "22222222-2222-4222-8222-222222222222",
+        uploadJobId: "33333333-3333-4333-8333-333333333333",
+        source: "db_upload",
+        linkStatus: "linked",
+        title: "Why cold batteries fade fast",
+        description: "A compact explanation.",
+        publishedAt: "2026-05-19T02:00:00.000Z",
+        durationSeconds: 38,
+        privacyStatus: "private",
+        lastSyncedAt: "2026-05-20T00:10:00.000Z",
+        createdAt: "2026-05-20T00:00:00.000Z",
+        updatedAt: "2026-05-20T00:05:00.000Z",
+      },
+      latestSnapshot: {
+        id: "44444444-4444-4444-8444-444444444444",
+        youtubeVideoLinkId: "11111111-1111-4111-8111-111111111111",
+        youtubeVideoId: "abc123def45",
+        snapshotAt: "2026-05-20T00:10:00.000Z",
+        windowDays: 30,
+        views: 100,
+        engagedViews: 70,
+        likes: 5,
+        comments: 1,
+        shares: 2,
+        subscribersGained: 3,
+        averageViewDurationSeconds: 21,
+        averageViewPercentage: 55,
+        viewsPerHour: 4.2,
+        likeRate: 5,
+        createdAt: "2026-05-20T00:10:00.000Z",
+      },
+      latestRuleDiagnosis: {
+        id: "55555555-5555-4555-8555-555555555555",
+        youtubeVideoLinkId: "11111111-1111-4111-8111-111111111111",
+        snapshotId: "44444444-4444-4444-8444-444444444444",
+        diagnosisType: "rule_based",
+        model: null,
+        reasoningEffort: null,
+        inputHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        summaryTh: "Retention is weak.",
+        suggestionsEn: { labels: ["weak_hold"] },
+        createdAt: "2026-05-20T00:10:00.000Z",
+        updatedAt: "2026-05-20T00:10:00.000Z",
+      },
+      latestAiDiagnosis: null,
+      creativeContext: null,
+    };
+
+    const dashboard = buildAnalyticsDashboard({
+      auth: {
+        connected: true,
+        hasRequiredScopes: true,
+        reconnectRequired: false,
+      },
+      videos: [video],
+      windowDays: 30,
+    });
+
+    expect(dashboard.aggregates.totalViews).toBe(100);
+    expect(dashboard.aggregates.bestPerformerVideoId).toBe("abc123def45");
+  });
+});
 
 describe("parseIso8601DurationSeconds", () => {
   test("parses YouTube ISO-8601 video durations into seconds", () => {

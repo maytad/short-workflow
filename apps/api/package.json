@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@elysiajs/cors": "latest",
+    "@short-workflow/ai": "workspace:*",
     "@short-workflow/db": "workspace:*",
     "@short-workflow/shared": "workspace:*",
     "elysia": "latest",

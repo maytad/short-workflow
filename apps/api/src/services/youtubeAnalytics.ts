@@ -1,3 +1,28 @@
+import { buildYoutubeDiagnosisInputHash, diagnoseYoutubeVideo } from "@short-workflow/ai";
+import {
+  createYoutubeAnalyticsSnapshot,
+  getYoutubeCreativeContext,
+  getYoutubeVideoLinkByVideoId,
+  listLatestYoutubeAnalyticsSnapshots,
+  listLatestYoutubeVideoDiagnoses,
+  listRecentYoutubeVideoLinks,
+  listYoutubeUploadVideoMappings,
+  normalizeYoutubeMetricNumber,
+  upsertYoutubeVideoDiagnosis,
+  upsertYoutubeVideoLink,
+  type DbClient,
+  type YoutubeAnalyticsSnapshotRow,
+  type YoutubeVideoDiagnosisRow,
+  type YoutubeVideoLinkRow,
+} from "@short-workflow/db";
+import type {
+  YoutubeAiDiagnosisResponse,
+  YoutubeAnalyticsDashboardResponse,
+  YoutubeAnalyticsVideoSummary,
+} from "@short-workflow/shared";
+
+import { getYoutubeAuthStatus, readFreshYoutubeAccessToken } from "./youtubeAuth";
+
 export type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export type DerivedMetricInput = {
@@ -89,6 +114,58 @@ const YOUTUBE_ANALYTICS_METRICS = [
   "shares",
   "subscribersGained",
 ].join(",");
+
+export function median(values: Array<number | null | undefined>) {
+  const numeric = values
+    .filter((value): value is number => typeof value === "number")
+    .sort((left, right) => left - right);
+
+  if (numeric.length === 0) {
+    return null;
+  }
+
+  return numeric[Math.floor(numeric.length / 2)] ?? null;
+}
+
+export function buildAnalyticsDashboard(input: {
+  auth: YoutubeAnalyticsDashboardResponse["auth"];
+  windowDays: number;
+  videos: YoutubeAnalyticsVideoSummary[];
+}): YoutubeAnalyticsDashboardResponse {
+  const totalViews = input.videos.reduce(
+    (sum, video) => sum + (video.latestSnapshot?.views ?? 0),
+    0,
+  );
+  const best = [...input.videos].sort(
+    (left, right) => (right.latestSnapshot?.views ?? 0) - (left.latestSnapshot?.views ?? 0),
+  )[0];
+  const needsAttentionCount = input.videos.filter((video) => {
+    const suggestions = video.latestRuleDiagnosis?.suggestionsEn as
+      | { labels?: unknown }
+      | undefined;
+
+    return Array.isArray(suggestions?.labels)
+      ? suggestions.labels.some(
+          (label) => label === "weak_hold" || label === "low_exposure_proxy",
+        )
+      : false;
+  }).length;
+
+  return {
+    auth: input.auth,
+    windowDays: input.windowDays,
+    aggregates: {
+      recentVideoCount: input.videos.length,
+      totalViews,
+      needsAttentionCount,
+      medianAverageViewPercentage: median(
+        input.videos.map((video) => video.latestSnapshot?.averageViewPercentage),
+      ),
+      bestPerformerVideoId: best?.latestSnapshot?.views ? best.link.youtubeVideoId : null,
+    },
+    videos: input.videos,
+  };
+}
 
 export function parseIso8601DurationSeconds(value: string): number | null {
   const match = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(value);
@@ -335,4 +412,350 @@ export async function fetchYoutubeAnalyticsRows({
       row.map((value, index) => [headers[index]?.name ?? `column_${index}`, value]),
     ),
   );
+}
+
+function toIso(value: Date | null): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function toApiVideoLink(row: YoutubeVideoLinkRow) {
+  return {
+    id: row.id,
+    youtubeVideoId: row.youtubeVideoId,
+    projectId: row.projectId,
+    uploadJobId: row.uploadJobId,
+    source: row.source as "db_upload" | "channel_discovery",
+    linkStatus: row.linkStatus as "linked" | "unlinked",
+    title: row.title,
+    description: row.description,
+    publishedAt: toIso(row.publishedAt),
+    durationSeconds: row.durationSeconds,
+    privacyStatus: row.privacyStatus,
+    lastSyncedAt: toIso(row.lastSyncedAt),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function toApiSnapshot(row: YoutubeAnalyticsSnapshotRow) {
+  return {
+    id: row.id,
+    youtubeVideoLinkId: row.youtubeVideoLinkId,
+    youtubeVideoId: row.youtubeVideoId,
+    snapshotAt: row.snapshotAt.toISOString(),
+    windowDays: row.windowDays,
+    views: row.views,
+    engagedViews: row.engagedViews,
+    likes: row.likes,
+    comments: row.comments,
+    shares: row.shares,
+    subscribersGained: row.subscribersGained,
+    averageViewDurationSeconds: row.averageViewDurationSeconds,
+    averageViewPercentage: row.averageViewPercentage,
+    viewsPerHour: row.viewsPerHour,
+    likeRate: row.likeRate,
+    createdAt: row.createdAt.toISOString(),
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function toApiDiagnosis(row: YoutubeVideoDiagnosisRow) {
+  return {
+    id: row.id,
+    youtubeVideoLinkId: row.youtubeVideoLinkId,
+    snapshotId: row.snapshotId,
+    diagnosisType: row.diagnosisType as "rule_based" | "ai",
+    model: row.model,
+    reasoningEffort: row.reasoningEffort,
+    inputHash: row.inputHash,
+    summaryTh: row.summaryTh,
+    suggestionsEn: toRecord(row.suggestionsEn),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+function dateOnly(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function parseDate(value: string | undefined): Date | null {
+  return value ? new Date(value) : null;
+}
+
+function analyticsByVideoId(rows: YoutubeAnalyticsRow[]) {
+  const map = new Map<string, YoutubeAnalyticsRow>();
+
+  for (const row of rows) {
+    if (typeof row.video === "string") {
+      map.set(row.video, row);
+    }
+  }
+
+  return map;
+}
+
+function metric(row: YoutubeAnalyticsRow | undefined, key: string) {
+  return normalizeYoutubeMetricNumber(row?.[key]);
+}
+
+function intMetric(row: YoutubeAnalyticsRow | undefined, key: string) {
+  const value = metric(row, key);
+
+  return value === null ? null : Math.trunc(value);
+}
+
+function toSnapshotRuleInput(snapshot: YoutubeAnalyticsSnapshotRow): NullableAnalyticsMetrics {
+  return {
+    views: snapshot.views,
+    viewsPerHour: snapshot.viewsPerHour,
+    averageViewPercentage: snapshot.averageViewPercentage,
+    likeRate: snapshot.likeRate,
+  };
+}
+
+async function loadDashboard(
+  db: DbClient,
+  input: { windowDays: number },
+): Promise<YoutubeAnalyticsDashboardResponse> {
+  const auth = await getYoutubeAuthStatus();
+  const since = new Date(Date.now() - input.windowDays * 24 * 60 * 60 * 1000);
+  const links = await listRecentYoutubeVideoLinks(db, since);
+  const linkIds = links.map((link) => link.id);
+  const snapshots = await listLatestYoutubeAnalyticsSnapshots(db, linkIds);
+  const diagnoses = await listLatestYoutubeVideoDiagnoses(db, {
+    youtubeVideoLinkIds: linkIds,
+  });
+  const creativeContexts = await Promise.all(
+    links.map((link) => getYoutubeCreativeContext(db, link.youtubeVideoId)),
+  );
+
+  const videos = links.map((link, index) => {
+    const latestSnapshot =
+      snapshots.find((snapshot) => snapshot.youtubeVideoLinkId === link.id) ?? null;
+    const latestRuleDiagnosis =
+      diagnoses.find(
+        (diagnosis) =>
+          diagnosis.youtubeVideoLinkId === link.id && diagnosis.diagnosisType === "rule_based",
+      ) ?? null;
+    const latestAiDiagnosis =
+      diagnoses.find(
+        (diagnosis) =>
+          diagnosis.youtubeVideoLinkId === link.id && diagnosis.diagnosisType === "ai",
+      ) ?? null;
+
+    return {
+      link: toApiVideoLink(link),
+      latestSnapshot: latestSnapshot ? toApiSnapshot(latestSnapshot) : null,
+      latestRuleDiagnosis: latestRuleDiagnosis ? toApiDiagnosis(latestRuleDiagnosis) : null,
+      latestAiDiagnosis: latestAiDiagnosis ? toApiDiagnosis(latestAiDiagnosis) : null,
+      creativeContext: creativeContexts[index] ?? null,
+    };
+  });
+
+  return buildAnalyticsDashboard({
+    auth,
+    windowDays: input.windowDays,
+    videos,
+  });
+}
+
+async function refreshYoutubeAnalyticsDashboard(
+  db: DbClient,
+  input: { windowDays: number },
+): Promise<YoutubeAnalyticsDashboardResponse> {
+  const now = new Date();
+  const accessToken = await readFreshYoutubeAccessToken();
+  const recentIds = await fetchRecentChannelVideos({
+    accessToken,
+    now,
+    windowDays: input.windowDays,
+  });
+  const details = await fetchYoutubeVideoDetails({
+    accessToken,
+    youtubeVideoIds: recentIds,
+  });
+  const startDate = dateOnly(new Date(now.getTime() - input.windowDays * 24 * 60 * 60 * 1000));
+  const analyticsRows = analyticsByVideoId(
+    await fetchYoutubeAnalyticsRows({
+      accessToken,
+      endDate: dateOnly(now),
+      startDate,
+      youtubeVideoIds: recentIds,
+    }),
+  );
+  const mappings = await listYoutubeUploadVideoMappings(db);
+  const mappingByVideoId = new Map(
+    mappings.map((mapping) => [mapping.youtubeVideoId, mapping] as const),
+  );
+  const createdSnapshots: YoutubeAnalyticsSnapshotRow[] = [];
+
+  for (const item of details) {
+    const mapping = mappingByVideoId.get(item.id);
+    const publishedAt = parseDate(item.snippet?.publishedAt);
+    const analytics = analyticsRows.get(item.id);
+    const views =
+      intMetric(analytics, "views") ?? normalizeYoutubeMetricNumber(item.statistics?.viewCount);
+    const likes =
+      intMetric(analytics, "likes") ?? normalizeYoutubeMetricNumber(item.statistics?.likeCount);
+    const comments =
+      intMetric(analytics, "comments") ??
+      normalizeYoutubeMetricNumber(item.statistics?.commentCount);
+    const derived = deriveSnapshotMetrics({ likes, now, publishedAt, views });
+    const link = await upsertYoutubeVideoLink(db, {
+      youtubeVideoId: item.id,
+      projectId: mapping?.projectId ?? null,
+      uploadJobId: mapping?.uploadJobId ?? null,
+      source: mapping ? "db_upload" : "channel_discovery",
+      linkStatus: mapping ? "linked" : "unlinked",
+      title: item.snippet?.title?.trim() || "Untitled YouTube video",
+      description: item.snippet?.description ?? null,
+      publishedAt,
+      durationSeconds: item.contentDetails?.duration
+        ? parseIso8601DurationSeconds(item.contentDetails.duration)
+        : null,
+      privacyStatus: item.status?.privacyStatus ?? null,
+      lastSyncedAt: now,
+    });
+    const averageViewDuration = metric(analytics, "averageViewDuration");
+
+    createdSnapshots.push(
+      await createYoutubeAnalyticsSnapshot(db, {
+        youtubeVideoLinkId: link.id,
+        youtubeVideoId: item.id,
+        windowDays: input.windowDays,
+        views,
+        engagedViews: intMetric(analytics, "engagedViews"),
+        likes,
+        comments,
+        shares: intMetric(analytics, "shares"),
+        subscribersGained: intMetric(analytics, "subscribersGained"),
+        averageViewDurationSeconds:
+          averageViewDuration === null ? null : Math.trunc(averageViewDuration),
+        averageViewPercentage: metric(analytics, "averageViewPercentage"),
+        viewsPerHour: derived.viewsPerHour,
+        likeRate: derived.likeRate,
+        rawDataApi: toRecord(item),
+        rawAnalyticsApi: analytics ?? {},
+      }),
+    );
+  }
+
+  const recentMedians: NullableAnalyticsMetrics = {
+    views: median(createdSnapshots.map((snapshot) => snapshot.views)),
+    viewsPerHour: median(createdSnapshots.map((snapshot) => snapshot.viewsPerHour)),
+    averageViewPercentage: median(
+      createdSnapshots.map((snapshot) => snapshot.averageViewPercentage),
+    ),
+    likeRate: median(createdSnapshots.map((snapshot) => snapshot.likeRate)),
+  };
+
+  for (const snapshot of createdSnapshots) {
+    const link = await getYoutubeVideoLinkByVideoId(db, snapshot.youtubeVideoId);
+
+    if (!link) {
+      continue;
+    }
+
+    const ageHours =
+      link.publishedAt === null
+        ? null
+        : Math.max(0, (now.getTime() - link.publishedAt.getTime()) / 3_600_000);
+    const rule = buildRuleDiagnosis({
+      ageHours,
+      recentMedians,
+      snapshot: toSnapshotRuleInput(snapshot),
+    });
+    const inputHash = buildYoutubeDiagnosisInputHash({
+      ageHours,
+      recentMedians,
+      snapshot: toSnapshotRuleInput(snapshot),
+      type: "rule_based",
+      youtubeVideoId: snapshot.youtubeVideoId,
+    });
+
+    await upsertYoutubeVideoDiagnosis(db, {
+      youtubeVideoLinkId: link.id,
+      snapshotId: snapshot.id,
+      diagnosisType: "rule_based",
+      model: null,
+      reasoningEffort: null,
+      inputHash,
+      summaryTh: rule.summaryTh,
+      suggestionsEn: rule.suggestionsEn,
+      rawOutput: rule,
+    });
+  }
+
+  return loadDashboard(db, input);
+}
+
+async function analyzeYoutubeVideoWithAi(
+  db: DbClient,
+  input: { youtubeVideoId: string },
+): Promise<YoutubeAiDiagnosisResponse> {
+  const link = await getYoutubeVideoLinkByVideoId(db, input.youtubeVideoId);
+
+  if (!link) {
+    throw new Error("youtube_video_not_found");
+  }
+
+  const [snapshot] = await listLatestYoutubeAnalyticsSnapshots(db, [link.id]);
+
+  if (!snapshot) {
+    throw new Error("youtube_analytics_snapshot_missing");
+  }
+
+  const [latestRuleDiagnosis] = await listLatestYoutubeVideoDiagnoses(db, {
+    diagnosisType: "rule_based",
+    youtubeVideoLinkIds: [link.id],
+  });
+  const creativeContext = await getYoutubeCreativeContext(db, input.youtubeVideoId);
+  const diagnosisInput = {
+    creativeContext,
+    latestRuleDiagnosis: latestRuleDiagnosis ? toApiDiagnosis(latestRuleDiagnosis) : null,
+    latestSnapshot: toApiSnapshot(snapshot),
+    link: toApiVideoLink(link),
+  };
+  const inputHash = buildYoutubeDiagnosisInputHash(diagnosisInput);
+
+  try {
+    const ai = await diagnoseYoutubeVideo({ diagnosisInput });
+    const row = await upsertYoutubeVideoDiagnosis(db, {
+      youtubeVideoLinkId: link.id,
+      snapshotId: snapshot.id,
+      diagnosisType: "ai",
+      model: ai.model,
+      reasoningEffort: ai.reasoningEffort,
+      inputHash,
+      summaryTh: ai.diagnosis.summaryTh,
+      suggestionsEn: ai.diagnosis,
+      rawOutput: {
+        diagnosis: ai.diagnosis,
+        responseId: ai.responseId,
+        status: ai.status,
+      },
+    });
+
+    return { diagnosis: toApiDiagnosis(row) };
+  } catch (error) {
+    if (error instanceof Error && error.message === "OPENAI_API_KEY_missing") {
+      throw error;
+    }
+
+    throw new Error("youtube_ai_diagnosis_failed");
+  }
+}
+
+export function createYoutubeAnalyticsRouteServices() {
+  return {
+    getDashboard: loadDashboard,
+    refreshDashboard: refreshYoutubeAnalyticsDashboard,
+    analyzeVideo: analyzeYoutubeVideoWithAi,
+  };
 }
