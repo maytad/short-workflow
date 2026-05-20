@@ -3,6 +3,7 @@ import { createDbClient, type DbClient } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
 import { internalError, notFound } from "./http";
+import { createAnalyticsRoutes, type AnalyticsRouteServices } from "./routes/analytics";
 import { healthRoutes } from "./routes/health";
 import { createProjectRoutes, type ProjectRouteServices } from "./routes/projects";
 import { createYoutubeRoutes } from "./routes/youtube";
@@ -11,6 +12,7 @@ import type { YoutubeAuthServices } from "./services/youtubeAuth";
 type CreateAppOptions = {
   db?: DbClient;
   databaseUrl?: string;
+  analyticsServices?: AnalyticsRouteServices;
   projectServices?: ProjectRouteServices;
   youtubeServices?: YoutubeAuthServices;
 };
@@ -28,6 +30,7 @@ export function createApp(options: CreateAppOptions = {}) {
     .use(cors({ origin: ["http://localhost:5173", "http://127.0.0.1:5173"] }))
     .use(healthRoutes)
     .use(createYoutubeRoutes(options.youtubeServices))
+    .use(createAnalyticsRoutes(options.analyticsServices))
     .use(createProjectRoutes(options.projectServices))
     .onError(({ code, set }) => {
       if (code === "NOT_FOUND") {
