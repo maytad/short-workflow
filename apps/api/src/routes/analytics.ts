@@ -7,7 +7,7 @@ import {
 import type { DbClient } from "@short-workflow/db";
 import { Elysia } from "elysia";
 
-import { conflict, internalError, jsonError, notFound, validationFailed } from "../http";
+import { conflict, internalError, jsonError, validationFailed } from "../http";
 
 type StatusSetter = {
   status?: number | string;
@@ -82,7 +82,7 @@ function mapAnalyticsError(set: StatusSetter, error: unknown) {
   }
 
   if (error.message === "youtube_video_not_found") {
-    return notFound(set);
+    return jsonError(set, 404, "youtube_video_not_found");
   }
 
   if (error.message === "youtube_analytics_snapshot_missing") {
@@ -96,7 +96,7 @@ function mapAnalyticsError(set: StatusSetter, error: unknown) {
     return jsonError(set, 502, error.message);
   }
 
-  throw error;
+  return internalError(set);
 }
 
 export function createAnalyticsRoutes(services: AnalyticsRouteServices = unavailableServices) {

@@ -193,6 +193,22 @@ describe("analytics routes", () => {
     expect(await response.json()).toEqual({ error: "youtube_reconnect_required" });
   });
 
+  test("GET /analytics/youtube maps unknown service errors to internal envelope", async () => {
+    const app = createApp({
+      db: testDb,
+      analyticsServices: services({
+        getDashboard: async () => {
+          throw new Error("boom");
+        },
+      }),
+    });
+
+    const response = await app.handle(request("/analytics/youtube"));
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "internal_error" });
+  });
+
   test("POST /analytics/youtube/videos/:youtubeVideoId/analyze returns AI diagnosis", async () => {
     const app = createApp({ db: testDb, analyticsServices: services() });
 
@@ -202,5 +218,23 @@ describe("analytics routes", () => {
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual(aiDiagnosis());
+  });
+
+  test("POST analyze maps missing YouTube videos to analytics-specific not found", async () => {
+    const app = createApp({
+      db: testDb,
+      analyticsServices: services({
+        analyzeVideo: async () => {
+          throw new Error("youtube_video_not_found");
+        },
+      }),
+    });
+
+    const response = await app.handle(
+      request("/analytics/youtube/videos/abc123def45/analyze", { method: "POST" }),
+    );
+
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: "youtube_video_not_found" });
   });
 });
