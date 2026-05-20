@@ -27,40 +27,73 @@ describe("deriveSnapshotMetrics", () => {
     expect(metrics.viewsPerHour).toBeCloseTo(41.67, 2);
     expect(metrics.likeRate).toBe(2.5);
   });
+
+  test("returns nullable metrics when snapshot values are missing", () => {
+    const metrics = deriveSnapshotMetrics({
+      likes: null,
+      now: new Date("2026-05-20T00:00:00.000Z"),
+      publishedAt: null,
+      views: null,
+    });
+
+    expect(metrics).toEqual({
+      ageHours: null,
+      likeRate: null,
+      viewsPerHour: null,
+    });
+  });
 });
 
 describe("buildRuleDiagnosis", () => {
   test("labels strong retention with low distribution", () => {
     const diagnosis = buildRuleDiagnosis({
       ageHours: 48,
-      likeRate: 2.4,
-      medianLikeRate: 1.5,
-      medianRetentionPercent: 75,
-      medianViews: 900,
-      medianViewsPerHour: 30,
-      retentionPercent: 92,
-      views: 150,
-      viewsPerHour: 3,
+      recentMedians: {
+        averageViewPercentage: 75,
+        likeRate: 1.5,
+        views: 900,
+        viewsPerHour: 30,
+      },
+      snapshot: {
+        averageViewPercentage: 92,
+        likeRate: 2.4,
+        views: 150,
+        viewsPerHour: 3,
+      },
     });
 
     expect(diagnosis.labels).toContain("strong_retention_low_distribution");
     expect(diagnosis.summaryTh).toContain("retention");
+    expect(diagnosis.suggestionsEn).toMatchObject({
+      labels: diagnosis.labels,
+      note: expect.stringContaining("proxy"),
+      priority: diagnosis.priority,
+    });
   });
 
   test("labels videos newer than three hours as too new", () => {
     const diagnosis = buildRuleDiagnosis({
       ageHours: 0.5,
-      likeRate: 0,
-      medianLikeRate: 1,
-      medianRetentionPercent: 50,
-      medianViews: 100,
-      medianViewsPerHour: 10,
-      retentionPercent: 0,
-      views: 1,
-      viewsPerHour: 2,
+      recentMedians: {
+        averageViewPercentage: 50,
+        likeRate: 1,
+        views: 100,
+        viewsPerHour: 10,
+      },
+      snapshot: {
+        averageViewPercentage: 0,
+        likeRate: 0,
+        views: 1,
+        viewsPerHour: 2,
+      },
     });
 
     expect(diagnosis.labels).toEqual(["too_new"]);
+    expect(diagnosis.priority).toBe("low");
+    expect(diagnosis.suggestionsEn).toMatchObject({
+      labels: ["too_new"],
+      priority: "low",
+    });
   });
 });
 

@@ -1,35 +1,36 @@
 export type FetchFn = (input: string | URL | Request, init?: RequestInit) => Promise<Response>;
 
 export type DerivedMetricInput = {
-  views: number;
-  likes: number;
-  publishedAt: Date | string;
-  now?: Date | string;
+  views: number | null;
+  likes: number | null;
+  publishedAt: Date | null;
+  now: Date;
 };
 
 export type DerivedSnapshotMetrics = {
-  ageHours: number;
-  viewsPerHour: number;
-  likeRate: number;
+  ageHours: number | null;
+  viewsPerHour: number | null;
+  likeRate: number | null;
+};
+
+type NullableAnalyticsMetrics = {
+  views: number | null;
+  viewsPerHour: number | null;
+  averageViewPercentage: number | null;
+  likeRate: number | null;
 };
 
 export type RuleDiagnosisInput = {
-  views: number;
-  medianViews: number;
-  viewsPerHour: number;
-  medianViewsPerHour: number;
-  retentionPercent: number;
-  medianRetentionPercent: number;
-  likeRate: number;
-  medianLikeRate: number;
-  ageHours: number;
+  snapshot: NullableAnalyticsMetrics;
+  recentMedians: NullableAnalyticsMetrics;
+  ageHours: number | null;
 };
 
 export type RuleDiagnosisOutput = {
   labels: string[];
   priority: "low" | "medium" | "high";
   summaryTh: string;
-  suggestionsEn: string[];
+  suggestionsEn: Record<string, unknown>;
 };
 
 export type YoutubeVideoApiItem = {
@@ -104,11 +105,19 @@ export function parseIso8601DurationSeconds(value: string): number | null {
 }
 
 export function deriveSnapshotMetrics(input: DerivedMetricInput): DerivedSnapshotMetrics {
-  const now = input.now ? new Date(input.now) : new Date();
-  const publishedAt = new Date(input.publishedAt);
-  const ageHours = Math.max(0, (now.getTime() - publishedAt.getTime()) / 3_600_000);
-  const viewsPerHour = ageHours > 0 ? input.views / ageHours : input.views;
-  const likeRate = input.views > 0 ? (input.likes / input.views) * 100 : 0;
+  const ageHours = input.publishedAt
+    ? Math.max(0, (input.now.getTime() - input.publishedAt.getTime()) / 3_600_000)
+    : null;
+  const viewsPerHour =
+    input.views === null || ageHours === null
+      ? null
+      : ageHours > 0
+        ? input.views / ageHours
+        : input.views;
+  const likeRate =
+    input.views === null || input.likes === null || input.views <= 0
+      ? null
+      : (input.likes / input.views) * 100;
 
   return { ageHours, likeRate, viewsPerHour };
 }
@@ -124,25 +133,40 @@ function addLabel(labels: string[], label: string) {
 }
 
 export function buildRuleDiagnosis(input: RuleDiagnosisInput): RuleDiagnosisOutput {
-  if (input.ageHours < 3) {
+  if (input.ageHours !== null && input.ageHours < 3) {
     return {
       labels: ["too_new"],
-      priority: "medium",
+      priority: "low",
       summaryTh: "วิดีโอยังใหม่เกินไป: too_new ควรรอข้อมูลเพิ่มก่อนตัดสิน",
-      suggestionsEn: [
-        "labels: too_new",
-        "priority: medium",
-        "proxy-note: Analytics values are early proxy signals, not final performance truth.",
-      ],
+      suggestionsEn: {
+        labels: ["too_new"],
+        note: "Analytics values are early proxy signals, not final performance truth.",
+        priority: "low",
+      },
     };
   }
 
   const labels: string[] = [];
-  const lowViews = input.views < input.medianViews * 0.5;
-  const lowVelocity = input.viewsPerHour < input.medianViewsPerHour * 0.5;
-  const strongRetention = input.retentionPercent >= input.medianRetentionPercent * 1.15;
-  const weakRetention = input.retentionPercent < input.medianRetentionPercent * 0.8;
-  const highLikeRate = input.likeRate >= input.medianLikeRate * 1.3;
+  const lowViews =
+    input.snapshot.views !== null &&
+    input.recentMedians.views !== null &&
+    input.snapshot.views < input.recentMedians.views * 0.5;
+  const lowVelocity =
+    input.snapshot.viewsPerHour !== null &&
+    input.recentMedians.viewsPerHour !== null &&
+    input.snapshot.viewsPerHour < input.recentMedians.viewsPerHour * 0.5;
+  const strongRetention =
+    input.snapshot.averageViewPercentage !== null &&
+    input.recentMedians.averageViewPercentage !== null &&
+    input.snapshot.averageViewPercentage >= input.recentMedians.averageViewPercentage * 1.15;
+  const weakRetention =
+    input.snapshot.averageViewPercentage !== null &&
+    input.recentMedians.averageViewPercentage !== null &&
+    input.snapshot.averageViewPercentage < input.recentMedians.averageViewPercentage * 0.8;
+  const highLikeRate =
+    input.snapshot.likeRate !== null &&
+    input.recentMedians.likeRate !== null &&
+    input.snapshot.likeRate >= input.recentMedians.likeRate * 1.3;
 
   if (lowViews || lowVelocity) {
     addLabel(labels, "low_exposure_proxy");
@@ -161,10 +185,18 @@ export function buildRuleDiagnosis(input: RuleDiagnosisInput): RuleDiagnosisOutp
   }
 
   if (
-    input.views >= input.medianViews * 1.5 &&
-    input.viewsPerHour >= input.medianViewsPerHour * 1.25 &&
-    input.retentionPercent >= input.medianRetentionPercent &&
-    input.likeRate >= input.medianLikeRate
+    input.snapshot.views !== null &&
+    input.recentMedians.views !== null &&
+    input.snapshot.viewsPerHour !== null &&
+    input.recentMedians.viewsPerHour !== null &&
+    input.snapshot.averageViewPercentage !== null &&
+    input.recentMedians.averageViewPercentage !== null &&
+    input.snapshot.likeRate !== null &&
+    input.recentMedians.likeRate !== null &&
+    input.snapshot.views >= input.recentMedians.views * 1.5 &&
+    input.snapshot.viewsPerHour >= input.recentMedians.viewsPerHour * 1.25 &&
+    input.snapshot.averageViewPercentage >= input.recentMedians.averageViewPercentage &&
+    input.snapshot.likeRate >= input.recentMedians.likeRate
   ) {
     addLabel(labels, "winner_candidate");
   }
@@ -183,11 +215,11 @@ export function buildRuleDiagnosis(input: RuleDiagnosisInput): RuleDiagnosisOutp
     labels,
     priority,
     summaryTh: `สรุป diagnosis: ${labels.join(", ")} โดยดู retention, distribution, like rate และ scale เทียบ median`,
-    suggestionsEn: [
-      `labels: ${labels.join(", ")}`,
-      `priority: ${priority}`,
-      "proxy-note: Use this as a rule-based proxy until deeper audience retention and distribution data are integrated.",
-    ],
+    suggestionsEn: {
+      labels,
+      note: "Use this as a rule-based proxy until deeper audience retention and distribution data are integrated.",
+      priority,
+    },
   };
 }
 
