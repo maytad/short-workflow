@@ -6,6 +6,7 @@ import { AlertCircle, Loader2, RefreshCw, ShieldAlert, VideoOff } from "lucide-r
 import { useMemo, useState } from "react";
 
 import { ApiError } from "../../api/client";
+import { useStartYoutubeAuthMutation } from "../projects/hooks";
 import { formatMetric } from "./analyticsFormat";
 import { AnalyticsDetailPanel } from "./AnalyticsDetailPanel";
 import { AnalyticsTable } from "./AnalyticsTable";
@@ -30,6 +31,7 @@ export function AnalyticsDashboard() {
   const analyticsQuery = useYoutubeAnalyticsQuery(ANALYTICS_WINDOW_DAYS);
   const refreshMutation = useRefreshYoutubeAnalyticsMutation(ANALYTICS_WINDOW_DAYS);
   const analyzeMutation = useAnalyzeYoutubeVideoMutation(ANALYTICS_WINDOW_DAYS);
+  const startYoutubeAuthMutation = useStartYoutubeAuthMutation();
   const [selectedVideoId, setSelectedVideoId] = useState<string | null>(null);
 
   const dashboard = analyticsQuery.data;
@@ -49,6 +51,14 @@ export function AnalyticsDashboard() {
 
   function handleAnalyze(youtubeVideoId: string) {
     analyzeMutation.mutate(youtubeVideoId);
+  }
+
+  function handleReconnect() {
+    startYoutubeAuthMutation.mutate(undefined, {
+      onSuccess: (response) => {
+        window.open(response.authUrl, "_blank", "noopener,noreferrer");
+      },
+    });
   }
 
   return (
@@ -73,12 +83,20 @@ export function AnalyticsDashboard() {
         </button>
       </div>
 
-      {reconnectRequired ? <ReconnectBanner /> : null}
+      {reconnectRequired ? (
+        <ReconnectBanner
+          isPending={startYoutubeAuthMutation.isPending}
+          onReconnect={handleReconnect}
+        />
+      ) : null}
       {refreshMutation.error ? (
         <InlineError message="Analytics refresh failed. Check the API logs and retry." />
       ) : null}
       {analyzeMutation.error ? (
         <InlineError message="AI diagnosis could not be started for this video." />
+      ) : null}
+      {startYoutubeAuthMutation.error ? (
+        <InlineError message="YouTube reconnect could not be started." />
       ) : null}
 
       {analyticsQuery.isLoading ? (
@@ -128,7 +146,7 @@ function selectVideo(
 function summarizeDashboard(dashboard: YoutubeAnalyticsDashboardResponse | undefined) {
   const videos = dashboard?.videos ?? [];
   const linkedVideos = videos.filter((video) => video.link.linkStatus === "linked");
-  const views = linkedVideos
+  const views = videos
     .map((video) => video.latestSnapshot?.views)
     .filter((value): value is number => typeof value === "number")
     .sort((a, b) => a - b);
@@ -202,7 +220,13 @@ function SummaryMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ReconnectBanner() {
+function ReconnectBanner({
+  isPending,
+  onReconnect,
+}: {
+  isPending: boolean;
+  onReconnect: () => void;
+}) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-accent/30 bg-card p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="flex gap-3">
@@ -214,12 +238,15 @@ function ReconnectBanner() {
           </p>
         </div>
       </div>
-      <a
-        className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px"
-        href="/api/youtube/auth/start"
+      <button
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={isPending}
+        onClick={onReconnect}
+        type="button"
       >
+        {isPending ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
         Reconnect
-      </a>
+      </button>
     </div>
   );
 }
