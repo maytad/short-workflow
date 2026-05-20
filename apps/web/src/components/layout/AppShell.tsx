@@ -17,9 +17,17 @@ export function AppShell({ children }: PropsWithChildren) {
           </Link>
 
           <nav className="flex items-center gap-1" aria-label="Primary">
-            <NavLink icon={<Home className="size-4" />} label="Projects" to="/" />
-            <NavLink icon={<Boxes className="size-4" />} label="Queue" to="/" />
-            <NavLink icon={<BarChart3 className="size-4" />} label="Analytics" to="/analytics" />
+            <NavLink
+              icon={<Home className="size-4" aria-hidden="true" />}
+              label="Projects"
+              to="/"
+            />
+            <NavLink icon={<Boxes className="size-4" aria-hidden="true" />} label="Queue" to="/" />
+            <NavLink
+              icon={<BarChart3 className="size-4" aria-hidden="true" />}
+              label="Analytics"
+              to="/analytics"
+            />
           </nav>
         </div>
       </header>
@@ -41,8 +49,9 @@ function NavLink({ icon, label, to }: NavLinkProps) {
       activeProps={{
         className: "bg-muted text-foreground",
       }}
+      aria-label={label}
       className={cn(
-        "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+        "inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
       )}
       to={to}
     >

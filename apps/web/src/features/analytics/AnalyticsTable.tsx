@@ -115,7 +115,7 @@ export function AnalyticsTable({
                     ) : (
                       <button
                         aria-label={`Analyze ${video.link.title}`}
-                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex h-8 items-center justify-center gap-2 rounded-md border border-border bg-background px-2.5 text-xs font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={analyzeDisabled}
                         onClick={() => onAnalyze(video.link.youtubeVideoId)}
                         type="button"

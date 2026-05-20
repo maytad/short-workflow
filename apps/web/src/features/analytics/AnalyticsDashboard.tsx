@@ -54,9 +54,19 @@ export function AnalyticsDashboard() {
   }
 
   function handleReconnect() {
+    const authWindow = window.open("", "_blank", "noopener,noreferrer");
+
     startYoutubeAuthMutation.mutate(undefined, {
+      onError: () => {
+        authWindow?.close();
+      },
       onSuccess: (response) => {
-        window.open(response.authUrl, "_blank", "noopener,noreferrer");
+        if (authWindow && !authWindow.closed) {
+          authWindow.location.assign(response.authUrl);
+          return;
+        }
+
+        window.location.assign(response.authUrl);
       },
     });
   }
@@ -69,7 +79,7 @@ export function AnalyticsDashboard() {
           <h1 className="text-2xl font-semibold tracking-normal">Shorts performance</h1>
         </div>
         <button
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
           disabled={refreshMutation.isPending}
           onClick={() => refreshMutation.mutate({ windowDays: ANALYTICS_WINDOW_DAYS })}
           type="button"
@@ -239,7 +249,7 @@ function ReconnectBanner({
         </div>
       </div>
       <button
-        className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
+        className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60"
         disabled={isPending}
         onClick={onReconnect}
         type="button"
@@ -253,7 +263,10 @@ function ReconnectBanner({
 
 function InlineError({ message }: { message: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-sm shadow-sm">
+    <div
+      className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-sm shadow-sm"
+      role="alert"
+    >
       <AlertCircle className="mt-0.5 size-4 shrink-0 text-accent-foreground" aria-hidden="true" />
       <p className="text-foreground">{message}</p>
     </div>

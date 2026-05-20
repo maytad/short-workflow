@@ -142,7 +142,7 @@ function DetailItem({ label, value }: { label: string; value: string | null }) {
       <dt className="text-xs font-medium uppercase tracking-normal text-muted-foreground">
         {label}
       </dt>
-      <dd className="mt-1 leading-6 text-foreground">{value ?? "-"}</dd>
+      <dd className="mt-1 break-words leading-6 text-foreground">{value ?? "-"}</dd>
     </div>
   );
 }
