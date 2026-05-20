@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildRuleDiagnosis,
   deriveSnapshotMetrics,
+  fetchYoutubeAnalyticsRows,
   parseIso8601DurationSeconds,
   requiredScopeError,
 } from "./youtubeAnalytics";
@@ -41,6 +42,20 @@ describe("deriveSnapshotMetrics", () => {
       likeRate: null,
       viewsPerHour: null,
     });
+  });
+
+  test("returns null views per hour when published time equals now", () => {
+    const now = new Date("2026-05-20T00:00:00.000Z");
+    const metrics = deriveSnapshotMetrics({
+      likes: 5,
+      now,
+      publishedAt: now,
+      views: 100,
+    });
+
+    expect(metrics.ageHours).toBe(0);
+    expect(metrics.viewsPerHour).toBeNull();
+    expect(metrics.likeRate).toBe(5);
   });
 });
 
@@ -101,5 +116,23 @@ describe("requiredScopeError", () => {
   test("detects insufficient YouTube authentication scopes", () => {
     expect(requiredScopeError("Request had insufficient authentication scopes.")).toBe(true);
     expect(requiredScopeError("quotaExceeded")).toBe(false);
+  });
+});
+
+describe("fetchYoutubeAnalyticsRows", () => {
+  test("uses column fallbacks when analytics rows omit headers", async () => {
+    const rows = await fetchYoutubeAnalyticsRows({
+      accessToken: "access-token",
+      endDate: "2026-05-20",
+      fetchFn: async () =>
+        new Response(JSON.stringify({ rows: [["abc123def45", 10]] }), {
+          headers: { "content-type": "application/json" },
+          status: 200,
+        }),
+      startDate: "2026-05-19",
+      youtubeVideoIds: ["abc123def45"],
+    });
+
+    expect(rows).toEqual([{ column_0: "abc123def45", column_1: 10 }]);
   });
 });

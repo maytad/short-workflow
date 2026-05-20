@@ -113,7 +113,7 @@ export function deriveSnapshotMetrics(input: DerivedMetricInput): DerivedSnapsho
       ? null
       : ageHours > 0
         ? input.views / ageHours
-        : input.views;
+        : null;
   const likeRate =
     input.views === null || input.likes === null || input.views <= 0
       ? null
@@ -331,6 +331,8 @@ export async function fetchYoutubeAnalyticsRows({
   const headers = body?.columnHeaders ?? [];
 
   return (body?.rows ?? []).map((row) =>
-    Object.fromEntries(headers.map((header, index) => [header.name, row[index] ?? null])),
+    Object.fromEntries(
+      row.map((value, index) => [headers[index]?.name ?? `column_${index}`, value]),
+    ),
   );
 }
