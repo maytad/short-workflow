@@ -131,6 +131,8 @@ export const youtubeMetadataSchema = z
 export const youtubeAuthStatusSchema = z
   .object({
     connected: z.boolean(),
+    hasRequiredScopes: z.boolean().default(false),
+    reconnectRequired: z.boolean().default(false),
   })
   .strict();
 

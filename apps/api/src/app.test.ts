@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 
 import type { JobRow } from "@short-workflow/db";
 
 import { createApp } from "./app";
 import type { ProjectRouteServices } from "./routes/projects";
+import { hasRequiredYoutubeScopes } from "./services/youtubeAuth";
 
 const project = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -235,7 +239,11 @@ function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectR
       existingActiveCount: 0,
       skippedCurrentCount: 0,
     }),
-    getYoutubeAuthStatus: async () => ({ connected: true }),
+    getYoutubeAuthStatus: async () => ({
+      connected: true,
+      hasRequiredScopes: true,
+      reconnectRequired: false,
+    }),
     ...overrides,
   };
 }
@@ -280,7 +288,11 @@ describe("createApp", () => {
       db: testDb,
       projectServices: createServices(),
       youtubeServices: {
-        getYoutubeAuthStatus: async () => ({ connected: true }),
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: true,
+          reconnectRequired: false,
+        }),
         createYoutubeAuthUrl: async () => ({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
         }),
@@ -292,7 +304,11 @@ describe("createApp", () => {
     const response = await app.handle(request("/youtube/auth/status"));
 
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ connected: true });
+    expect(await response.json()).toEqual({
+      connected: true,
+      hasRequiredScopes: true,
+      reconnectRequired: false,
+    });
   });
 
   test("creates a YouTube auth URL", async () => {
@@ -300,7 +316,11 @@ describe("createApp", () => {
       db: testDb,
       projectServices: createServices(),
       youtubeServices: {
-        getYoutubeAuthStatus: async () => ({ connected: false }),
+        getYoutubeAuthStatus: async () => ({
+          connected: false,
+          hasRequiredScopes: false,
+          reconnectRequired: false,
+        }),
         createYoutubeAuthUrl: async () => ({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=abc",
         }),
@@ -317,12 +337,77 @@ describe("createApp", () => {
     });
   });
 
+  test("creates a YouTube auth URL with upload, Data readonly, and Analytics readonly scopes", async () => {
+    const assetRoot = await mkdtemp(path.join(tmpdir(), "short-workflow-youtube-auth-"));
+    const previousDatabaseUrl = process.env.DATABASE_URL;
+    const previousAssetRoot = process.env.LOCAL_ASSET_ROOT;
+    const previousClientId = process.env.YOUTUBE_OAUTH_CLIENT_ID;
+    process.env.DATABASE_URL = "postgres://user:pass@localhost:5432/db";
+    process.env.LOCAL_ASSET_ROOT = assetRoot;
+    process.env.YOUTUBE_OAUTH_CLIENT_ID = "youtube-client-id";
+    const app = createApp({
+      db: testDb,
+      projectServices: createServices(),
+    });
+
+    try {
+      const response = await app.handle(request("/youtube/auth/start", { method: "POST" }));
+
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as { authUrl: string };
+      const scope = new URL(body.authUrl).searchParams.get("scope");
+
+      expect(scope).toContain("https://www.googleapis.com/auth/youtube.upload");
+      expect(scope).toContain("https://www.googleapis.com/auth/youtube.readonly");
+      expect(scope).toContain("https://www.googleapis.com/auth/yt-analytics.readonly");
+    } finally {
+      if (previousDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = previousDatabaseUrl;
+      }
+
+      if (previousAssetRoot === undefined) {
+        delete process.env.LOCAL_ASSET_ROOT;
+      } else {
+        process.env.LOCAL_ASSET_ROOT = previousAssetRoot;
+      }
+
+      if (previousClientId === undefined) {
+        delete process.env.YOUTUBE_OAUTH_CLIENT_ID;
+      } else {
+        process.env.YOUTUBE_OAUTH_CLIENT_ID = previousClientId;
+      }
+
+      await rm(assetRoot, { force: true, recursive: true });
+    }
+  });
+
+  test("validates required YouTube OAuth scopes", () => {
+    expect(
+      hasRequiredYoutubeScopes(
+        [
+          "https://www.googleapis.com/auth/youtube.upload",
+          "https://www.googleapis.com/auth/youtube.readonly",
+          "https://www.googleapis.com/auth/yt-analytics.readonly",
+        ].join(" "),
+      ),
+    ).toBe(true);
+    expect(
+      hasRequiredYoutubeScopes("https://www.googleapis.com/auth/youtube.upload"),
+    ).toBe(false);
+  });
+
   test("maps missing YouTube OAuth env to conflict", async () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices(),
       youtubeServices: {
-        getYoutubeAuthStatus: async () => ({ connected: false }),
+        getYoutubeAuthStatus: async () => ({
+          connected: false,
+          hasRequiredScopes: false,
+          reconnectRequired: false,
+        }),
         createYoutubeAuthUrl: async () => {
           throw new Error("youtube_oauth_not_configured");
         },
@@ -342,7 +427,11 @@ describe("createApp", () => {
       db: testDb,
       projectServices: createServices(),
       youtubeServices: {
-        getYoutubeAuthStatus: async () => ({ connected: false }),
+        getYoutubeAuthStatus: async () => ({
+          connected: false,
+          hasRequiredScopes: false,
+          reconnectRequired: false,
+        }),
         createYoutubeAuthUrl: async () => ({
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
         }),
@@ -760,7 +849,11 @@ describe("createApp", () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices({
-        getYoutubeAuthStatus: async () => ({ connected: false }),
+        getYoutubeAuthStatus: async () => ({
+          connected: false,
+          hasRequiredScopes: false,
+          reconnectRequired: false,
+        }),
         createJobIdempotent: async () => {
           createdJob = true;
           return youtubeJob;
@@ -792,7 +885,11 @@ describe("createApp", () => {
         },
         getYoutubeAuthStatus: async () => {
           checkedAuth = true;
-          return { connected: false };
+          return {
+            connected: false,
+            hasRequiredScopes: false,
+            reconnectRequired: false,
+          };
         },
         buildYoutubeUploadJobInput: async () => {
           builtInput = true;
@@ -829,7 +926,11 @@ describe("createApp", () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices({
-        getYoutubeAuthStatus: async () => ({ connected: true }),
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: true,
+          reconnectRequired: false,
+        }),
         buildYoutubeUploadJobInput: async () => uploadInput,
         createJobIdempotent: async (_db, input) => {
           receivedInput = input;
@@ -869,7 +970,11 @@ describe("createApp", () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices({
-        getYoutubeAuthStatus: async () => ({ connected: true }),
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: true,
+          reconnectRequired: false,
+        }),
         reserveNextYoutubeScheduleSlot: async (_db, input) => {
           reservedProjectId = input.projectId;
           return youtubeSchedule;
@@ -918,7 +1023,11 @@ describe("createApp", () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices({
-        getYoutubeAuthStatus: async () => ({ connected: true }),
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: true,
+          reconnectRequired: false,
+        }),
         reserveNextYoutubeScheduleSlot: async () => {
           throw new Error("youtube_schedule_full");
         },
@@ -942,7 +1051,11 @@ describe("createApp", () => {
     const app = createApp({
       db: testDb,
       projectServices: createServices({
-        getYoutubeAuthStatus: async () => ({ connected: true }),
+        getYoutubeAuthStatus: async () => ({
+          connected: true,
+          hasRequiredScopes: true,
+          reconnectRequired: false,
+        }),
         buildYoutubeUploadJobInput: async () => {
           throw new Error("youtube_upload_preconditions_failed:render");
         },

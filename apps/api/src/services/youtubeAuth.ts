@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { z } from "zod";
@@ -7,10 +7,24 @@ import { z } from "zod";
 import { parseEnv, type Env } from "../env";
 
 const DEFAULT_YOUTUBE_OAUTH_REDIRECT_URI = "http://127.0.0.1:3001/youtube/oauth/callback";
-const YOUTUBE_UPLOAD_SCOPE = "https://www.googleapis.com/auth/youtube.upload";
+export const YOUTUBE_OAUTH_SCOPES = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/yt-analytics.readonly",
+] as const;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 const tokenResponseSchema = z
+  .object({
+    access_token: z.string().min(1),
+    expires_in: z.number().positive().optional(),
+    refresh_token: z.string().min(1).optional(),
+    scope: z.string().min(1).optional(),
+    token_type: z.string().min(1),
+  })
+  .passthrough();
+
+export const youtubeRefreshTokenResponseSchema = z
   .object({
     access_token: z.string().min(1),
     expires_in: z.number().positive().optional(),
@@ -40,7 +54,11 @@ export type YoutubeOAuthCallbackInput = {
 
 export type YoutubeAuthStatus = {
   connected: boolean;
+  hasRequiredScopes: boolean;
+  reconnectRequired: boolean;
 };
+
+export type YoutubeToken = z.infer<typeof storedTokenSchema>;
 
 export type YoutubeAuthStartResponse = {
   authUrl: string;
@@ -77,6 +95,16 @@ export function youtubeStatePath(root: string) {
   return path.join(youtubeDir(root), "oauth-state.json");
 }
 
+export function hasRequiredYoutubeScopes(scope: string | undefined) {
+  if (!scope) {
+    return false;
+  }
+
+  const grantedScopes = new Set(scope.split(/\s+/).filter(Boolean));
+
+  return YOUTUBE_OAUTH_SCOPES.every((requiredScope) => grantedScopes.has(requiredScope));
+}
+
 async function readJson(pathname: string) {
   return JSON.parse(await readFile(pathname, "utf8")) as unknown;
 }
@@ -98,9 +126,19 @@ export async function getYoutubeAuthStatus(env: Env = parseEnv()): Promise<Youtu
     const raw = await readJson(youtubeTokenPath(env.LOCAL_ASSET_ROOT));
     const parsed = storedTokenSchema.safeParse(raw);
 
-    return { connected: parsed.success };
+    if (!parsed.success) {
+      return { connected: false, hasRequiredScopes: false, reconnectRequired: false };
+    }
+
+    const hasRequiredScopes = hasRequiredYoutubeScopes(parsed.data.scope);
+
+    return {
+      connected: true,
+      hasRequiredScopes,
+      reconnectRequired: !hasRequiredScopes,
+    };
   } catch {
-    return { connected: false };
+    return { connected: false, hasRequiredScopes: false, reconnectRequired: false };
   }
 }
 
@@ -124,7 +162,7 @@ export async function createYoutubeAuthUrl(
   authUrl.searchParams.set("client_id", oauth.clientId);
   authUrl.searchParams.set("redirect_uri", oauth.redirectUri);
   authUrl.searchParams.set("response_type", "code");
-  authUrl.searchParams.set("scope", YOUTUBE_UPLOAD_SCOPE);
+  authUrl.searchParams.set("scope", YOUTUBE_OAUTH_SCOPES.join(" "));
   authUrl.searchParams.set("access_type", "offline");
   authUrl.searchParams.set("prompt", "consent");
   authUrl.searchParams.set("include_granted_scopes", "true");
@@ -198,6 +236,114 @@ export async function disconnectYoutube(env: Env = parseEnv()): Promise<{ discon
   await rm(youtubeTokenPath(env.LOCAL_ASSET_ROOT), { force: true });
 
   return { disconnected: true };
+}
+
+export async function readYoutubeToken(env: Env = parseEnv()): Promise<YoutubeToken> {
+  try {
+    const raw = await readJson(youtubeTokenPath(env.LOCAL_ASSET_ROOT));
+    const parsed = storedTokenSchema.safeParse(raw);
+
+    if (!parsed.success) {
+      throw new Error("youtube_not_connected");
+    }
+
+    return parsed.data;
+  } catch (error) {
+    if (error instanceof Error && error.message === "youtube_not_connected") {
+      throw error;
+    }
+
+    throw new Error("youtube_not_connected");
+  }
+}
+
+export function isYoutubeTokenExpired(token: YoutubeToken, now = Date.now()) {
+  return new Date(token.expires_at).getTime() <= now + 60_000;
+}
+
+async function writeYoutubeToken(env: Env, token: YoutubeToken) {
+  await mkdir(youtubeDir(env.LOCAL_ASSET_ROOT), { recursive: true, mode: 0o700 });
+  const tokenPath = youtubeTokenPath(env.LOCAL_ASSET_ROOT);
+
+  await writeFile(tokenPath, JSON.stringify(token, null, 2), { mode: 0o600 });
+  await chmod(tokenPath, 0o600);
+}
+
+export async function refreshYoutubeToken({
+  env = parseEnv(),
+  token,
+  fetchFn = fetch,
+  now = Date.now(),
+}: {
+  env?: Env;
+  token: YoutubeToken;
+  fetchFn?: typeof fetch;
+  now?: number;
+}): Promise<YoutubeToken> {
+  const oauth = requireYoutubeOAuthEnv(env);
+  const body = new URLSearchParams({
+    client_id: oauth.clientId,
+    grant_type: "refresh_token",
+    refresh_token: token.refresh_token,
+  });
+
+  if (oauth.clientSecret) {
+    body.set("client_secret", oauth.clientSecret);
+  }
+
+  const response = await fetchFn("https://oauth2.googleapis.com/token", {
+    body,
+    headers: {
+      "content-type": "application/x-www-form-urlencoded",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error("youtube_token_refresh_failed");
+  }
+
+  const parsed = youtubeRefreshTokenResponseSchema.safeParse(await response.json());
+
+  if (!parsed.success) {
+    throw new Error("youtube_token_refresh_failed");
+  }
+
+  const refreshed = storedTokenSchema.parse({
+    ...token,
+    ...parsed.data,
+    refresh_token: token.refresh_token,
+    scope: parsed.data.scope ?? token.scope,
+    expires_at: new Date(now + (parsed.data.expires_in ?? 3600) * 1000).toISOString(),
+  });
+
+  await writeYoutubeToken(env, refreshed);
+
+  return refreshed;
+}
+
+export async function readFreshYoutubeAccessToken({
+  env = parseEnv(),
+  fetchFn = fetch,
+  now = Date.now(),
+}: {
+  env?: Env;
+  fetchFn?: typeof fetch;
+  now?: number;
+} = {}) {
+  const token = await readYoutubeToken(env);
+
+  if (!hasRequiredYoutubeScopes(token.scope)) {
+    throw new Error("youtube_reconnect_required");
+  }
+
+  if (!isYoutubeTokenExpired(token, now)) {
+    return token.access_token;
+  }
+
+  const refreshed = await refreshYoutubeToken({ env, token, fetchFn, now });
+
+  return refreshed.access_token;
 }
 
 export function createYoutubeAuthServices(
