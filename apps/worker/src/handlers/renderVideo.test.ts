@@ -199,7 +199,7 @@ describe("buildRenderInput", () => {
     expect(input.format.durationSeconds).toBe(scene.durationSeconds);
   });
 
-  test("caps trimmed duration at the planned scene duration", () => {
+  test("extends scene duration when caption timing audio slightly exceeds the planned scene", () => {
     const input = buildRenderInput({
       assetRoot: "/tmp/asset-root",
       project,
@@ -223,14 +223,15 @@ describe("buildRenderInput", () => {
               path: "projects/project-1/scenes/scene-1/caption-timing/asset-1.json",
               createdAt,
             },
-            captionTimingAudioDurationSeconds: 4,
+            captionTimingAudioDurationSeconds: 3.248,
           },
         ],
       ]),
     });
 
-    expect(input.scenes[0]?.durationSeconds).toBe(3);
-    expect(input.format.durationSeconds).toBe(3);
+    const expectedDuration = Math.ceil((3.248 + 0.25) * 30) / 30;
+    expect(input.scenes[0]?.durationSeconds).toBe(expectedDuration);
+    expect(input.format.durationSeconds).toBe(expectedDuration);
   });
 
   test("throws a render precondition error when a scene is not ready", () => {

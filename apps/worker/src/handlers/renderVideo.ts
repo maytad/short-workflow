@@ -79,7 +79,7 @@ export function effectiveSceneDurationFrames(input: {
   }
 
   const audioFrames = Math.ceil((input.audioDurationSeconds + tailBufferSeconds) * fps);
-  return Math.max(1, Math.min(plannedFrames, audioFrames));
+  return Math.max(1, audioFrames);
 }
 
 export function effectiveSceneDurationSeconds(input: {
