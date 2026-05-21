@@ -1,20 +1,16 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import {
   Audio,
   Easing,
   Img,
   Sequence,
-  continueRender,
-  delayRender,
   interpolate,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 
-import type { CaptionTimingDoc, CaptionWord } from "@short-workflow/shared";
-import { captionTimingDocSchema } from "@short-workflow/shared";
-
+import { SceneCaption } from "./Captions";
 import type { RenderInput } from "./schema";
 
 type SceneDuration = Pick<RenderInput["scenes"][number], "durationSeconds">;
@@ -198,16 +194,11 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
   const profile = sceneMotionProfile(input.role, input.position, input.fps);
   const progress = duration <= 1 ? 1 : frame / (duration - 1);
 
-  const baseScale = interpolate(
-    progress,
-    [0, 1],
-    [profile.baseScaleStart, profile.baseScaleEnd],
-    {
-      extrapolateLeft: "clamp",
-      extrapolateRight: "clamp",
-      easing: Easing.inOut(Easing.cubic),
-    },
-  );
+  const baseScale = interpolate(progress, [0, 1], [profile.baseScaleStart, profile.baseScaleEnd], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: Easing.inOut(Easing.cubic),
+  });
 
   const rawBeatFrame = frame - profile.beatOffsetFrames;
   const beatFrame = Math.max(0, rawBeatFrame);
@@ -220,8 +211,7 @@ export function getSceneMotionStyle(input: SceneMotionStyleInput): SceneMotionSt
 
   const overlayOpacity = Math.min(
     profile.overlayMaxOpacity,
-    profile.overlayMaxOpacity * (1 - progress) +
-      profile.overlayMaxOpacity * 0.35 * pulseProgress,
+    profile.overlayMaxOpacity * (1 - progress) + profile.overlayMaxOpacity * 0.35 * pulseProgress,
   );
 
   return {
@@ -380,231 +370,6 @@ export function getSubscribeLowerThirdState(input: {
     translateY: 28 * (1 - entranceProgress) + 20 * (1 - exitProgress),
     visible: true,
   };
-}
-
-/**
- * Returns the index of the active word at time t. A word is active from its
- * own start until the next word starts (or until its end if it is the last
- * word). This intentionally extends through inter-word silences — without it,
- * the highlight flickers off-on across the small gaps that ElevenLabs leaves
- * between words.
- *
- * Returns -1 only for pre-roll (before any word has started) and post-roll
- * (after the last word's end has passed).
- */
-export function pickActiveIndex(words: readonly CaptionWord[], t: number): number {
-  if (words.length === 0) return -1;
-  if (t < words[0]!.start) return -1;
-  for (let i = 0; i < words.length; i += 1) {
-    const next = words[i + 1];
-    const upper = next ? next.start : words[i]!.end;
-    if (t >= words[i]!.start && t < upper) return i;
-  }
-  return -1;
-}
-
-type ChunkedWord = { word: CaptionWord; index: number };
-type Chunk = ChunkedWord[];
-
-const PUNCT_SENTENCE = new Set([".", "?", "!"]);
-
-export function chunkWords(
-  words: readonly CaptionWord[],
-  opts: { target: number; min: number; max: number },
-): Chunk[] {
-  const chunks: Chunk[] = [];
-  let current: Chunk = [];
-
-  const flush = () => {
-    if (current.length > 0) {
-      chunks.push(current);
-      current = [];
-    }
-  };
-
-  for (let i = 0; i < words.length; i += 1) {
-    current.push({ word: words[i]!, index: i });
-    const text = words[i]!.text;
-    const lastChar = text.slice(-1);
-
-    if (current.length >= opts.max) {
-      flush();
-      continue;
-    }
-    if (PUNCT_SENTENCE.has(lastChar)) {
-      flush();
-      continue;
-    }
-    if (lastChar === "," && current.length >= opts.min) {
-      flush();
-    }
-  }
-  flush();
-  return chunks;
-}
-
-/**
- * Selects the chunk to display. Uses a sticky "progress index" — the latest
- * word whose start has already passed — so the chunk does not flicker back to
- * chunks[0] during inter-word silences (mid-stream activeIndex === -1) or
- * after the last word ends (post-roll). Pre-roll still shows chunks[0].
- */
-function pickChunk(
-  chunks: readonly Chunk[],
-  words: readonly CaptionWord[],
-  t: number,
-): Chunk {
-  if (chunks.length === 0) return [];
-  if (words.length === 0) return chunks[0] ?? [];
-  if (t < words[0]!.start) return chunks[0] ?? [];
-
-  let progressIndex = 0;
-  for (let i = 0; i < words.length; i += 1) {
-    if (words[i]!.start <= t) progressIndex = i;
-    else break;
-  }
-
-  for (const chunk of chunks) {
-    if (chunk.some((entry) => entry.index === progressIndex)) return chunk;
-  }
-  return chunks[chunks.length - 1] ?? [];
-}
-
-const CAPTION_BOX_STYLE: React.CSSProperties = {
-  position: "absolute",
-  left: 72,
-  right: 72,
-  bottom: 150,
-  color: "#ffffff",
-  fontFamily:
-    "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif",
-  fontSize: 62,
-  fontWeight: 800,
-  lineHeight: 1.12,
-  textAlign: "center",
-  textShadow: "0 3px 8px rgba(0,0,0,0.9), 0 0 28px rgba(0,0,0,0.85)",
-};
-
-function StaticCaption({ text }: { text: string }) {
-  return <div style={CAPTION_BOX_STYLE}>{text}</div>;
-}
-
-function KaraokeCaption({
-  timingSrc,
-  staticFallback,
-}: {
-  timingSrc: string;
-  staticFallback: string;
-}) {
-  // All hooks declared up front, never inside a conditional.
-  const localFrame = useCurrentFrame();
-  const { fps } = useVideoConfig();
-  const [handle] = useState(() => delayRender("caption_timing_load"));
-  const [doc, setDoc] = useState<CaptionTimingDoc | null>(null);
-  const [failed, setFailed] = useState(false);
-  const continuedRef = useRef(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    const releaseHandle = () => {
-      if (continuedRef.current) return;
-      continuedRef.current = true;
-      continueRender(handle);
-    };
-
-    fetch(timingSrc)
-      .then((r) => {
-        if (!r.ok) throw new Error(`fetch_status_${r.status}`);
-        return r.json();
-      })
-      .then((json) => captionTimingDocSchema.parse(json))
-      .then((parsed) => {
-        if (!cancelled) setDoc(parsed);
-      })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
-      })
-      .finally(() => {
-        releaseHandle();
-      });
-
-    return () => {
-      cancelled = true;
-      releaseHandle();
-    };
-  }, [timingSrc, handle]);
-
-  if (failed || !doc) {
-    return <StaticCaption text={staticFallback} />;
-  }
-
-  const t = localFrame / fps;
-  const activeIndex = pickActiveIndex(doc.words, t);
-  const chunks = chunkWords(doc.words, { target: 5, min: 4, max: 6 });
-  const selected = pickChunk(chunks, doc.words, t);
-
-  return (
-    <div style={CAPTION_BOX_STYLE}>
-      {selected.map((entry) => {
-        const { word, index } = entry;
-        const isActive = index === activeIndex;
-        const wordStartFrame = Math.round(word.start * fps);
-        const wordEndFrame = Math.round(word.end * fps);
-        const desiredEase = Math.round(0.08 * fps);
-        const minSpan = 2;
-        const effectiveEnd = Math.max(wordStartFrame + minSpan, wordEndFrame);
-        const easeFrames = Math.max(
-          1,
-          Math.min(desiredEase, Math.floor((effectiveEnd - wordStartFrame) / 2)),
-        );
-        const easeIn = wordStartFrame + easeFrames;
-        const easeOut = effectiveEnd + easeFrames;
-        const scaleProgress = interpolate(
-          localFrame,
-          [wordStartFrame, easeIn, effectiveEnd, easeOut],
-          [0, 1, 1, 0],
-          {
-            extrapolateLeft: "clamp",
-            extrapolateRight: "clamp",
-            easing: Easing.out(Easing.cubic),
-          },
-        );
-        const scale = 1 + 0.08 * scaleProgress;
-        const color = isActive ? "#FFD400" : "#FFFFFF";
-
-        return (
-          <span
-            key={index}
-            style={{
-              display: "inline-block",
-              color,
-              transform: `scale(${scale})`,
-              transformOrigin: "center",
-              marginRight: "0.25em",
-            }}
-          >
-            {word.text}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-function SceneCaption({
-  scene,
-}: {
-  scene: RenderInput["scenes"][number];
-}) {
-  if (scene.captionTimingPath) {
-    return (
-      <KaraokeCaption
-        timingSrc={resolveMediaSrc(scene.captionTimingPath)}
-        staticFallback={scene.caption}
-      />
-    );
-  }
-  return <StaticCaption text={scene.caption} />;
 }
 
 function SubscribeAvatar() {
@@ -830,8 +595,7 @@ function SceneVisual({
       />
       <div
         style={{
-          background:
-            "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.66) 100%)",
+          background: "linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.66) 100%)",
           bottom: 0,
           height: 520,
           left: 0,
@@ -957,7 +721,7 @@ export const ShortVideo = (props: RenderInput) => {
           {shouldShowSubscribeLowerThird(timing.scene.role) ? (
             <SubscribeLowerThird durationInFrames={timing.durationInFrames} />
           ) : null}
-          <SceneCaption scene={timing.scene} />
+          <SceneCaption resolveSrc={resolveMediaSrc} scene={timing.scene} />
         </Sequence>
       ))}
     </div>

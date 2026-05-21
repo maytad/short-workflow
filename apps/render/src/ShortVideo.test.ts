@@ -1,8 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import {
-  SUBSCRIBE_LOWER_THIRD,
+  captionBoxStyleForRole,
   chunkWords,
+  isMechanismKeyword,
+  pickActiveIndex,
+  shouldShowPunchCaption,
+} from "./Captions";
+import {
+  SUBSCRIBE_LOWER_THIRD,
   getSceneDurationFrames,
   getSceneMotionStyle,
   getSceneVisualOpacity,
@@ -10,7 +16,6 @@ import {
   getSubscribeLowerThirdState,
   getSubscribeLowerThirdWindow,
   getTotalDurationFrames,
-  pickActiveIndex,
   resolveMediaSrc,
   sceneMotionProfile,
   shouldShowSubscribeLowerThird,
@@ -106,6 +111,53 @@ describe("chunkWords", () => {
     const chunks = chunkWords(words, { target: 5, min: 4, max: 6 });
     expect(chunks[0]?.map((e) => e.index)).toEqual([0, 1, 2]);
     expect(chunks[1]?.map((e) => e.index)).toEqual([3]);
+  });
+
+  test("splits long spoken phrases by timing so captions stay scan-friendly", () => {
+    const words = [
+      { text: "The", start: 0, end: 0.15 },
+      { text: "sliding", start: 0.15, end: 0.65 },
+      { text: "block", start: 0.65, end: 1.1 },
+      { text: "changes", start: 1.1, end: 1.55 },
+      { text: "the", start: 1.55, end: 1.7 },
+      { text: "pendulum", start: 1.7, end: 2.25 },
+      { text: "body.", start: 2.25, end: 2.75 },
+    ] as const;
+
+    const chunks = chunkWords(words, { target: 4, min: 2, max: 5, maxDurationSeconds: 1.35 });
+
+    expect(chunks.map((chunk) => chunk.map((entry) => entry.word.text))).toEqual([
+      ["The", "sliding", "block"],
+      ["changes", "the", "pendulum"],
+      ["body."],
+    ]);
+  });
+});
+
+describe("caption emphasis", () => {
+  test("recognizes mechanical verbs and nouns through punctuation", () => {
+    expect(isMechanismKeyword("locks,")).toBe(true);
+    expect(isMechanismKeyword("spring")).toBe(true);
+    expect(isMechanismKeyword("tick.")).toBe(true);
+    expect(isMechanismKeyword("zipper")).toBe(true);
+    expect(isMechanismKeyword("teeth")).toBe(true);
+    expect(isMechanismKeyword("strap")).toBe(true);
+    expect(isMechanismKeyword("freewheel")).toBe(true);
+    expect(isMechanismKeyword("ordinary")).toBe(false);
+  });
+
+  test("raises captions away from YouTube controls and subscribe lower third", () => {
+    expect(captionBoxStyleForRole("hook").bottom).toBeGreaterThanOrEqual(260);
+    expect(captionBoxStyleForRole("hook").right).toBeGreaterThanOrEqual(150);
+    expect(captionBoxStyleForRole("cta").bottom).toBeGreaterThan(
+      Number(captionBoxStyleForRole("hook").bottom),
+    );
+  });
+
+  test("shows punch captions only at the beginning of hook scenes", () => {
+    expect(shouldShowPunchCaption("hook", 0.2)).toBe(true);
+    expect(shouldShowPunchCaption("hook", 1.4)).toBe(false);
+    expect(shouldShowPunchCaption("point", 0.2)).toBe(false);
   });
 });
 

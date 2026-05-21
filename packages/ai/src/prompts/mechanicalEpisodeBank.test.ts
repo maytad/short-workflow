@@ -64,18 +64,28 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(7);
+    expect(compiled.templateVersion).toBe(8);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
     expect(developerMessage).toContain("visible moving part");
     expect(developerMessage).toContain("common wrong assumption");
-    expect(developerMessage).toContain("Reject topics or angles that cannot show a physical part moving");
+    expect(developerMessage).toContain(
+      "Reject topics or angles that cannot show a physical part moving",
+    );
     expect(developerMessage).toContain("novelty axes");
-    expect(developerMessage).toContain("mechanism family, visible action, viewer misconception, and visual strategy");
+    expect(developerMessage).toContain(
+      "mechanism family, visible action, viewer misconception, and visual strategy",
+    );
     expect(developerMessage).toContain("visible contradiction");
     expect(developerMessage).toContain("That [visible action] is not [common wrong explanation]");
-    expect(developerMessage).toContain("part moves, part catches or slides or locks or releases, output happens");
+    expect(developerMessage).toContain(
+      "part moves, part catches or slides or locks or releases, output happens",
+    );
     expect(developerMessage).toContain("slides, grabs, locks, releases, snaps, pulls, pushes");
+    expect(developerMessage).toContain("Captions must be punch captions, not transcript lines");
+    expect(developerMessage).toContain("2-5 words");
+    expect(developerMessage).toContain("Do not copy full narration into captions");
+    expect(developerMessage).toContain("Prefer mechanism-state captions");
     expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
     expect(userMessage).toContain("<mechanism_family>spring_locking</mechanism_family>");
     expect(userMessage).toContain("<appeal_tier>mass_appeal</appeal_tier>");
@@ -137,11 +147,17 @@ describe("mechanical episode bank", () => {
     expect(compiled.templateVersion).toBe(6);
     expect(compiled.prompt).toContain("MECHANICAL MATERIALITY");
     expect(compiled.prompt).toContain("VISIBLE TENSION AND HIDDEN CAUSE");
-    expect(compiled.prompt).toContain("stretched, locked, snapped, squeezed, caught, pulled, sliding, or releasing");
-    expect(compiled.prompt).toContain("Show both the visible result and the hidden cause in the same frame when possible");
+    expect(compiled.prompt).toContain(
+      "stretched, locked, snapped, squeezed, caught, pulled, sliding, or releasing",
+    );
+    expect(compiled.prompt).toContain(
+      "Show both the visible result and the hidden cause in the same frame when possible",
+    );
     expect(compiled.prompt).toContain("Use non-text visual cues only");
     expect(compiled.prompt).toContain("VISUAL STRATEGY");
-    expect(compiled.prompt).toContain("Do not let every scene become a transparent cutaway or the same macro tabletop shot");
+    expect(compiled.prompt).toContain(
+      "Do not let every scene become a transparent cutaway or the same macro tabletop shot",
+    );
     expect(compiled.prompt).toContain("Prefer the natural everyday setting implied by the scene");
     expect(compiled.prompt).toContain(
       "Do not default to a workshop, repair bench, dark tabletop, tool catalog shot, or teardown layout",

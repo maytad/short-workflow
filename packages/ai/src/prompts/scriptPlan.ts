@@ -224,7 +224,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 7,
+  version: 8,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -284,6 +284,10 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "# Pacing Rules",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
             "Write spoken narration that is compact, natural, and easy to understand when heard once.",
+            "Captions must be punch captions, not transcript lines.",
+            "Keep each caption to 2-5 words unless a payoff needs one extra word.",
+            "Do not copy full narration into captions.",
+            "Prefer mechanism-state captions that name the visible change: Not the spring, One click remembers, Weight down, faster ticks, Locks one way.",
             "Keep total spoken narration within the approved budget: 30 seconds = 55-75 words, 45 seconds = 85-115 words, 60 seconds = 110-150 words.",
             "For each scene, target 2.0-2.4 spoken words per second and hard-cap narration at 2.6 spoken words per second.",
             "A 5-second CTA should be about 8-12 words. If a line does not fit, cut words instead of stretching the scene.",

@@ -69,7 +69,7 @@ export const TINY_MECHANISMS_CHANNEL_BIBLE = [
   "Topic gate: prefer everyday objects with a visible moving part, visible tension, a hidden physical cause, a common wrong assumption, and a mechanism that can be explained in three concrete cause-effect beats.",
   "Reject topics or angles that cannot show a physical part moving, locking, sliding, catching, bending, releasing, or changing state on screen.",
   "Novelty gate: keep the channel focused on visible mechanisms while varying mechanism family, visible action, viewer misconception, and visual strategy so recent videos do not feel templated.",
-  "Captions: short mobile-readable beat summaries, not full narration paragraphs.",
+  "Captions: punchy 2-5 word mobile-readable beat captions, not transcript lines or full narration paragraphs; prefer mechanism-state wording.",
   "Image direction: social-native hidden-mechanism frames with familiar everyday objects, native settings, selective cutaways, springs, cams, latches, gears, pawls, tracks, levers, valves, material texture, and no embedded text, logos, UI, or public figures.",
   "Retention: start from an impossible-looking behavior, reveal the hidden mechanism, and end with a loop payoff that reinterprets the first shot.",
 ].join("\n");
