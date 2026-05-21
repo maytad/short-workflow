@@ -98,10 +98,10 @@ const CAPTION_BOX_BASE_STYLE: CSSProperties = {
   fontSize: 58,
   fontWeight: 820,
   lineHeight: 1.1,
-  maxHeight: 190,
-  overflow: "hidden",
+  overflow: "visible",
   textAlign: "center",
-  textShadow: "0 3px 8px rgba(0,0,0,0.9), 0 0 28px rgba(0,0,0,0.85)",
+  textShadow:
+    "-2px -2px 0 rgba(0,0,0,0.8), 2px -2px 0 rgba(0,0,0,0.8), -2px 2px 0 rgba(0,0,0,0.8), 2px 2px 0 rgba(0,0,0,0.8), 0 0 10px rgba(0,0,0,0.58)",
 };
 
 export function pickActiveIndex(words: readonly CaptionWord[], t: number): number {
@@ -188,6 +188,15 @@ export function isMechanismKeyword(text: string) {
   return MECHANISM_KEYWORDS.has(normalized);
 }
 
+export function formatCaptionDisplayText(text: string) {
+  return text
+    .replace(/\s*=\s*/g, " means ")
+    .replace(/[;:()[\]{}]+/g, "")
+    .replace(/[,.!?]+(?=\s|$)/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function pickChunk(chunks: readonly Chunk[], words: readonly CaptionWord[], t: number): Chunk {
   if (chunks.length === 0) return [];
   if (words.length === 0) return chunks[0] ?? [];
@@ -206,7 +215,7 @@ function pickChunk(chunks: readonly Chunk[], words: readonly CaptionWord[], t: n
 }
 
 function StaticCaption({ role, text }: { role: CaptionRole; text: string }) {
-  return <div style={captionBoxStyleForRole(role)}>{text}</div>;
+  return <div style={captionBoxStyleForRole(role)}>{formatCaptionDisplayText(text)}</div>;
 }
 
 function PunchCaption({ frame, fps, text }: { frame: number; fps: number; text: string }) {
@@ -303,11 +312,18 @@ function KaraokeCaption({
   return (
     <div style={captionBoxStyleForRole(role)}>
       {shouldShowPunchCaption(role, t) ? (
-        <PunchCaption fps={fps} frame={localFrame} text={staticFallback} />
+        <PunchCaption
+          fps={fps}
+          frame={localFrame}
+          text={formatCaptionDisplayText(staticFallback)}
+        />
       ) : null}
       <div>
         {selected.map((entry) => {
           const { word, index } = entry;
+          const displayText = formatCaptionDisplayText(word.text);
+          if (!displayText) return null;
+
           const isActive = index === activeIndex;
           const isKeyword = isMechanismKeyword(word.text);
           const wordStartFrame = Math.round(word.start * fps);
@@ -346,7 +362,7 @@ function KaraokeCaption({
                 transformOrigin: "center",
               }}
             >
-              {word.text}
+              {displayText}
             </span>
           );
         })}

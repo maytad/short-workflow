@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
   captionBoxStyleForRole,
   chunkWords,
+  formatCaptionDisplayText,
   isMechanismKeyword,
   pickActiveIndex,
   shouldShowPunchCaption,
@@ -146,6 +147,15 @@ describe("caption emphasis", () => {
     expect(isMechanismKeyword("ordinary")).toBe(false);
   });
 
+  test("removes punctuation that reads awkwardly in fast karaoke captions", () => {
+    expect(formatCaptionDisplayText("travels;")).toBe("travels");
+    expect(formatCaptionDisplayText("changing.")).toBe("changing");
+    expect(formatCaptionDisplayText("isn't")).toBe("isn't");
+    expect(formatCaptionDisplayText("Weight down = faster ticks.")).toBe(
+      "Weight down means faster ticks",
+    );
+  });
+
   test("raises captions away from YouTube controls and subscribe lower third", () => {
     expect(captionBoxStyleForRole("hook").bottom).toBeGreaterThanOrEqual(260);
     expect(captionBoxStyleForRole("hook").right).toBeGreaterThanOrEqual(150);
@@ -158,6 +168,11 @@ describe("caption emphasis", () => {
     expect(shouldShowPunchCaption("hook", 0.2)).toBe(true);
     expect(shouldShowPunchCaption("hook", 1.4)).toBe(false);
     expect(shouldShowPunchCaption("point", 0.2)).toBe(false);
+  });
+
+  test("does not clip the caption outline or shadow", () => {
+    expect(captionBoxStyleForRole("hook").overflow).not.toBe("hidden");
+    expect(String(captionBoxStyleForRole("hook").textShadow)).not.toContain("0 3px 8px");
   });
 });
 

@@ -64,7 +64,7 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(8);
+    expect(compiled.templateVersion).toBe(9);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
     expect(developerMessage).toContain("visible moving part");
@@ -86,6 +86,7 @@ describe("mechanical episode bank", () => {
     expect(developerMessage).toContain("2-5 words");
     expect(developerMessage).toContain("Do not copy full narration into captions");
     expect(developerMessage).toContain("Prefer mechanism-state captions");
+    expect(developerMessage).toContain("Avoid semicolons, periods, colons");
     expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
     expect(userMessage).toContain("<mechanism_family>spring_locking</mechanism_family>");
     expect(userMessage).toContain("<appeal_tier>mass_appeal</appeal_tier>");
