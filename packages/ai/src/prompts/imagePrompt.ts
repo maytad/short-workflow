@@ -36,7 +36,7 @@ export type CompiledImagePrompt = CompiledPrompt & {
 
 export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImagePrompt> = {
   id: "tiny_mechanisms_scene_image_prompt",
-  version: 5,
+  version: 6,
   purpose: "image_prompt",
   provider: "openai",
   compile(input) {
@@ -66,6 +66,19 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       "Show the phenomenon already happening. Do not show a calm setup before the interesting moment.",
       "Use one dominant subject filling roughly 55-70% of the upper and middle frame.",
       "Make the frame feel like an intentional short-form opening shot, not a generic stock illustration.",
+      "",
+      "VISIBLE TENSION AND HIDDEN CAUSE",
+      "The frame must show visible mechanical tension: stretched, locked, snapped, squeezed, caught, pulled, sliding, or releasing.",
+      "Avoid calm object portraits where the viewer only sees the item sitting still.",
+      "Show both the visible result and the hidden cause in the same frame when possible through a cutaway, transparent edge, exposed gap, partial split view, reflection, or highlighted contact point.",
+      "The viewer should be able to answer what moved, what changed, or what is holding force in under half a second.",
+      "Use non-text visual cues only: colored highlight on the key part, subtle motion blur, pressure bend, contact point glow, or simple unlabeled arrows.",
+      "",
+      "VISUAL STRATEGY",
+      "Choose one primary visual strategy for this scene: consequence-first close-up, transparent cutaway, before/after split, force-path macro, impossible-looking frozen motion, or native-setting hand interaction.",
+      "Do not let every scene become a transparent cutaway or the same macro tabletop shot.",
+      "For hook scenes, prefer a recognizable real object under tension before using a clean cutaway.",
+      "For point scenes, prefer mechanism proof through a cutaway, exposed edge, force path, or physically plausible transparent layer.",
       "",
       "SCENE ROLE",
       `Scene ${input.scene.position} is ${input.scene.role}. Visual job: ${roleJob}.`,
