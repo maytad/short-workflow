@@ -1,3 +1,4 @@
+import type { EpisodeCandidate, EpisodeResearch } from "./prompts/episodeResearch";
 import type { VisualHookArchetype } from "./prompts/visualHooks";
 
 export type ChannelPresetId = "tiny_mechanisms";
@@ -54,6 +55,10 @@ export type GenerateScriptInput = {
   channelPresetId: ChannelPresetId;
   seedId: string;
   targetDurationSeconds: 30 | 45 | 60;
+  episodeCandidate?: EpisodeCandidate;
+  episodeResearch?: EpisodeResearch;
+  episodeResearchPromptPayload?: Record<string, unknown>;
+  episodeResearchResponseMetadata?: Record<string, unknown>;
 };
 
 export type GenerateScriptOutput = {

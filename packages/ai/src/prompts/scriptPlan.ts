@@ -7,6 +7,7 @@ import {
   TINY_MECHANISMS_PRESET_ID,
   TINY_MECHANISMS_SCENE_ROLES_BY_DURATION,
 } from "./presets/tinyMechanisms";
+import type { EpisodeCandidate } from "./episodeResearch";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 import {
   isVisualHookArchetype,
@@ -222,17 +223,78 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
   },
 } as const;
 
+function scriptTopicFields(input: GenerateScriptInput): {
+  seedId: string;
+  objectOrMechanism: string;
+  titleAngle: string;
+  centralQuestion: string;
+  viewerMisconception: string;
+  mechanismHint: string;
+  satisfyingMotion: string;
+  visualReveal: string;
+  loopPayoff: string;
+  visualMetaphor: string;
+  audienceContext: string;
+  nativeSetting: string;
+  hookEmotion: string;
+  avoidVisualSetting: string;
+  source: "ai_candidate" | "static_seed";
+  candidate?: EpisodeCandidate;
+} {
+  if (input.episodeCandidate) {
+    const candidate = input.episodeCandidate;
+    return {
+      seedId: input.seedId,
+      objectOrMechanism: candidate.objectOrMechanism,
+      titleAngle: candidate.titleCuriosityGap,
+      centralQuestion: candidate.centralQuestion,
+      viewerMisconception: candidate.feedHypothesis,
+      mechanismHint: candidate.mechanismProof,
+      satisfyingMotion:
+        "start mid-action, reveal the moving part, prove the mechanism, loop the payoff",
+      visualReveal: candidate.visualReveal,
+      loopPayoff: candidate.loopPayoff,
+      visualMetaphor: candidate.firstFrame,
+      audienceContext: candidate.broadAudienceReason,
+      nativeSetting: "the familiar setting where the object naturally appears",
+      hookEmotion: candidate.retentionPromise,
+      avoidVisualSetting: "generic workbench, calm object portrait, clean diagram as the opening frame",
+      source: "ai_candidate",
+      candidate,
+    };
+  }
+
+  const seed = getTinyMechanismsSeed(input.seedId);
+  if (!seed) {
+    throw new Error("tiny_mechanisms_seed_not_found");
+  }
+
+  return {
+    seedId: seed.seedId,
+    objectOrMechanism: seed.objectOrMechanism,
+    titleAngle: seed.titleAngle,
+    centralQuestion: seed.centralQuestion,
+    viewerMisconception: seed.viewerMisconception,
+    mechanismHint: seed.mechanismHint,
+    satisfyingMotion: seed.satisfyingMotion,
+    visualReveal: seed.visualReveal,
+    loopPayoff: seed.loopPayoff,
+    visualMetaphor: seed.visualMetaphor,
+    audienceContext: seed.audienceContext,
+    nativeSetting: seed.nativeSetting,
+    hookEmotion: seed.hookEmotion,
+    avoidVisualSetting: seed.avoidVisualSetting,
+    source: "static_seed",
+  };
+}
+
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
   version: 10,
   purpose: "script",
   provider: "openai",
   compile(input) {
-    const seed = getTinyMechanismsSeed(input.seedId);
-    if (!seed) {
-      throw new Error("tiny_mechanisms_seed_not_found");
-    }
-
+    const topic = scriptTopicFields(input);
     const roles = TINY_MECHANISMS_SCENE_ROLES_BY_DURATION[input.targetDurationSeconds];
 
     return {
@@ -248,7 +310,9 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
         sceneRoles: roles,
       },
       metadata: {
-        seed,
+        topicSource: topic.source,
+        topic,
+        episodeResearch: input.episodeResearch ?? null,
       },
       messages: [
         {
@@ -260,18 +324,20 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "",
             "# Editorial Mission",
             TINY_MECHANISMS_CHANNEL_BIBLE,
-            "Create one focused micro-documentary episode from the selected seed. The final script should feel specific, concrete, and immediately understandable to a curious general audience.",
+            "Create one focused micro-documentary episode from the selected topic brief. The final script should feel specific, concrete, and immediately understandable to a curious general audience.",
+            "The first frame and first line must be strong enough for a Shorts feed test before the viewer hears the full explanation.",
+            "For 30-second episodes, optimize completion and replay over breadth.",
             "Every scene must earn its time with either curiosity, mechanism clarity, visual evidence, payoff, or a loop-back ending.",
             "Start from the viewer-facing behavior before naming the mechanism.",
             "Write for people who recognize the everyday object, not for engineers, repair technicians, or tool collectors.",
             "Use the selected audienceContext, nativeSetting, hookEmotion, and avoidVisualSetting as creative constraints.",
             "Do not default to a workshop, repair bench, dark tabletop, or tool tutorial unless the selected nativeSetting explicitly requires it.",
-            "When the seed is a tool, frame the hook around sound, surprise, resistance, speed, snap, or one-way behavior rather than repair steps.",
+            "When the topic is a tool, frame the hook around sound, surprise, resistance, speed, snap, or one-way behavior rather than repair steps.",
             "The hook should create a small emotional reason to keep watching: surprise, tension, disbelief, relief, or satisfying completion.",
             "Use the selected mechanical episode concept fields directly. Do not drift into a broad everyday-science explainer.",
             "Topic gate: every episode angle must preserve an everyday object, a visible moving part, a hidden physical cause, and a common wrong assumption.",
             "Reject topics or angles that cannot show a physical part moving, locking, sliding, catching, bending, releasing, or changing state on screen.",
-            "Use novelty axes before writing: mechanism family, visible action, viewer misconception, and visual strategy. If the angle feels too similar on more than two novelty axes, rewrite the angle while keeping the selected seed.",
+            "Use novelty axes before writing: mechanism family, visible action, viewer misconception, and visual strategy. If the angle feels too similar on more than two novelty axes, rewrite the angle while keeping the selected topic.",
             "Open with the misconception, impossible-looking behavior, or satisfying action already happening.",
             "Open with a visible contradiction. Preferred hook pattern: That [visible action] is not [common wrong explanation].",
             "The first second must show the contradiction on screen before the narration explains it.",
@@ -284,13 +350,28 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Narration should include the selected satisfyingMotion as concrete verbs where natural.",
             "Do not over-explain the entire object. Explain the selected mechanism only.",
             'Avoid repeating generic sentence shapes such as "This works because" and "Inside, there is".',
+            "Do not start with an intro, a calm setup, or a concept definition.",
+            "Start mid-action with a visible consequence, contradiction, resistance, release, snap, cut, slide, lock, or catch already happening.",
+            "The first narration line must be no more than 8 words.",
+            "The first caption must be no more than 4 words.",
+            "Do not repeat the sentence shape That X is not Y unless it is clearly the strongest hook.",
+            "Every 3-5 seconds must add a new visual reason to keep watching.",
             "",
             "# Pacing Rules",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
             "Write spoken narration that is compact, natural, and easy to understand when heard once.",
+            "Narration is the source text for TTS.",
             "Captions must be punch captions, not transcript lines.",
-            "Keep each caption to 2-5 words unless a payoff needs one extra word.",
+            "Captions are punch captions, not transcripts and not karaoke timing source text.",
+            "Caption is short punch text for on-screen emphasis, not transcript text.",
+            "Do not make caption match the full narration.",
+            "Keep each caption to 2-4 words. A payoff may use 5 words only when the line stays readable.",
+            "This 2-4 word caption rule overrides any broader channel-bible caption range.",
             "Do not copy full narration into captions.",
+            "Do not output word-level timing, timestamps, beat timings, or karaoke timing.",
+            "Karaoke timing is derived later from final audio and transcript alignment.",
+            "Audio alignment owns karaoke timing later.",
+            "Keep ttsDirection separate as delivery guidance only; do not merge it into narration or caption.",
             "Prefer mechanism-state captions that name the visible change: Not the spring, One click remembers, Weight down, faster ticks, Locks one way.",
             "Avoid semicolons, periods, colons, parentheses, equals signs, and decorative punctuation in captions; write plain words instead.",
             "Keep total spoken narration within the approved budget: 30 seconds = 55-75 words, 45 seconds = 85-115 words, 60 seconds = 110-150 words.",
@@ -317,7 +398,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "If the selected avoidVisualSetting names a workbench, repair bench, tutorial, or tool catalog shot, avoid that framing in every scene imagePrompt and visualBrief.",
             "",
             "# Safety and Scope",
-            "Do not invent a new topic. Use the selected seed exactly.",
+            "Do not invent a new topic. Use the selected topic exactly.",
             "Do not create medical, finance, legal, political, crime, disaster, public figure, or breaking-news content.",
             "For lock or security-adjacent mechanisms, explain internal principles only; never provide bypass, picking, decoding, cracking, defeating, tool-use, step sequences, or unauthorized-opening instructions.",
             "",
@@ -333,22 +414,24 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
             `<scene_roles>${roles.join(", ")}</scene_roles>`,
-            `<seed_id>${seed.seedId}</seed_id>`,
-            `<central_question>${seed.centralQuestion}</central_question>`,
-            `<mechanism_family>${seed.mechanismFamily}</mechanism_family>`,
-            `<appeal_tier>${seed.appealTier}</appeal_tier>`,
-            `<object_or_mechanism>${seed.objectOrMechanism}</object_or_mechanism>`,
-            `<title_angle>${seed.titleAngle}</title_angle>`,
-            `<viewer_misconception>${seed.viewerMisconception}</viewer_misconception>`,
-            `<mechanism_hint>${seed.mechanismHint}</mechanism_hint>`,
-            `<satisfying_motion>${seed.satisfyingMotion}</satisfying_motion>`,
-            `<visual_reveal>${seed.visualReveal}</visual_reveal>`,
-            `<loop_payoff>${seed.loopPayoff}</loop_payoff>`,
-            `<visual_metaphor>${seed.visualMetaphor}</visual_metaphor>`,
-            `<audience_context>${seed.audienceContext}</audience_context>`,
-            `<native_setting>${seed.nativeSetting}</native_setting>`,
-            `<hook_emotion>${seed.hookEmotion}</hook_emotion>`,
-            `<avoid_visual_setting>${seed.avoidVisualSetting}</avoid_visual_setting>`,
+            `<seed_id>${topic.seedId}</seed_id>`,
+            `<topic_source>${topic.source}</topic_source>`,
+            `<central_question>${topic.centralQuestion}</central_question>`,
+            `<object_or_mechanism>${topic.objectOrMechanism}</object_or_mechanism>`,
+            `<title_angle>${topic.titleAngle}</title_angle>`,
+            `<viewer_misconception>${topic.viewerMisconception}</viewer_misconception>`,
+            `<mechanism_hint>${topic.mechanismHint}</mechanism_hint>`,
+            `<satisfying_motion>${topic.satisfyingMotion}</satisfying_motion>`,
+            `<visual_reveal>${topic.visualReveal}</visual_reveal>`,
+            `<loop_payoff>${topic.loopPayoff}</loop_payoff>`,
+            `<visual_metaphor>${topic.visualMetaphor}</visual_metaphor>`,
+            `<audience_context>${topic.audienceContext}</audience_context>`,
+            `<native_setting>${topic.nativeSetting}</native_setting>`,
+            `<hook_emotion>${topic.hookEmotion}</hook_emotion>`,
+            `<avoid_visual_setting>${topic.avoidVisualSetting}</avoid_visual_setting>`,
+            ...(topic.candidate
+              ? [`<selected_candidate_json>${JSON.stringify(topic.candidate)}</selected_candidate_json>`]
+              : []),
             `Return exactly ${roles.length} scenes in this role order.`,
           ].join("\n"),
         },

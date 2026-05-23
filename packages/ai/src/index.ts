@@ -1,5 +1,6 @@
 export * from "./captionTiming";
 export * from "./elevenLabsTts";
+export * from "./episodeResearch";
 export * from "./image";
 export * from "./googleImage";
 export * from "./googleTts";

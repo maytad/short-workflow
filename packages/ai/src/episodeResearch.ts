@@ -1,14 +1,26 @@
 import OpenAI from "openai";
 
 import {
-  parseScriptPlan,
-  SCRIPT_PLAN_JSON_SCHEMA,
-  scriptPlanPrompt,
-} from "./prompts/scriptPlan";
+  EPISODE_RESEARCH_JSON_SCHEMA,
+  episodeResearchPrompt,
+  parseEpisodeResearch,
+  selectedEpisodeCandidate,
+  type EpisodeResearch,
+  type EpisodeResearchInput,
+} from "./prompts/episodeResearch";
 import { promptPayload } from "./prompts/types";
-import type { GenerateScriptInput, GenerateScriptOutput } from "./types";
 
-export async function generateScript(input: GenerateScriptInput): Promise<GenerateScriptOutput> {
+type GenerateEpisodeResearchOutput = {
+  research: EpisodeResearch;
+  selectedCandidate: NonNullable<ReturnType<typeof selectedEpisodeCandidate>>;
+  promptPayload: Record<string, unknown>;
+  responseText: string;
+  responseMetadata: Record<string, unknown>;
+};
+
+export async function generateEpisodeResearch(
+  input: EpisodeResearchInput,
+): Promise<GenerateEpisodeResearchOutput> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     throw new Error("OPENAI_API_KEY_missing");
@@ -16,7 +28,7 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
 
   const model = process.env.OPENAI_MODEL ?? "gpt-5.5";
   const client = new OpenAI({ apiKey });
-  const compiled = scriptPlanPrompt.compile(input);
+  const compiled = episodeResearchPrompt.compile(input);
 
   const response = await client.responses.create({
     model,
@@ -28,31 +40,24 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
       format: {
         type: "json_schema",
         name: compiled.schemaName,
-        schema: SCRIPT_PLAN_JSON_SCHEMA as unknown as Record<string, unknown>,
+        schema: EPISODE_RESEARCH_JSON_SCHEMA as unknown as Record<string, unknown>,
         strict: true,
       },
     },
   });
 
   const rawResponseText = extractResponseText(response);
-  const parsedJson = parseJsonObject(rawResponseText);
-  const parsed = parseScriptPlan(parsedJson, input);
+  const research = parseEpisodeResearch(parseJsonObject(rawResponseText));
+  const selectedCandidate = selectedEpisodeCandidate(research);
+  if (!selectedCandidate) {
+    throw new Error("episode_candidate_selection_failed");
+  }
 
   return {
-    title: parsed.episode.workingTitle,
-    channelPresetId: parsed.channelPresetId,
-    episode: parsed.episode,
-    styleContext: parsed.styleContext,
-    facts: parsed.facts,
-    scenes: parsed.scenes,
-    metadataDraft: parsed.metadataDraft,
-    promptPayload: {
-      ...promptPayload(compiled, input),
-      episodeResearchPromptPayload: input.episodeResearchPromptPayload ?? null,
-      episodeResearch: input.episodeResearch ?? null,
-      selectedEpisodeCandidate: input.episodeCandidate ?? null,
-    },
-    responseText: JSON.stringify(parsed),
+    research,
+    selectedCandidate,
+    promptPayload: promptPayload(compiled, input),
+    responseText: JSON.stringify(research),
     responseMetadata: {
       model_id: response.model,
       finish_reason: extractFinishReason(response),
@@ -62,8 +67,6 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
       prompt_template_version: compiled.templateVersion,
       schema_name: compiled.schemaName,
       schema_version: compiled.schemaVersion,
-      episode_research_response_metadata: input.episodeResearchResponseMetadata ?? null,
-      selected_candidate_id: input.episodeCandidate?.candidateId ?? null,
     },
   };
 }
@@ -74,13 +77,13 @@ function parseJsonObject(responseText: string): unknown {
   } catch {
     const match = responseText.match(/\{[\s\S]*\}/);
     if (!match) {
-      throw new Error("script_response_invalid");
+      throw new Error("episode_research_response_invalid");
     }
 
     try {
       return JSON.parse(match[0]);
     } catch {
-      throw new Error("script_response_invalid");
+      throw new Error("episode_research_response_invalid");
     }
   }
 }
@@ -105,7 +108,7 @@ function extractResponseText(response: OpenAI.Responses.Response): string {
 
   const text = chunks.join("").trim();
   if (!text) {
-    throw new Error("script_response_invalid");
+    throw new Error("episode_research_response_invalid");
   }
 
   return text;
