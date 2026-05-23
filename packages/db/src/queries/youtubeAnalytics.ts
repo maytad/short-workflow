@@ -60,6 +60,20 @@ export type UpsertYoutubeVideoDiagnosisInput = {
   rawOutput: Record<string, unknown>;
 };
 
+export type RecentYoutubeCreativePromptContext = {
+  youtubeVideoId: string;
+  title: string;
+  views: number | null;
+  engagedViews: number | null;
+  averageViewPercentage: number | null;
+  averageViewDurationSeconds: number | null;
+  viewsPerHour: number | null;
+  likeRate: number | null;
+  hookNarration: string | null;
+  hookCaption: string | null;
+  hookImagePrompt: string | null;
+};
+
 export function normalizeYoutubeMetricNumber(value: unknown) {
   if (value === null || value === undefined || value === "") {
     return null;
@@ -163,6 +177,75 @@ export async function listRecentYoutubeVideoLinks(db: DbClient, since: Date) {
     .from(youtubeVideoLinks)
     .where(gte(youtubeVideoLinks.publishedAt, since))
     .orderBy(desc(youtubeVideoLinks.publishedAt));
+}
+
+export async function listRecentYoutubeCreativePromptContext(
+  db: DbClient,
+  input: { limit?: number; since?: Date } = {},
+): Promise<RecentYoutubeCreativePromptContext[]> {
+  const limit = input.limit ?? 12;
+  const where = input.since ? gte(youtubeVideoLinks.publishedAt, input.since) : undefined;
+
+  const baseQuery = db
+    .select({
+      youtubeVideoId: youtubeVideoLinks.youtubeVideoId,
+      title: youtubeVideoLinks.title,
+      projectId: youtubeVideoLinks.projectId,
+      views: youtubeAnalyticsSnapshots.views,
+      engagedViews: youtubeAnalyticsSnapshots.engagedViews,
+      averageViewPercentage: youtubeAnalyticsSnapshots.averageViewPercentage,
+      averageViewDurationSeconds: youtubeAnalyticsSnapshots.averageViewDurationSeconds,
+      viewsPerHour: youtubeAnalyticsSnapshots.viewsPerHour,
+      likeRate: youtubeAnalyticsSnapshots.likeRate,
+    })
+    .from(youtubeVideoLinks)
+    .leftJoin(
+      youtubeAnalyticsSnapshots,
+      eq(youtubeAnalyticsSnapshots.youtubeVideoLinkId, youtubeVideoLinks.id),
+    );
+
+  const rows = await (where ? baseQuery.where(where) : baseQuery)
+    .orderBy(desc(youtubeVideoLinks.publishedAt), desc(youtubeAnalyticsSnapshots.snapshotAt))
+    .limit(limit * 3);
+
+  const latestByVideoId = new Map<string, (typeof rows)[number]>();
+  for (const row of rows) {
+    if (!latestByVideoId.has(row.youtubeVideoId)) {
+      latestByVideoId.set(row.youtubeVideoId, row);
+    }
+  }
+
+  const contexts: RecentYoutubeCreativePromptContext[] = [];
+  for (const row of [...latestByVideoId.values()].slice(0, limit)) {
+    const hook = row.projectId
+      ? await db
+          .select({
+            narration: scenes.narration,
+            caption: scenes.caption,
+            imagePrompt: scenes.imagePrompt,
+          })
+          .from(scenes)
+          .where(and(eq(scenes.projectId, row.projectId), eq(scenes.role, "hook")))
+          .orderBy(scenes.position)
+          .limit(1)
+      : [];
+
+    contexts.push({
+      youtubeVideoId: row.youtubeVideoId,
+      title: row.title,
+      views: row.views,
+      engagedViews: row.engagedViews,
+      averageViewPercentage: row.averageViewPercentage,
+      averageViewDurationSeconds: row.averageViewDurationSeconds,
+      viewsPerHour: row.viewsPerHour,
+      likeRate: row.likeRate,
+      hookNarration: hook[0]?.narration ?? null,
+      hookCaption: hook[0]?.caption ?? null,
+      hookImagePrompt: hook[0]?.imagePrompt ?? null,
+    });
+  }
+
+  return contexts;
 }
 
 export async function listLatestYoutubeAnalyticsSnapshots(
