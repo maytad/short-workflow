@@ -16,6 +16,15 @@ Implement from:
 
 `docs/superpowers/specs/2026-05-21-youtube-analytics-dashboard-design.md`
 
+Approved refinement:
+
+- Redesign `/analytics` as a decision-first public-only dashboard.
+- Keep All uploads available for private/scheduled troubleshooting, but do not let those rows drive headline public performance decisions.
+- Add Needs action, Winners, New, All public, and All uploads review queues.
+- Replace raw-first detail content with What happened, Likely cause, Next action, and Prompt & title fixes.
+- Note Shown in feed and How many chose to view as future manual or CSV-import metrics.
+- Tighten Tiny Mechanisms prompt rules around first-second visible contradiction, object-plus-surprising-behavior titles, and action-first image prompts.
+
 Keep these scope boundaries:
 
 - No CSV import in this version.

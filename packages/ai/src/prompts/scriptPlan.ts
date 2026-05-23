@@ -9,8 +9,8 @@ import {
 } from "./presets/tinyMechanisms";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 import {
-  VISUAL_HOOK_ARCHETYPES,
   isVisualHookArchetype,
+  VISUAL_HOOK_ARCHETYPES,
   type VisualHookArchetype,
 } from "./visualHooks";
 
@@ -224,7 +224,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 9,
+  version: 10,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -274,7 +274,11 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Use novelty axes before writing: mechanism family, visible action, viewer misconception, and visual strategy. If the angle feels too similar on more than two novelty axes, rewrite the angle while keeping the selected seed.",
             "Open with the misconception, impossible-looking behavior, or satisfying action already happening.",
             "Open with a visible contradiction. Preferred hook pattern: That [visible action] is not [common wrong explanation].",
+            "The first second must show the contradiction on screen before the narration explains it.",
+            "Preferred hook formulas: It should [expected action], but it [surprising action]; or [Object] does [surprising behavior] because [tiny part].",
+            "YouTube title formula: familiar object plus surprising behavior. Prefer titles like Why a Zipper Locks Under Tension or This Tiny Cam Makes a Pen Remember.",
             'Do not use a generic "inside this object" opening unless the selected title angle requires it.',
+            'Avoid abstract hook phrasing such as "not extra power", "not one round door", "without electronics", or "inside this object" when a visible action can carry the hook.',
             "The hook and payoff must be connected by the selected loopPayoff.",
             "At least one point scene must reveal the named mechanism through the selected visualReveal.",
             "Narration should include the selected satisfyingMotion as concrete verbs where natural.",
@@ -304,6 +308,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "For each scene, make visualBrief explain what the viewer should understand from the image in under half a second.",
             "Image prompt seeds and visual briefs must not ask for embedded text, labels, captions, typography, UI, logos, or watermarks.",
             "Hook image prompts must show the phenomenon already happening, not a calm setup before it happens.",
+            "The first image prompt must show action, tension, resistance, or a before-after consequence before any clean explanatory cutaway.",
             "Hook scenes should usually be consequence-first, hands-on, frozen-motion, or impossible-macro; save clean cutaways for point scenes unless the cutaway is the strongest hook.",
             "Point scene image prompts must show the mechanism through macro detail, object cutaway, cause/effect, frozen motion, scale shock, or a physical metaphor.",
             "Across the scene list, vary the visual strategy so the episode does not become the same macro close-up repeated with different parts.",

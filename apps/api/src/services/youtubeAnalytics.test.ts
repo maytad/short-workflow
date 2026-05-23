@@ -1,11 +1,17 @@
 import { describe, expect, test } from "bun:test";
 import { buildYoutubeDiagnosisInputHash } from "@short-workflow/ai";
-
+import type {
+  YoutubeAnalyticsSnapshotRow,
+  YoutubeVideoDiagnosisRow,
+  YoutubeVideoLinkRow,
+} from "@short-workflow/db";
+import type { YoutubeAnalyticsVideoSummary } from "@short-workflow/shared";
 import {
   buildAnalyticsDashboard,
   buildRuleDiagnosis,
   buildYoutubeAiDiagnosisInput,
   deriveSnapshotMetrics,
+  type FetchFn,
   fetchRecentChannelVideos,
   fetchYoutubeAnalyticsRows,
   fetchYoutubeVideoDetails,
@@ -14,14 +20,7 @@ import {
   parseIso8601DurationSeconds,
   requiredScopeError,
   toYoutubeAiDiagnosisError,
-  type FetchFn,
 } from "./youtubeAnalytics";
-import type {
-  YoutubeAnalyticsSnapshotRow,
-  YoutubeVideoDiagnosisRow,
-  YoutubeVideoLinkRow,
-} from "@short-workflow/db";
-import type { YoutubeAnalyticsVideoSummary } from "@short-workflow/shared";
 
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -51,6 +50,19 @@ function calledUrl(input: string | URL | Request) {
   return new URL(input instanceof Request ? input.url : input.toString());
 }
 
+function recordedCall(
+  calls: { input: string | URL | Request; init?: RequestInit | undefined }[],
+  index: number,
+) {
+  const call = calls[index];
+
+  if (!call) {
+    throw new Error(`Expected fetch call at index ${index}`);
+  }
+
+  return call;
+}
+
 describe("median", () => {
   test("returns the middle value after sorting numeric values", () => {
     expect(median([3, 1, 2])).toBe(2);
@@ -77,14 +89,17 @@ describe("findCachedAiDiagnosis", () => {
     });
 
     expect(
-      findCachedAiDiagnosis([
-        stale,
-        diagnosisRow({
-          diagnosisType: "rule_based",
-          inputHash: matching.inputHash,
-        }),
-        matching,
-      ], matching.inputHash),
+      findCachedAiDiagnosis(
+        [
+          stale,
+          diagnosisRow({
+            diagnosisType: "rule_based",
+            inputHash: matching.inputHash,
+          }),
+          matching,
+        ],
+        matching.inputHash,
+      ),
     ).toBe(matching);
   });
 
@@ -189,7 +204,7 @@ describe("buildAnalyticsDashboard", () => {
         description: "A compact explanation.",
         publishedAt: "2026-05-19T02:00:00.000Z",
         durationSeconds: 38,
-        privacyStatus: "private",
+        privacyStatus: "public",
         lastSyncedAt: "2026-05-20T00:10:00.000Z",
         createdAt: "2026-05-20T00:00:00.000Z",
         updatedAt: "2026-05-20T00:05:00.000Z",
@@ -241,6 +256,63 @@ describe("buildAnalyticsDashboard", () => {
 
     expect(dashboard.aggregates.totalViews).toBe(100);
     expect(dashboard.aggregates.bestPerformerVideoId).toBe("abc123def45");
+  });
+
+  test("uses public videos for aggregate decision metrics when public rows exist", () => {
+    const privateVideo: YoutubeAnalyticsVideoSummary = {
+      link: {
+        ...videoLinkRow({ privacyStatus: "private", youtubeVideoId: "private-video" }),
+        createdAt: "2026-05-20T00:00:00.000Z",
+        lastSyncedAt: "2026-05-20T00:10:00.000Z",
+        linkStatus: "linked",
+        publishedAt: "2026-05-19T02:00:00.000Z",
+        source: "db_upload",
+        updatedAt: "2026-05-20T00:05:00.000Z",
+      },
+      latestSnapshot: {
+        ...snapshotRow({ averageViewPercentage: 10, views: 10_000 }),
+        createdAt: "2026-05-20T00:10:00.000Z",
+        snapshotAt: "2026-05-20T00:10:00.000Z",
+      },
+      latestAiDiagnosis: null,
+      latestRuleDiagnosis: null,
+      creativeContext: null,
+    };
+    const publicVideo: YoutubeAnalyticsVideoSummary = {
+      link: {
+        ...videoLinkRow({ privacyStatus: "public", youtubeVideoId: "public-video" }),
+        createdAt: "2026-05-20T00:00:00.000Z",
+        lastSyncedAt: "2026-05-20T00:10:00.000Z",
+        linkStatus: "linked",
+        publishedAt: "2026-05-19T02:00:00.000Z",
+        source: "db_upload",
+        updatedAt: "2026-05-20T00:05:00.000Z",
+      },
+      latestSnapshot: {
+        ...snapshotRow({ averageViewPercentage: 55, views: 100 }),
+        createdAt: "2026-05-20T00:10:00.000Z",
+        snapshotAt: "2026-05-20T00:10:00.000Z",
+      },
+      latestAiDiagnosis: null,
+      latestRuleDiagnosis: null,
+      creativeContext: null,
+    };
+
+    const dashboard = buildAnalyticsDashboard({
+      auth: {
+        connected: true,
+        hasRequiredScopes: true,
+        reconnectRequired: false,
+      },
+      videos: [privateVideo, publicVideo],
+      windowDays: 30,
+    });
+
+    expect(dashboard.aggregates.recentVideoCount).toBe(1);
+    expect(dashboard.aggregates.totalViews).toBe(100);
+    expect(dashboard.aggregates.medianAverageViewPercentage).toBe(55);
+    expect(dashboard.aggregates.bestPerformerVideoId).toBe("public-video");
+    expect(dashboard.videos).toHaveLength(2);
   });
 });
 
@@ -410,12 +482,12 @@ describe("fetchRecentChannelVideos", () => {
     expect(ids).toEqual(["id1", "id2"]);
     expect(calls).toHaveLength(2);
 
-    const url = calledUrl(calls[0]!.input);
+    const url = calledUrl(recordedCall(calls, 0).input);
     expect(url.origin + url.pathname).toBe("https://www.googleapis.com/youtube/v3/channels");
     expect(url.searchParams.get("part")).toBe("contentDetails");
     expect(url.searchParams.get("mine")).toBe("true");
 
-    const playlistUrl = calledUrl(calls[1]!.input);
+    const playlistUrl = calledUrl(recordedCall(calls, 1).input);
     expect(playlistUrl.origin + playlistUrl.pathname).toBe(
       "https://www.googleapis.com/youtube/v3/playlistItems",
     );
@@ -469,7 +541,7 @@ describe("fetchYoutubeVideoDetails", () => {
     expect(details).toEqual([{ id: "id1" }]);
     expect(calls).toHaveLength(1);
 
-    const url = calledUrl(calls[0]!.input);
+    const url = calledUrl(recordedCall(calls, 0).input);
     expect(url.origin + url.pathname).toBe("https://www.googleapis.com/youtube/v3/videos");
     expect(url.searchParams.get("part")).toBe("snippet,status,statistics,contentDetails");
     expect(url.searchParams.get("id")).toBe("id1,id2");
@@ -509,7 +581,7 @@ describe("fetchYoutubeAnalyticsRows", () => {
 
     expect(calls).toHaveLength(1);
 
-    const url = calledUrl(calls[0]!.input);
+    const url = calledUrl(recordedCall(calls, 0).input);
     expect(url.origin + url.pathname).toBe("https://youtubeanalytics.googleapis.com/v2/reports");
     expect(url.searchParams.get("ids")).toBe("channel==MINE");
     expect(url.searchParams.get("dimensions")).toBe("video");
@@ -584,9 +656,7 @@ describe("fetchYoutubeAnalyticsRows", () => {
   });
 });
 
-function diagnosisRow(
-  overrides: Partial<YoutubeVideoDiagnosisRow> = {},
-): YoutubeVideoDiagnosisRow {
+function diagnosisRow(overrides: Partial<YoutubeVideoDiagnosisRow> = {}): YoutubeVideoDiagnosisRow {
   return {
     id: "55555555-5555-4555-8555-555555555555",
     youtubeVideoLinkId: "11111111-1111-4111-8111-111111111111",

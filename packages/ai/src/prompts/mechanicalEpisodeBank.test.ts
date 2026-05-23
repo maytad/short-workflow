@@ -64,7 +64,7 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(9);
+    expect(compiled.templateVersion).toBe(10);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
     expect(developerMessage).toContain("visible moving part");
@@ -77,6 +77,9 @@ describe("mechanical episode bank", () => {
       "mechanism family, visible action, viewer misconception, and visual strategy",
     );
     expect(developerMessage).toContain("visible contradiction");
+    expect(developerMessage).toContain("The first second must show the contradiction on screen");
+    expect(developerMessage).toContain("It should [expected action], but it [surprising action]");
+    expect(developerMessage).toContain("familiar object plus surprising behavior");
     expect(developerMessage).toContain("That [visible action] is not [common wrong explanation]");
     expect(developerMessage).toContain(
       "part moves, part catches or slides or locks or releases, output happens",
@@ -87,7 +90,9 @@ describe("mechanical episode bank", () => {
     expect(developerMessage).toContain("Do not copy full narration into captions");
     expect(developerMessage).toContain("Prefer mechanism-state captions");
     expect(developerMessage).toContain("Avoid semicolons, periods, colons");
+    expect(developerMessage).toContain("without electronics");
     expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
+    expect(developerMessage).toContain("first image prompt must show action, tension, resistance");
     expect(userMessage).toContain("<mechanism_family>spring_locking</mechanism_family>");
     expect(userMessage).toContain("<appeal_tier>mass_appeal</appeal_tier>");
     expect(userMessage).toContain(

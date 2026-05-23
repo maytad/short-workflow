@@ -28,6 +28,20 @@ export function hasActiveProjectFlowJob(activeJobs: Job[]) {
   return activeJobs.some((job) => job.type === "run_project_flow" && isActiveJob(job));
 }
 
+function getActiveJobIds(jobs: Job[]) {
+  return new Set(jobs.filter(isActiveJob).map((job) => job.id));
+}
+
+function hasCompletedActiveJob(previousJobIds: Set<string>, currentJobIds: Set<string>) {
+  for (const jobId of previousJobIds) {
+    if (!currentJobIds.has(jobId)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 function invalidateProjectWorkflow(
   queryClient: ReturnType<typeof useQueryClient>,
   projectId: string,
@@ -148,7 +162,7 @@ export function useProjectQuery(projectId: string) {
 
 export function useProjectJobsQuery(projectId: string, status?: "active") {
   const queryClient = useQueryClient();
-  const previousActiveCount = useRef<number | null>(null);
+  const previousActiveJobIds = useRef<Set<string> | null>(null);
   const search = status === "active" ? "?status=active" : "";
   const query = useQuery({
     enabled: projectId.length > 0,
@@ -170,17 +184,17 @@ export function useProjectJobsQuery(projectId: string, status?: "active") {
       return;
     }
 
-    const activeCount = query.data.filter(isActiveJob).length;
+    const activeJobIds = getActiveJobIds(query.data);
+    const shouldRefreshWorkflow =
+      previousActiveJobIds.current !== null &&
+      previousActiveJobIds.current.size > 0 &&
+      hasCompletedActiveJob(previousActiveJobIds.current, activeJobIds);
 
-    if (
-      previousActiveCount.current !== null &&
-      previousActiveCount.current > 0 &&
-      activeCount === 0
-    ) {
-      invalidateProjectWorkflow(queryClient, projectId);
+    previousActiveJobIds.current = activeJobIds;
+
+    if (shouldRefreshWorkflow) {
+      void invalidateProjectWorkflow(queryClient, projectId);
     }
-
-    previousActiveCount.current = activeCount;
   }, [projectId, query.data, queryClient]);
 
   return query;

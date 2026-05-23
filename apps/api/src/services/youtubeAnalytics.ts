@@ -1,6 +1,7 @@
 import { buildYoutubeDiagnosisInputHash, diagnoseYoutubeVideo } from "@short-workflow/ai";
 import {
   createYoutubeAnalyticsSnapshot,
+  type DbClient,
   getYoutubeCreativeContext,
   getYoutubeVideoLinkByVideoId,
   listLatestYoutubeAnalyticsSnapshots,
@@ -10,14 +11,13 @@ import {
   normalizeYoutubeMetricNumber,
   upsertYoutubeVideoDiagnosis,
   upsertYoutubeVideoLink,
-  type DbClient,
   type YoutubeAnalyticsSnapshotRow,
   type YoutubeVideoDiagnosisRow,
   type YoutubeVideoLinkRow,
 } from "@short-workflow/db";
 import type {
-  YoutubeAnalyticsCreativeContext,
   YoutubeAiDiagnosisResponse,
+  YoutubeAnalyticsCreativeContext,
   YoutubeAnalyticsDashboardResponse,
   YoutubeAnalyticsVideoSummary,
 } from "@short-workflow/shared";
@@ -164,22 +164,22 @@ export function buildAnalyticsDashboard(input: {
   windowDays: number;
   videos: YoutubeAnalyticsVideoSummary[];
 }): YoutubeAnalyticsDashboardResponse {
-  const totalViews = input.videos.reduce(
+  const publicVideos = input.videos.filter((video) => video.link.privacyStatus === "public");
+  const analysisVideos = publicVideos.length > 0 ? publicVideos : input.videos;
+  const totalViews = analysisVideos.reduce(
     (sum, video) => sum + (video.latestSnapshot?.views ?? 0),
     0,
   );
-  const best = [...input.videos].sort(
+  const best = [...analysisVideos].sort(
     (left, right) => (right.latestSnapshot?.views ?? 0) - (left.latestSnapshot?.views ?? 0),
   )[0];
-  const needsAttentionCount = input.videos.filter((video) => {
+  const needsAttentionCount = analysisVideos.filter((video) => {
     const suggestions = video.latestRuleDiagnosis?.suggestionsEn as
       | { labels?: unknown }
       | undefined;
 
     return Array.isArray(suggestions?.labels)
-      ? suggestions.labels.some(
-          (label) => label === "weak_hold" || label === "low_exposure_proxy",
-        )
+      ? suggestions.labels.some((label) => label === "weak_hold" || label === "low_exposure_proxy")
       : false;
   }).length;
 
@@ -187,11 +187,11 @@ export function buildAnalyticsDashboard(input: {
     auth: input.auth,
     windowDays: input.windowDays,
     aggregates: {
-      recentVideoCount: input.videos.length,
+      recentVideoCount: analysisVideos.length,
       totalViews,
       needsAttentionCount,
       medianAverageViewPercentage: median(
-        input.videos.map((video) => video.latestSnapshot?.averageViewPercentage),
+        analysisVideos.map((video) => video.latestSnapshot?.averageViewPercentage),
       ),
       bestPerformerVideoId: best?.latestSnapshot?.views ? best.link.youtubeVideoId : null,
     },
@@ -218,11 +218,7 @@ export function deriveSnapshotMetrics(input: DerivedMetricInput): DerivedSnapsho
     ? Math.max(0, (input.now.getTime() - input.publishedAt.getTime()) / 3_600_000)
     : null;
   const viewsPerHour =
-    input.views === null || ageHours === null
-      ? null
-      : ageHours > 0
-        ? input.views / ageHours
-        : null;
+    input.views === null || ageHours === null ? null : ageHours > 0 ? input.views / ageHours : null;
   const likeRate =
     input.views === null || input.likes === null || input.views <= 0
       ? null
@@ -691,6 +687,17 @@ function toSnapshotRuleInput(snapshot: YoutubeAnalyticsSnapshotRow): NullableAna
   };
 }
 
+function summarizeRecentMedians(
+  snapshots: YoutubeAnalyticsSnapshotRow[],
+): NullableAnalyticsMetrics {
+  return {
+    views: median(snapshots.map((snapshot) => snapshot.views)),
+    viewsPerHour: median(snapshots.map((snapshot) => snapshot.viewsPerHour)),
+    averageViewPercentage: median(snapshots.map((snapshot) => snapshot.averageViewPercentage)),
+    likeRate: median(snapshots.map((snapshot) => snapshot.likeRate)),
+  };
+}
+
 async function loadDashboard(
   db: DbClient,
   input: { windowDays: number },
@@ -720,8 +727,7 @@ async function loadDashboard(
       ) ?? null;
     const latestAiDiagnosis =
       diagnoses.find(
-        (diagnosis) =>
-          diagnosis.youtubeVideoLinkId === link.id && diagnosis.diagnosisType === "ai",
+        (diagnosis) => diagnosis.youtubeVideoLinkId === link.id && diagnosis.diagnosisType === "ai",
       ) ?? null;
 
     return {
@@ -769,6 +775,7 @@ async function refreshYoutubeAnalyticsDashboard(
     mappings.map((mapping) => [mapping.youtubeVideoId, mapping] as const),
   );
   const createdSnapshots: YoutubeAnalyticsSnapshotRow[] = [];
+  const publicSnapshots: YoutubeAnalyticsSnapshotRow[] = [];
 
   for (const item of details) {
     const mapping = mappingByVideoId.get(item.id);
@@ -799,36 +806,35 @@ async function refreshYoutubeAnalyticsDashboard(
     });
     const averageViewDuration = metric(analytics, "averageViewDuration");
 
-    createdSnapshots.push(
-      await createYoutubeAnalyticsSnapshot(db, {
-        youtubeVideoLinkId: link.id,
-        youtubeVideoId: item.id,
-        windowDays: input.windowDays,
-        views,
-        engagedViews: intMetric(analytics, "engagedViews"),
-        likes,
-        comments,
-        shares: intMetric(analytics, "shares"),
-        subscribersGained: intMetric(analytics, "subscribersGained"),
-        averageViewDurationSeconds:
-          averageViewDuration === null ? null : Math.trunc(averageViewDuration),
-        averageViewPercentage: metric(analytics, "averageViewPercentage"),
-        viewsPerHour: derived.viewsPerHour,
-        likeRate: derived.likeRate,
-        rawDataApi: toRecord(item),
-        rawAnalyticsApi: analytics ?? {},
-      }),
-    );
+    const snapshot = await createYoutubeAnalyticsSnapshot(db, {
+      youtubeVideoLinkId: link.id,
+      youtubeVideoId: item.id,
+      windowDays: input.windowDays,
+      views,
+      engagedViews: intMetric(analytics, "engagedViews"),
+      likes,
+      comments,
+      shares: intMetric(analytics, "shares"),
+      subscribersGained: intMetric(analytics, "subscribersGained"),
+      averageViewDurationSeconds:
+        averageViewDuration === null ? null : Math.trunc(averageViewDuration),
+      averageViewPercentage: metric(analytics, "averageViewPercentage"),
+      viewsPerHour: derived.viewsPerHour,
+      likeRate: derived.likeRate,
+      rawDataApi: toRecord(item),
+      rawAnalyticsApi: analytics ?? {},
+    });
+
+    createdSnapshots.push(snapshot);
+
+    if (link.privacyStatus === "public") {
+      publicSnapshots.push(snapshot);
+    }
   }
 
-  const recentMedians: NullableAnalyticsMetrics = {
-    views: median(createdSnapshots.map((snapshot) => snapshot.views)),
-    viewsPerHour: median(createdSnapshots.map((snapshot) => snapshot.viewsPerHour)),
-    averageViewPercentage: median(
-      createdSnapshots.map((snapshot) => snapshot.averageViewPercentage),
-    ),
-    likeRate: median(createdSnapshots.map((snapshot) => snapshot.likeRate)),
-  };
+  const recentMedians = summarizeRecentMedians(
+    publicSnapshots.length > 0 ? publicSnapshots : createdSnapshots,
+  );
 
   for (const snapshot of createdSnapshots) {
     const link = await getYoutubeVideoLinkByVideoId(db, snapshot.youtubeVideoId);

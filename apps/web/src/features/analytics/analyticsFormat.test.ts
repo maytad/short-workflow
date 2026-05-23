@@ -1,6 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
-import { formatMetric, formatPercent, statusLabel } from "./analyticsFormat";
+import { formatAge, formatMetric, formatPercent, statusLabel } from "./analyticsFormat";
 
 describe("analytics formatting", () => {
   test("formats missing metrics as a dash", () => {
@@ -19,5 +19,17 @@ describe("analytics formatting", () => {
   test("formats YouTube link status labels", () => {
     expect(statusLabel("linked")).toBe("Linked");
     expect(statusLabel("unlinked")).toBe("Unlinked");
+  });
+
+  test("formats relative publish age", () => {
+    const nowSpy = spyOn(Date, "now").mockReturnValue(
+      new Date("2026-05-21T12:00:00.000Z").getTime(),
+    );
+
+    expect(formatAge("2026-05-21T11:30:00.000Z")).toBe("30m");
+    expect(formatAge("2026-05-21T08:00:00.000Z")).toBe("4h");
+    expect(formatAge("2026-05-18T12:00:00.000Z")).toBe("3d");
+
+    nowSpy.mockRestore();
   });
 });

@@ -59,6 +59,24 @@ Use an API-based dashboard with manual refresh, linked and unlinked video rows, 
 
 This approach gives the user useful measurement and interpretation without adding a scheduler, CSV parser, or automatic creative changes before the analytics data is proven useful.
 
+## UX Refinement
+
+The dashboard should behave as a decision interface, not a raw analytics dump.
+
+- Default analysis is public-only. Private and scheduled uploads remain visible in an All uploads view, but they do not drive headline decisions when public videos exist.
+- The first screen prioritizes public video count, total public views, median public views, and median average viewed percentage.
+- The review queue is segmented into Needs action, Winners, New, All public, and All uploads.
+- The video list should keep the main decision columns visible: video, status, views, views/hour, average viewed, signal, and action.
+- The detail panel should summarize What happened, Likely cause, Next action, and Prompt & title fixes before exposing raw JSON.
+- Shorts metrics that are currently Studio-only, such as Shown in feed and How many chose to view, should be called out as future manual or CSV import fields.
+
+Prompt refinements from analytics research:
+
+- Script prompts must open with a visible contradiction in the first second.
+- Titles should prefer familiar object plus surprising behavior.
+- First image prompts must show action, tension, resistance, or consequence before clean explanatory cutaways.
+- Captions stay short, mobile-readable, and punctuation-free.
+
 ## Alternatives Considered
 
 ### A. Minimal Metrics Page
