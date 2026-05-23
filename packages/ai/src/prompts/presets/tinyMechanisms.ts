@@ -3,6 +3,7 @@ import type { GenerateScriptInput, ScriptScene } from "../../types";
 export const TINY_MECHANISMS_PRESET_ID = "tiny_mechanisms" as const;
 export const TINY_MECHANISMS_CHANNEL_NAME = "Tiny Mechanisms";
 export const TINY_MECHANISMS_TOPIC_PREFIX = "tiny_mechanisms:";
+export const TINY_MECHANISMS_AI_TOPIC_PREFIX = `${TINY_MECHANISMS_TOPIC_PREFIX}ai:`;
 export const TINY_MECHANISMS_PENDING_TOPIC = `${TINY_MECHANISMS_TOPIC_PREFIX}pending`;
 
 export type TinyMechanismsMechanismFamily =
@@ -1186,7 +1187,34 @@ export function encodeTinyMechanismsTopic(seedId: string) {
   return `${TINY_MECHANISMS_TOPIC_PREFIX}${seedId}`;
 }
 
+export function slugifyTinyMechanismsAiTopic(input: string) {
+  const slug = input
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64)
+    .replace(/^-+|-+$/g, "");
+
+  return slug || "episode";
+}
+
+export function encodeTinyMechanismsAiTopic(slug: string) {
+  return `${TINY_MECHANISMS_AI_TOPIC_PREFIX}${slugifyTinyMechanismsAiTopic(slug)}`;
+}
+
+export function parseTinyMechanismsAiTopicSlug(topic: string): string | null {
+  if (!topic.startsWith(TINY_MECHANISMS_AI_TOPIC_PREFIX)) {
+    return null;
+  }
+
+  return topic.slice(TINY_MECHANISMS_AI_TOPIC_PREFIX.length) || null;
+}
+
 export function parseTinyMechanismsSeedId(topic: string): string | null {
+  if (topic.startsWith(TINY_MECHANISMS_AI_TOPIC_PREFIX)) {
+    return null;
+  }
+
   if (!topic.startsWith(TINY_MECHANISMS_TOPIC_PREFIX)) {
     return null;
   }

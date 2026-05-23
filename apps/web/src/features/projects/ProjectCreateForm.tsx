@@ -1,17 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { Check, Loader2, Plus, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { Loader2, Plus, Sparkles } from "lucide-react";
 
-import { cn } from "../../lib/utils";
 import { useCreateTinyMechanismsProjectMutation } from "./hooks";
-
-const DURATION_OPTIONS = [30, 45, 60] as const;
-type DurationOption = (typeof DURATION_OPTIONS)[number];
 
 export function ProjectCreateForm() {
   const navigate = useNavigate();
   const createProject = useCreateTinyMechanismsProjectMutation();
-  const [selectedDuration, setSelectedDuration] = useState<DurationOption>(45);
 
   return (
     <form
@@ -19,19 +13,14 @@ export function ProjectCreateForm() {
       onSubmit={(event) => {
         event.preventDefault();
 
-        createProject.mutate(
-          {
-            targetDurationSeconds: selectedDuration,
+        createProject.mutate(undefined, {
+          onSuccess: (project) => {
+            void navigate({
+              params: { projectId: project.id },
+              to: "/projects/$projectId",
+            });
           },
-          {
-            onSuccess: (project) => {
-              void navigate({
-                params: { projectId: project.id },
-                to: "/projects/$projectId",
-              });
-            },
-          },
-        );
+        });
       }}
     >
       <div className="flex flex-col gap-4">
@@ -45,42 +34,9 @@ export function ProjectCreateForm() {
             </p>
             <h2 className="mt-1 text-base font-semibold">Tiny Mechanisms</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Create an English short about a small mechanical system, then generate the script,
-              scenes, images, voice, and render.
+              Create a backend-optimized English short about a small physical mechanism, then
+              generate the script, scenes, images, voice, and render.
             </p>
-          </div>
-        </div>
-
-        <div className="grid gap-2">
-          <span className="text-sm font-medium" id="target-duration-label">
-            Target duration
-          </span>
-          <div
-            aria-labelledby="target-duration-label"
-            className="grid grid-cols-3 rounded-md border border-border bg-background p-1"
-            role="group"
-          >
-            {DURATION_OPTIONS.map((duration) => {
-              const isSelected = selectedDuration === duration;
-
-              return (
-                <button
-                  aria-pressed={isSelected}
-                  className={cn(
-                    "inline-flex h-9 items-center justify-center gap-1.5 rounded px-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-60",
-                    isSelected &&
-                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground",
-                  )}
-                  disabled={createProject.isPending}
-                  key={duration}
-                  onClick={() => setSelectedDuration(duration)}
-                  type="button"
-                >
-                  {isSelected ? <Check className="size-3.5" aria-hidden="true" /> : null}
-                  {duration}s
-                </button>
-              );
-            })}
           </div>
         </div>
 

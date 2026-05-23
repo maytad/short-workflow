@@ -1,6 +1,9 @@
 import { z } from "zod";
 
-import { DEFAULT_TARGET_DURATION_SECONDS } from "./constants";
+import {
+  DEFAULT_TARGET_DURATION_SECONDS,
+  TINY_MECHANISMS_DEFAULT_TARGET_DURATION_SECONDS,
+} from "./constants";
 import {
   assetSchema,
   durationPresetSecondsSchema,
@@ -28,9 +31,13 @@ export const createProjectRequestSchema = z
 
 export const createTinyMechanismsProjectRequestSchema = z
   .object({
-    targetDurationSeconds: durationPresetSecondsSchema.default(DEFAULT_TARGET_DURATION_SECONDS),
+    targetDurationSeconds: durationPresetSecondsSchema.optional(),
   })
-  .strict();
+  .strict()
+  .transform((input) => ({
+    targetDurationSeconds:
+      input.targetDurationSeconds ?? TINY_MECHANISMS_DEFAULT_TARGET_DURATION_SECONDS,
+  }));
 
 export const updateProjectRequestSchema = z
   .object({
@@ -149,7 +156,7 @@ export const renderPreconditionErrorSchema = z
   .strict();
 
 export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
-export type CreateTinyMechanismsProjectRequest = z.infer<
+export type CreateTinyMechanismsProjectRequest = z.input<
   typeof createTinyMechanismsProjectRequestSchema
 >;
 export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;

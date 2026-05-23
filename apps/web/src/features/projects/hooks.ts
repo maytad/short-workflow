@@ -1,7 +1,6 @@
 import type {
   BulkAssetQueueResponse,
   CreateProjectRequest,
-  CreateTinyMechanismsProjectRequest,
   Job,
   Project,
   ProjectDetailResponse,
@@ -255,9 +254,9 @@ export function useCreateTinyMechanismsProjectMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (input: CreateTinyMechanismsProjectRequest) =>
+    mutationFn: () =>
       apiFetch<Project>("/projects/tiny-mechanisms", {
-        body: JSON.stringify(input),
+        body: JSON.stringify({}),
         method: "POST",
       }),
     onSuccess: () => {

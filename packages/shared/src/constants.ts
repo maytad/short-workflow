@@ -44,6 +44,7 @@ export const PROMPT_PURPOSES = ["script", "image_prompt", "ssml", "caption"] as 
 export const DURATION_PRESETS_SECONDS = [30, 45, 60] as const;
 
 export const DEFAULT_TARGET_DURATION_SECONDS = 45;
+export const TINY_MECHANISMS_DEFAULT_TARGET_DURATION_SECONDS = 30;
 export const DEFAULT_WORKER_CONCURRENCY = 2;
 export const DEFAULT_MAX_ATTEMPTS = 5;
 
