@@ -1,29 +1,36 @@
 import {
+  encodeTinyMechanismsAiTopic,
   encodeTinyMechanismsTopic,
+  generateEpisodeResearch,
   generateScript,
   getTinyMechanismsSeed,
+  parseTinyMechanismsAiTopicSlug,
   parseTinyMechanismsSeedId,
-  pickNextTinyMechanismsSeed,
+  slugifyTinyMechanismsAiTopic,
   TINY_MECHANISMS_PENDING_TOPIC,
   TINY_MECHANISMS_PRESET_ID,
   tinyMechanismsProjectTitle,
+  type GenerateScriptInput,
 } from "@short-workflow/ai";
 import {
   getProject,
   insertPromptVersion,
-  listProjects,
+  listRecentYoutubeCreativePromptContext,
   markJobSucceeded,
   replaceProjectScenes,
   setProjectStatus,
   updateProject,
-  withAdvisoryTransactionLock,
   withDbTransaction,
   type DbClient,
   type JobRow,
   type ProjectRow,
 } from "@short-workflow/db";
 
-const TINY_MECHANISMS_SEED_LOCK_KEY = "short_workflow:tiny_mechanisms_seed";
+type ScriptSetup = {
+  titleFallback: string;
+  topic: string;
+  input: GenerateScriptInput;
+};
 
 function targetDurationSeconds(value: number): 30 | 45 | 60 {
   if (value === 30 || value === 45 || value === 60) {
@@ -33,7 +40,12 @@ function targetDurationSeconds(value: number): 30 | 45 | 60 {
   throw new Error("unsupported_target_duration");
 }
 
-async function resolveTinyMechanismsSeed(db: DbClient, project: ProjectRow) {
+function resolveExplicitTinyMechanismsSeed(project: ProjectRow) {
+  const aiTopicSlug = parseTinyMechanismsAiTopicSlug(project.topic);
+  if (aiTopicSlug) {
+    return null;
+  }
+
   const parsedSeedId = parseTinyMechanismsSeedId(project.topic);
 
   if (parsedSeedId === "") {
@@ -49,43 +61,61 @@ async function resolveTinyMechanismsSeed(db: DbClient, project: ProjectRow) {
     return existingSeed;
   }
 
-  if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC && parsedSeedId === null) {
+  if (project.topic === TINY_MECHANISMS_PENDING_TOPIC || parsedSeedId === "pending") {
+    return null;
+  }
+
+  throw new Error("unsupported_project_prompt_preset");
+}
+
+function buildLegacyScriptInput(project: ProjectRow): ScriptSetup | null {
+  const seed = resolveExplicitTinyMechanismsSeed(project);
+  if (!seed) {
+    return null;
+  }
+
+  return {
+    titleFallback: tinyMechanismsProjectTitle(seed),
+    topic: encodeTinyMechanismsTopic(seed.seedId),
+    input: {
+      channelPresetId: TINY_MECHANISMS_PRESET_ID,
+      seedId: seed.seedId,
+      targetDurationSeconds: targetDurationSeconds(project.targetDurationSeconds),
+    },
+  };
+}
+
+async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Promise<ScriptSetup> {
+  if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC) {
     throw new Error("unsupported_project_prompt_preset");
   }
 
-  const projects = await listProjects(db);
-  const usedSeedIds = projects
-    .filter((candidate) => candidate.id !== project.id)
-    .map((candidate) => parseTinyMechanismsSeedId(candidate.topic))
-    .filter((seedId): seedId is string => Boolean(seedId && seedId !== "pending"));
-
-  return pickNextTinyMechanismsSeed(usedSeedIds);
-}
-
-async function reserveTinyMechanismsSeed(db: DbClient, projectId: string) {
-  return withAdvisoryTransactionLock(db, TINY_MECHANISMS_SEED_LOCK_KEY, async (tx) => {
-    const project = await getProject(tx, projectId);
-
-    if (!project) {
-      throw new Error("project_not_found");
-    }
-
-    const seed = await resolveTinyMechanismsSeed(tx, project);
-    const reservedTopic = encodeTinyMechanismsTopic(seed.seedId);
-
-    const reservedProject =
-      project.topic === reservedTopic
-        ? project
-        : await updateProject(tx, project.id, {
-            topic: reservedTopic,
-          });
-
-    if (!reservedProject) {
-      throw new Error("project_update_failed");
-    }
-
-    return { project: reservedProject, seed };
+  const targetDuration = targetDurationSeconds(project.targetDurationSeconds);
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentVideos = await listRecentYoutubeCreativePromptContext(db, {
+    limit: 12,
+    since,
   });
+  const research = await generateEpisodeResearch({
+    channelPresetId: TINY_MECHANISMS_PRESET_ID,
+    targetDurationSeconds: targetDuration,
+    recentVideos,
+  });
+  const slug = slugifyTinyMechanismsAiTopic(research.selectedCandidate.objectOrMechanism);
+
+  return {
+    titleFallback: `Tiny Mechanisms: ${research.selectedCandidate.centralQuestion}`,
+    topic: encodeTinyMechanismsAiTopic(slug),
+    input: {
+      channelPresetId: TINY_MECHANISMS_PRESET_ID,
+      seedId: `ai:${slug}`,
+      targetDurationSeconds: targetDuration,
+      episodeCandidate: research.selectedCandidate,
+      episodeResearch: research.research,
+      episodeResearchPromptPayload: research.promptPayload,
+      episodeResearchResponseMetadata: research.responseMetadata,
+    },
+  };
 }
 
 export type GenerateProjectScriptResult = {
@@ -101,17 +131,18 @@ export async function generateProjectScript(
   projectId: string,
   options: { jobId?: string } = {},
 ): Promise<GenerateProjectScriptResult> {
-  const { project, seed } = await reserveTinyMechanismsSeed(db, projectId);
-  const scriptInput = {
-    channelPresetId: TINY_MECHANISMS_PRESET_ID,
-    seedId: seed.seedId,
-    targetDurationSeconds: targetDurationSeconds(project.targetDurationSeconds),
-  };
-  const script = await generateScript(scriptInput);
+  const project = await getProject(db, projectId);
+  if (!project) {
+    throw new Error("project_not_found");
+  }
+
+  const legacySetup = buildLegacyScriptInput(project);
+  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(db, project));
+  const script = await generateScript(scriptSetup.input);
 
   return withDbTransaction(db, async (tx) => {
     const promptVersion = await insertPromptVersion(tx, {
-      projectId: project.id,
+      projectId,
       sceneId: null,
       purpose: "script",
       provider: "openai",
@@ -119,18 +150,18 @@ export async function generateProjectScript(
       responseText: script.responseText,
       responseMetadata: script.responseMetadata,
     });
-    const scenes = await replaceProjectScenes(tx, project.id, script.scenes);
+    const scenes = await replaceProjectScenes(tx, projectId, script.scenes);
 
-    await updateProject(tx, project.id, {
-      title: script.title || tinyMechanismsProjectTitle(seed),
-      topic: encodeTinyMechanismsTopic(seed.seedId),
+    await updateProject(tx, projectId, {
+      title: script.title || scriptSetup.titleFallback,
+      topic: scriptSetup.topic,
     });
-    await setProjectStatus(tx, project.id, "ready");
+    await setProjectStatus(tx, projectId, "ready");
 
     const result: GenerateProjectScriptResult = {
       sceneIds: scenes.map((scene) => scene.id),
       promptVersionId: promptVersion.id,
-      seedId: seed.seedId,
+      seedId: scriptSetup.input.seedId,
       channelPresetId: script.channelPresetId,
       metadataDraft: script.metadataDraft,
     };
