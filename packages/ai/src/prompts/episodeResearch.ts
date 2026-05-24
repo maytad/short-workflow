@@ -3,36 +3,33 @@ import { z } from "zod";
 import { TINY_MECHANISMS_CHANNEL_BIBLE, TINY_MECHANISMS_PRESET_ID } from "./presets/tinyMechanisms";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 
-export const recentVideoPromptContextSchema = z
-  .object({
-    youtubeVideoId: z.string().min(1),
-    title: z.string().min(1),
-    views: z.number().nullable(),
-    engagedViews: z.number().nullable(),
-    averageViewPercentage: z.number().nullable(),
-    averageViewDurationSeconds: z.number().nullable(),
-    viewsPerHour: z.number().nullable(),
-    likeRate: z.number().nullable(),
-    hookNarration: z.string().nullable(),
-    hookCaption: z.string().nullable(),
-    hookImagePrompt: z.string().nullable(),
-  })
-  .strict();
+export const EPISODE_CANDIDATE_ROLES = [
+  "feed_stop_strategist",
+  "broad_object_selector",
+  "visual_mechanism_director",
+  "retention_architect",
+  "loop_payoff_editor",
+] as const;
+
+export const episodeCandidateRoleSchema = z.enum(EPISODE_CANDIDATE_ROLES);
+export type EpisodeCandidateRole = z.infer<typeof episodeCandidateRoleSchema>;
 
 export const episodeCandidateScoreSchema = z
   .object({
-    feedClarity: z.number().int().min(1).max(5),
+    firstFrameClarity: z.number().int().min(1).max(5),
     swipeResistance: z.number().int().min(1).max(5),
-    broadAppeal: z.number().int().min(1).max(5),
+    broadObjectFamiliarity: z.number().int().min(1).max(5),
     visualNovelty: z.number().int().min(1).max(5),
     retentionPath: z.number().int().min(1).max(5),
-    repeatRisk: z.number().int().min(1).max(5),
+    loopPayoffStrength: z.number().int().min(1).max(5),
+    genericRisk: z.number().int().min(1).max(5),
   })
   .strict();
 
 export const episodeCandidateSchema = z
   .object({
     candidateId: z.string().min(1),
+    roleSource: episodeCandidateRoleSchema,
     objectOrMechanism: z.string().min(1),
     centralQuestion: z.string().min(1),
     firstFrame: z.string().min(1),
@@ -46,34 +43,28 @@ export const episodeCandidateSchema = z
     mechanismProof: z.string().min(1),
     visualReveal: z.string().min(1),
     loopPayoff: z.string().min(1),
-    whyThisCanBeatRecentVideos: z.string().min(1),
+    whyThisCanBreakPattern: z.string().min(1),
     scores: episodeCandidateScoreSchema,
   })
   .strict();
 
-export const episodeResearchSchema = z
+export const roleEpisodeCandidateResponseSchema = z
   .object({
     channelPresetId: z.literal(TINY_MECHANISMS_PRESET_ID),
-    candidates: z.array(episodeCandidateSchema).length(5),
-    selectedCandidateId: z.string().min(1),
-    selectionRationale: z.string().min(1),
+    role: episodeCandidateRoleSchema,
+    candidate: episodeCandidateSchema,
   })
   .strict()
-  .refine(
-    (value) =>
-      value.candidates.some((candidate) => candidate.candidateId === value.selectedCandidateId),
-    "selected_candidate_missing",
-  );
+  .refine((value) => value.candidate.roleSource === value.role, "candidate_role_mismatch");
 
-export type RecentVideoPromptContext = z.infer<typeof recentVideoPromptContextSchema>;
 export type EpisodeCandidateScore = z.infer<typeof episodeCandidateScoreSchema>;
 export type EpisodeCandidate = z.infer<typeof episodeCandidateSchema>;
-export type EpisodeResearch = z.infer<typeof episodeResearchSchema>;
+export type RoleEpisodeCandidateResponse = z.infer<typeof roleEpisodeCandidateResponseSchema>;
 
 export type EpisodeResearchInput = {
   channelPresetId: typeof TINY_MECHANISMS_PRESET_ID;
   targetDurationSeconds: 30 | 45 | 60;
-  recentVideos: RecentVideoPromptContext[];
+  role: EpisodeCandidateRole;
 };
 
 export type CompiledEpisodeResearchPrompt = CompiledPrompt & {
@@ -84,80 +75,115 @@ export type CompiledEpisodeResearchPrompt = CompiledPrompt & {
   schemaVersion: 1;
 };
 
+export const candidateScoreJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "firstFrameClarity",
+    "swipeResistance",
+    "broadObjectFamiliarity",
+    "visualNovelty",
+    "retentionPath",
+    "loopPayoffStrength",
+    "genericRisk",
+  ],
+  properties: {
+    firstFrameClarity: { type: "integer", minimum: 1, maximum: 5 },
+    swipeResistance: { type: "integer", minimum: 1, maximum: 5 },
+    broadObjectFamiliarity: { type: "integer", minimum: 1, maximum: 5 },
+    visualNovelty: { type: "integer", minimum: 1, maximum: 5 },
+    retentionPath: { type: "integer", minimum: 1, maximum: 5 },
+    loopPayoffStrength: { type: "integer", minimum: 1, maximum: 5 },
+    genericRisk: { type: "integer", minimum: 1, maximum: 5 },
+  },
+} as const;
+
 export const EPISODE_RESEARCH_JSON_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["channelPresetId", "candidates", "selectedCandidateId", "selectionRationale"],
+  required: ["channelPresetId", "role", "candidate"],
   properties: {
     channelPresetId: { type: "string", enum: [TINY_MECHANISMS_PRESET_ID] },
-    candidates: {
-      type: "array",
-      minItems: 5,
-      maxItems: 5,
-      items: {
-        type: "object",
-        additionalProperties: false,
-        required: [
-          "candidateId",
-          "objectOrMechanism",
-          "centralQuestion",
-          "firstFrame",
-          "firstLine",
-          "firstThreeWords",
-          "feedHypothesis",
-          "swipeRisk",
-          "broadAudienceReason",
-          "retentionPromise",
-          "titleCuriosityGap",
-          "mechanismProof",
-          "visualReveal",
-          "loopPayoff",
-          "whyThisCanBeatRecentVideos",
-          "scores",
-        ],
+    role: { type: "string", enum: EPISODE_CANDIDATE_ROLES },
+    candidate: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "candidateId",
+        "roleSource",
+        "objectOrMechanism",
+        "centralQuestion",
+        "firstFrame",
+        "firstLine",
+        "firstThreeWords",
+        "feedHypothesis",
+        "swipeRisk",
+        "broadAudienceReason",
+        "retentionPromise",
+        "titleCuriosityGap",
+        "mechanismProof",
+        "visualReveal",
+        "loopPayoff",
+        "whyThisCanBreakPattern",
+        "scores",
+      ],
+      properties: {
+        candidateId: { type: "string", minLength: 1 },
+        roleSource: { type: "string", enum: EPISODE_CANDIDATE_ROLES },
+        objectOrMechanism: { type: "string", minLength: 1 },
+        centralQuestion: { type: "string", minLength: 1 },
+        firstFrame: { type: "string", minLength: 1 },
+        firstLine: { type: "string", minLength: 1 },
+        firstThreeWords: { type: "string", minLength: 1 },
+        feedHypothesis: { type: "string", minLength: 1 },
+        swipeRisk: { type: "string", enum: ["low", "medium", "high"] },
+        broadAudienceReason: { type: "string", minLength: 1 },
+        retentionPromise: { type: "string", minLength: 1 },
+        titleCuriosityGap: { type: "string", minLength: 1 },
+        mechanismProof: { type: "string", minLength: 1 },
+        visualReveal: { type: "string", minLength: 1 },
+        loopPayoff: { type: "string", minLength: 1 },
+        whyThisCanBreakPattern: { type: "string", minLength: 1 },
+        scores: candidateScoreJsonSchema,
+      },
+    },
+  },
+} as const;
+
+export function episodeResearchJsonSchemaForRole(role: EpisodeCandidateRole) {
+  return {
+    ...EPISODE_RESEARCH_JSON_SCHEMA,
+    properties: {
+      ...EPISODE_RESEARCH_JSON_SCHEMA.properties,
+      role: { type: "string", enum: [role] },
+      candidate: {
+        ...EPISODE_RESEARCH_JSON_SCHEMA.properties.candidate,
         properties: {
-          candidateId: { type: "string", minLength: 1 },
-          objectOrMechanism: { type: "string", minLength: 1 },
-          centralQuestion: { type: "string", minLength: 1 },
-          firstFrame: { type: "string", minLength: 1 },
-          firstLine: { type: "string", minLength: 1 },
-          firstThreeWords: { type: "string", minLength: 1 },
-          feedHypothesis: { type: "string", minLength: 1 },
-          swipeRisk: { type: "string", enum: ["low", "medium", "high"] },
-          broadAudienceReason: { type: "string", minLength: 1 },
-          retentionPromise: { type: "string", minLength: 1 },
-          titleCuriosityGap: { type: "string", minLength: 1 },
-          mechanismProof: { type: "string", minLength: 1 },
-          visualReveal: { type: "string", minLength: 1 },
-          loopPayoff: { type: "string", minLength: 1 },
-          whyThisCanBeatRecentVideos: { type: "string", minLength: 1 },
-          scores: {
-            type: "object",
-            additionalProperties: false,
-            required: [
-              "feedClarity",
-              "swipeResistance",
-              "broadAppeal",
-              "visualNovelty",
-              "retentionPath",
-              "repeatRisk",
-            ],
-            properties: {
-              feedClarity: { type: "integer", minimum: 1, maximum: 5 },
-              swipeResistance: { type: "integer", minimum: 1, maximum: 5 },
-              broadAppeal: { type: "integer", minimum: 1, maximum: 5 },
-              visualNovelty: { type: "integer", minimum: 1, maximum: 5 },
-              retentionPath: { type: "integer", minimum: 1, maximum: 5 },
-              repeatRisk: { type: "integer", minimum: 1, maximum: 5 },
-            },
-          },
+          ...EPISODE_RESEARCH_JSON_SCHEMA.properties.candidate.properties,
+          roleSource: { type: "string", enum: [role] },
         },
       },
     },
-    selectedCandidateId: { type: "string", minLength: 1 },
-    selectionRationale: { type: "string", minLength: 1 },
-  },
-} as const;
+  } as const;
+}
+
+export function roleInstruction(role: EpisodeCandidateRole): string {
+  switch (role) {
+    case "feed_stop_strategist":
+      return "Focus on the first frame, the first 0.5 seconds, the first line, and maximum swipe resistance.";
+    case "broad_object_selector":
+      return "Focus on a familiar everyday object or mechanism that a broad audience can recognize immediately.";
+    case "visual_mechanism_director":
+      return "Focus on visible motion and physical cause/effect that can be understood from the picture alone.";
+    case "retention_architect":
+      return "Focus on a reveal path that gives the viewer a new reason to keep watching every 3-5 seconds, without a flat middle.";
+    case "loop_payoff_editor":
+      return "Focus on ending payoff, replay logic, and a title curiosity gap that resolves only after the ending.";
+  }
+
+  const exhaustiveRole: never = role;
+  return exhaustiveRole;
+}
 
 export const episodeResearchPrompt: PromptTemplate<
   EpisodeResearchInput,
@@ -178,10 +204,10 @@ export const episodeResearchPrompt: PromptTemplate<
       modelParameters: {
         channelPresetId: input.channelPresetId,
         targetDurationSeconds: input.targetDurationSeconds,
-        candidateCount: 5,
+        role: input.role,
       },
       metadata: {
-        recentVideoCount: input.recentVideos.length,
+        role: input.role,
       },
       messages: [
         {
@@ -189,26 +215,29 @@ export const episodeResearchPrompt: PromptTemplate<
           content: [
             "# Identity",
             "You are a YouTube Shorts creative strategist for Tiny Mechanisms.",
-            "You generate episode candidates before scripts. You optimize for feed testing, first-frame clarity, stayed-to-watch, average view duration, average percentage viewed, and swipe resistance.",
+            "You generate episode candidates before scripts. You optimize for first-frame clarity, completion, replay, swipe resistance, and concrete visual hooks.",
             "",
             "# Channel",
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "",
             "# Task",
+            "Generate exactly one candidate for the requested role.",
+            `The candidate is for a ${input.targetDurationSeconds}-second English YouTube Short.`,
             "Do not write the final script.",
-            `Generate exactly 5 episode candidates for a ${input.targetDurationSeconds}-second English YouTube Short.`,
-            "For 30-second optimization, prioritize completion, replay, and one instantly readable mechanism over breadth.",
-            "Each candidate must start with a first frame that can be understood with sound off in under 0.5 seconds.",
-            "Each first line must create curiosity in under 1 second.",
+            "Use only this request, the channel bible, and the requested role.",
+            "`role` and `candidate.roleSource` must both equal the requested candidate role.",
+            "English only.",
+            roleInstruction(input.role),
+            "The first frame must be understandable with sound off in under 0.5 seconds.",
+            "The first line must create curiosity in under 1 second.",
+            "The first three words must be concrete enough to stop a feed scroll.",
             "Prefer familiar everyday objects with visible physical motion, tension, resistance, release, cutting, sliding, snapping, bending, spraying, locking, or catching.",
             "Reject calm object portraits, abstract diagrams as hooks, medical advice, finance, legal, politics, crime, disaster, public figures, dangerous instructions, children's characters, and unsupported claims.",
-            "Use low-performing recent videos as negative examples. Do not copy their topic shape, hook sentence shape, or first-frame composition.",
-            "Use high-performing recent videos only as abstract patterns. Do not copy their object or wording.",
+            "Reject candidates that require timestamps, beat timing, word-level timing, karaoke timing, or any other timeline annotation.",
             "",
             "# Scoring",
-            "Score each candidate from 1 to 5 for feedClarity, swipeResistance, broadAppeal, visualNovelty, retentionPath, and repeatRisk.",
-            "For repeatRisk, 1 means low repeat risk and 5 means high repeat risk.",
-            "Select exactly one candidate with the best balance of high feed clarity, high swipe resistance, high broad appeal, high visual novelty, high retention path, and low repeat risk.",
+            "Score the candidate from 1 to 5 for firstFrameClarity, swipeResistance, broadObjectFamiliarity, visualNovelty, retentionPath, loopPayoffStrength, and genericRisk.",
+            "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
             "",
             "# Output",
             "Return JSON that follows the supplied schema.",
@@ -219,7 +248,7 @@ export const episodeResearchPrompt: PromptTemplate<
           content: [
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
-            `<recent_videos_json>${JSON.stringify(input.recentVideos)}</recent_videos_json>`,
+            `<candidate_role>${input.role}</candidate_role>`,
           ].join("\n"),
         },
       ],
@@ -227,24 +256,10 @@ export const episodeResearchPrompt: PromptTemplate<
   },
 };
 
-export function parseEpisodeResearch(value: unknown): EpisodeResearch {
-  const parsed = episodeResearchSchema.safeParse(value);
+export function parseRoleEpisodeCandidateResponse(value: unknown): RoleEpisodeCandidateResponse {
+  const parsed = roleEpisodeCandidateResponseSchema.safeParse(value);
   if (!parsed.success) {
-    throw new Error("episode_research_response_invalid");
+    throw new Error("episode_candidate_response_invalid");
   }
-
-  const selected = selectedEpisodeCandidate(parsed.data);
-  if (!selected) {
-    throw new Error("episode_candidate_selection_failed");
-  }
-
   return parsed.data;
-}
-
-export function selectedEpisodeCandidate(research: EpisodeResearch): EpisodeCandidate | null {
-  return (
-    research.candidates.find(
-      (candidate) => candidate.candidateId === research.selectedCandidateId,
-    ) ?? null
-  );
 }

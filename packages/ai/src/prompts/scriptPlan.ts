@@ -7,6 +7,7 @@ import {
   TINY_MECHANISMS_PRESET_ID,
   TINY_MECHANISMS_SCENE_ROLES_BY_DURATION,
 } from "./presets/tinyMechanisms";
+import type { RefinedEpisodeBrief } from "./episodeJudge";
 import type { EpisodeCandidate } from "./episodeResearch";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 import {
@@ -49,6 +50,20 @@ const scriptFactPackSchema = z
   })
   .strict();
 
+export const sceneVisualPlanSchema = z
+  .object({
+    firstFrameJob: z.string().min(1),
+    familiarObject: z.string().min(1),
+    visibleAction: z.string().min(1),
+    visibleConsequence: z.string().min(1),
+    viewerQuestion: z.string().min(1),
+    motionOrTension: z.string().min(1),
+    cameraFraming: z.string().min(1),
+    captionSafeZone: z.string().min(1),
+    avoidVisuals: z.array(z.string().min(1)).min(1),
+  })
+  .strict();
+
 export const scriptSceneSchema = z
   .object({
     position: z.number().int().positive(),
@@ -60,6 +75,7 @@ export const scriptSceneSchema = z
     ssml: z.string().min(1),
     visualBrief: z.string().min(1),
     visualHookArchetype: z.enum(VISUAL_HOOK_ARCHETYPES),
+    visualPlan: sceneVisualPlanSchema,
     ttsDirection: z.string().min(1),
   })
   .strict();
@@ -88,6 +104,7 @@ export type ScriptPlan = z.infer<typeof scriptPlanSchema>;
 
 const storedScriptSceneSchema = scriptSceneSchema.extend({
   visualHookArchetype: z.enum(VISUAL_HOOK_ARCHETYPES).optional(),
+  visualPlan: sceneVisualPlanSchema.optional(),
 });
 
 const storedScriptPlanSchema = scriptPlanSchema.extend({
@@ -101,6 +118,33 @@ export type CompiledScriptPlanPrompt = CompiledPrompt & {
   schemaName: "tiny_mechanisms_script_plan_v1";
   schemaVersion: 1;
 };
+
+const SCENE_VISUAL_PLAN_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "firstFrameJob",
+    "familiarObject",
+    "visibleAction",
+    "visibleConsequence",
+    "viewerQuestion",
+    "motionOrTension",
+    "cameraFraming",
+    "captionSafeZone",
+    "avoidVisuals",
+  ],
+  properties: {
+    firstFrameJob: { type: "string", minLength: 1 },
+    familiarObject: { type: "string", minLength: 1 },
+    visibleAction: { type: "string", minLength: 1 },
+    visibleConsequence: { type: "string", minLength: 1 },
+    viewerQuestion: { type: "string", minLength: 1 },
+    motionOrTension: { type: "string", minLength: 1 },
+    cameraFraming: { type: "string", minLength: 1 },
+    captionSafeZone: { type: "string", minLength: 1 },
+    avoidVisuals: { type: "array", minItems: 1, items: { type: "string", minLength: 1 } },
+  },
+} as const;
 
 export const SCRIPT_PLAN_JSON_SCHEMA = {
   type: "object",
@@ -185,6 +229,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
           "ssml",
           "visualBrief",
           "visualHookArchetype",
+          "visualPlan",
           "ttsDirection",
         ],
         properties: {
@@ -200,6 +245,7 @@ export const SCRIPT_PLAN_JSON_SCHEMA = {
             type: "string",
             enum: VISUAL_HOOK_ARCHETYPES,
           },
+          visualPlan: SCENE_VISUAL_PLAN_JSON_SCHEMA,
           ttsDirection: { type: "string", minLength: 1 },
         },
       },
@@ -238,9 +284,33 @@ function scriptTopicFields(input: GenerateScriptInput): {
   nativeSetting: string;
   hookEmotion: string;
   avoidVisualSetting: string;
-  source: "ai_candidate" | "static_seed";
+  source: "refined_brief" | "ai_candidate" | "static_seed";
+  refinedBrief?: RefinedEpisodeBrief;
   candidate?: EpisodeCandidate;
 } {
+  if (input.refinedEpisodeBrief) {
+    const brief = input.refinedEpisodeBrief;
+    return {
+      seedId: input.seedId,
+      objectOrMechanism: brief.objectOrMechanism,
+      titleAngle: brief.titleCuriosityGap,
+      centralQuestion: brief.centralQuestion,
+      viewerMisconception: brief.viewerQuestion,
+      mechanismHint: brief.mechanismProof,
+      satisfyingMotion:
+        "start mid-action, reveal the moving part, prove the mechanism, loop the payoff",
+      visualReveal: brief.visualReveal,
+      loopPayoff: brief.loopPayoff,
+      visualMetaphor: brief.firstFrame,
+      audienceContext: "a broad curious audience that recognizes the object immediately",
+      nativeSetting: "the familiar setting where the object naturally appears",
+      hookEmotion: brief.retentionPromise,
+      avoidVisualSetting: brief.avoidAngles.join(", "),
+      source: "refined_brief",
+      refinedBrief: brief,
+    };
+  }
+
   if (input.episodeCandidate) {
     const candidate = input.episodeCandidate;
     return {
@@ -290,7 +360,7 @@ function scriptTopicFields(input: GenerateScriptInput): {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 10,
+  version: 11,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -313,6 +383,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
         topicSource: topic.source,
         topic,
         episodeResearch: input.episodeResearch ?? null,
+        refinedEpisodeBrief: input.refinedEpisodeBrief ?? null,
       },
       messages: [
         {
@@ -385,6 +456,9 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "",
             "# Visual-First Rules",
             "Each scene must choose one visualHookArchetype from: impossible_macro, consequence_first, hands_on_demo, before_after_contrast, frozen_motion, scale_shock, reveal_cutaway.",
+            "Each scene must include a visualPlan object describing firstFrameJob, familiarObject, visibleAction already happening, visibleConsequence, viewerQuestion, motionOrTension, cameraFraming, captionSafeZone, and avoidVisuals.",
+            "Keep captions safe in the lower 25-30% of the vertical frame with clean negative space, while ensuring the main action remains readable above or around that zone.",
+            "avoidVisuals must explicitly reject calm portrait shots, clean diagrams, generic macro shots, embedded labels, logos, watermarks, and any selected avoidVisualSetting.",
             "Each image prompt seed must describe a concrete vertical frame using subject + action already happening + consequence or tension + camera viewpoint.",
             "For each scene, make visualBrief explain what the viewer should understand from the image in under half a second.",
             "Image prompt seeds and visual briefs must not ask for embedded text, labels, captions, typography, UI, logos, or watermarks.",
@@ -429,6 +503,11 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             `<native_setting>${topic.nativeSetting}</native_setting>`,
             `<hook_emotion>${topic.hookEmotion}</hook_emotion>`,
             `<avoid_visual_setting>${topic.avoidVisualSetting}</avoid_visual_setting>`,
+            ...(topic.refinedBrief
+              ? [
+                  `<refined_production_brief_json>${JSON.stringify(topic.refinedBrief)}</refined_production_brief_json>`,
+                ]
+              : []),
             ...(topic.candidate
               ? [`<selected_candidate_json>${JSON.stringify(topic.candidate)}</selected_candidate_json>`]
               : []),
@@ -458,6 +537,38 @@ export function parseScriptPlan(value: unknown, input: GenerateScriptInput): Scr
   }
 
   return parsed.data;
+}
+
+export function enrichScriptPlanImagePrompts(plan: ScriptPlan): ScriptPlan {
+  return {
+    ...plan,
+    scenes: plan.scenes.map((scene) => ({
+      ...scene,
+      imagePrompt: sceneImagePromptFromVisualPlan(scene),
+    })),
+  };
+}
+
+export function sceneImagePromptFromVisualPlan(scene: ScriptScene): string {
+  if (scene.imagePrompt.includes("First-frame job:")) {
+    return scene.imagePrompt;
+  }
+
+  const plan = scene.visualPlan;
+  const avoid = plan.avoidVisuals.join(", ");
+
+  return [
+    scene.imagePrompt,
+    `First-frame job: ${plan.firstFrameJob}`,
+    `Familiar object: ${plan.familiarObject}`,
+    `Visible action already happening: ${plan.visibleAction}`,
+    `Visible consequence: ${plan.visibleConsequence}`,
+    `Viewer question: ${plan.viewerQuestion}`,
+    `Motion or tension: ${plan.motionOrTension}`,
+    `Camera framing: ${plan.cameraFraming}`,
+    `Caption-safe zone: ${plan.captionSafeZone}`,
+    `Avoid: ${avoid}`,
+  ].join("\n");
 }
 
 function hasExpectedScenePlan(

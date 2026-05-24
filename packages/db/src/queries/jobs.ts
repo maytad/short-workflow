@@ -124,6 +124,30 @@ export async function markJobSucceeded(
   return job ?? null;
 }
 
+export async function markJobTerminallyFailed(
+  db: DbClient,
+  jobId: string,
+  input: {
+    errorMessage: string;
+    output?: Record<string, unknown>;
+  },
+) {
+  const [job] = await db
+    .update(jobs)
+    .set({
+      status: "failed",
+      errorMessage: input.errorMessage,
+      output: input.output ?? null,
+      finishedAt: sql`now()`,
+      nextRetryAt: null,
+      updatedAt: sql`now()`,
+    })
+    .where(eq(jobs.id, jobId))
+    .returning();
+
+  return job ?? null;
+}
+
 export async function markJobFailedOrRetry(db: DbClient, job: JobRow, errorMessage: string) {
   if (job.attempts < job.maxAttempts) {
     const [retriedJob] = await db

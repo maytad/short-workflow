@@ -1,6 +1,8 @@
 import {
   encodeTinyMechanismsAiTopic,
   encodeTinyMechanismsTopic,
+  EpisodeCandidateJudgeRejection,
+  EpisodeCandidateRoleError,
   generateEpisodeResearch,
   generateScript,
   getTinyMechanismsSeed,
@@ -15,7 +17,6 @@ import {
 import {
   getProject,
   insertPromptVersion,
-  listRecentYoutubeCreativePromptContext,
   markJobSucceeded,
   replaceProjectScenes,
   setProjectStatus,
@@ -25,12 +26,57 @@ import {
   type JobRow,
   type ProjectRow,
 } from "@short-workflow/db";
+import { TerminalWorkflowError } from "../errors";
 
 type ScriptSetup = {
   titleFallback: string;
   topic: string;
   input: GenerateScriptInput;
 };
+
+function workflowFailureDetail(value: unknown, seen = new WeakSet<object>()): unknown {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "object") {
+    if (seen.has(value)) {
+      return "[Circular]";
+    }
+    seen.add(value);
+
+    if (value instanceof Error) {
+      const detail: Record<string, unknown> = {
+        name: value.name,
+        message: value.message,
+      };
+      if ("cause" in value) {
+        detail.cause = workflowFailureDetail(value.cause, seen);
+      }
+      return detail;
+    }
+
+    if (Array.isArray(value)) {
+      return value.map((item) => workflowFailureDetail(item, seen));
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === Object.prototype || prototype === null) {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+          key,
+          workflowFailureDetail(item, seen),
+        ]),
+      );
+    }
+  }
+
+  try {
+    return String(value);
+  } catch {
+    return "[Unserializable]";
+  }
+}
 
 function targetDurationSeconds(value: number): 30 | 45 | 60 {
   if (value === 30 || value === 45 || value === 60) {
@@ -85,21 +131,37 @@ function buildLegacyScriptInput(project: ProjectRow): ScriptSetup | null {
   };
 }
 
-async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Promise<ScriptSetup> {
+async function buildPendingAiScriptInput(project: ProjectRow): Promise<ScriptSetup> {
   if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC) {
     throw new Error("unsupported_project_prompt_preset");
   }
 
   const targetDuration = targetDurationSeconds(project.targetDurationSeconds);
-  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-  const recentVideos = await listRecentYoutubeCreativePromptContext(db, {
-    limit: 12,
-    since,
-  });
   const research = await generateEpisodeResearch({
     channelPresetId: TINY_MECHANISMS_PRESET_ID,
     targetDurationSeconds: targetDuration,
-    recentVideos,
+  }).catch((error: unknown) => {
+    if (error instanceof EpisodeCandidateRoleError) {
+      const reasonDetails = workflowFailureDetail(error.cause);
+
+      throw new TerminalWorkflowError("candidate_generation_failed", {
+        stage: "candidate_generation",
+        failedRole: error.role,
+        reason: "candidate role generation failed",
+        reasonDetails,
+      });
+    }
+
+    if (error instanceof EpisodeCandidateJudgeRejection) {
+      throw new TerminalWorkflowError("candidate_judge_rejected", {
+        stage: "candidate_judge",
+        reason: error.judge.failureReason,
+        thresholdSummary: error.judge.thresholdSummary,
+        scoreTable: error.judge.scoreTable,
+      });
+    }
+
+    throw error;
   });
   const slug = slugifyTinyMechanismsAiTopic(research.selectedCandidate.objectOrMechanism);
 
@@ -111,7 +173,11 @@ async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Pro
       seedId: `ai:${slug}`,
       targetDurationSeconds: targetDuration,
       episodeCandidate: research.selectedCandidate,
-      episodeResearch: research.research,
+      refinedEpisodeBrief: research.refinedBrief,
+      episodeResearch: {
+        candidates: research.candidates,
+        judge: research.judge,
+      },
       episodeResearchPromptPayload: research.promptPayload,
       episodeResearchResponseMetadata: research.responseMetadata,
     },
@@ -137,7 +203,7 @@ export async function generateProjectScript(
   }
 
   const legacySetup = buildLegacyScriptInput(project);
-  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(db, project));
+  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(project));
   const script = await generateScript(scriptSetup.input);
 
   return withDbTransaction(db, async (tx) => {

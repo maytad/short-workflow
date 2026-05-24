@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 
 import {
+  enrichScriptPlanImagePrompts,
   parseScriptPlan,
   SCRIPT_PLAN_JSON_SCHEMA,
   scriptPlanPrompt,
@@ -37,6 +38,7 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
   const rawResponseText = extractResponseText(response);
   const parsedJson = parseJsonObject(rawResponseText);
   const parsed = parseScriptPlan(parsedJson, input);
+  const enriched = enrichScriptPlanImagePrompts(parsed);
 
   return {
     title: parsed.episode.workingTitle,
@@ -44,13 +46,14 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
     episode: parsed.episode,
     styleContext: parsed.styleContext,
     facts: parsed.facts,
-    scenes: parsed.scenes,
+    scenes: enriched.scenes,
     metadataDraft: parsed.metadataDraft,
     promptPayload: {
       ...promptPayload(compiled, input),
       episodeResearchPromptPayload: input.episodeResearchPromptPayload ?? null,
       episodeResearch: input.episodeResearch ?? null,
       selectedEpisodeCandidate: input.episodeCandidate ?? null,
+      refinedEpisodeBrief: input.refinedEpisodeBrief ?? null,
     },
     responseText: JSON.stringify(parsed),
     responseMetadata: {
@@ -64,6 +67,8 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
       schema_version: compiled.schemaVersion,
       episode_research_response_metadata: input.episodeResearchResponseMetadata ?? null,
       selected_candidate_id: input.episodeCandidate?.candidateId ?? null,
+      selected_candidate_role:
+        input.refinedEpisodeBrief?.roleSource ?? input.episodeCandidate?.roleSource ?? null,
     },
   };
 }

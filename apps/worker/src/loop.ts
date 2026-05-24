@@ -2,12 +2,14 @@ import {
   claimNextJob,
   createDbClient,
   markJobFailedOrRetry,
+  markJobTerminallyFailed,
   recoverStaleJobs,
   type DbClient,
   type JobRow,
 } from "@short-workflow/db";
 
 import { parseEnv } from "./env";
+import { isTerminalWorkflowError } from "./errors";
 import { handleJob } from "./handlers";
 import { logWorkerError, logWorkerInfo, type WorkerLogFields } from "./logger";
 
@@ -62,7 +64,12 @@ async function workerLoop(db: DbClient, workerIndex: number) {
       );
     } catch (error) {
       const message = errorMessage(error);
-      const updatedJob = await markJobFailedOrRetry(db, job, message);
+      const updatedJob = isTerminalWorkflowError(error)
+        ? await markJobTerminallyFailed(db, job.id, {
+            errorMessage: message,
+            output: error.output,
+          })
+        : await markJobFailedOrRetry(db, job, message);
       const status = updatedJob?.status ?? "failed";
       const event = status === "pending" ? "job_retry_scheduled" : "job_failed";
 

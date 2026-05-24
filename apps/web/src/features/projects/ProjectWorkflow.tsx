@@ -50,6 +50,41 @@ export function isGenerateScriptStartable(activeJobs: Job[]) {
   return !activeJobs.some((job) => job.status === "pending" || job.status === "processing");
 }
 
+function latestGenerationFailure(jobs: Job[]) {
+  const latestGenerationJob =
+    [
+      ...jobs.filter((job) => job.type === "generate_script" || job.type === "run_project_flow"),
+    ].sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0] ?? null;
+
+  return latestGenerationJob?.status === "failed" ? latestGenerationJob : null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function failureOutput(job: Job | null) {
+  return isRecord(job?.output) ? job.output : null;
+}
+
+function scoreRows(output: Record<string, unknown> | null) {
+  return Array.isArray(output?.scoreTable) ? output.scoreTable.filter(isRecord) : [];
+}
+
+function textValue(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function numberValue(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(
     detail.scenes[0]?.id ?? null,
@@ -72,6 +107,9 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
   const flowJobActive = activeWorkflowJobs.some((job) => job.type === "run_project_flow");
   const flowStartable = isProjectFlowStartable(detail, activeWorkflowJobs);
   const scriptStartable = isGenerateScriptStartable(activeWorkflowJobs);
+  const latestFailedGenerationJob = latestGenerationFailure(detail.jobs);
+  const latestFailureOutput = failureOutput(latestFailedGenerationJob);
+  const latestFailureScores = scoreRows(latestFailureOutput);
 
   return (
     <div className="grid min-w-0 gap-4 xl:grid-cols-[220px_minmax(0,1fr)_minmax(280px,320px)]">
@@ -207,6 +245,81 @@ export function ProjectWorkflow({ detail, projectId }: ProjectWorkflowProps) {
                 <AlertCircle className="size-4" />
                 Full flow could not be started.
               </p>
+            ) : null}
+            {latestFailedGenerationJob ? (
+              <div className="mt-3 min-w-0 rounded-md border border-accent/30 bg-accent/10 p-3 text-sm text-accent-foreground">
+                <div className="flex min-w-0 items-center gap-2 font-medium">
+                  <AlertCircle className="size-4 shrink-0" />
+                  <span className="min-w-0 break-words">Script generation failed</span>
+                </div>
+                <dl className="mt-3 grid min-w-0 gap-2">
+                  <div className="grid min-w-0 gap-1 sm:grid-cols-[92px_minmax(0,1fr)]">
+                    <dt className="text-accent-foreground/70">Stage</dt>
+                    <dd className="min-w-0 break-words">
+                      {textValue(latestFailureOutput?.stage) ?? activeJobLabel(latestFailedGenerationJob)}
+                    </dd>
+                  </div>
+                  {textValue(latestFailureOutput?.failedRole) ? (
+                    <div className="grid min-w-0 gap-1 sm:grid-cols-[92px_minmax(0,1fr)]">
+                      <dt className="text-accent-foreground/70">Role</dt>
+                      <dd className="min-w-0 break-words">
+                        {textValue(latestFailureOutput?.failedRole)}
+                      </dd>
+                    </div>
+                  ) : null}
+                  <div className="grid min-w-0 gap-1 sm:grid-cols-[92px_minmax(0,1fr)]">
+                    <dt className="text-accent-foreground/70">Reason</dt>
+                    <dd className="min-w-0 break-words">
+                      {textValue(latestFailureOutput?.reason) ??
+                        textValue(latestFailedGenerationJob.errorMessage) ??
+                        "Generation failed."}
+                    </dd>
+                  </div>
+                  {textValue(latestFailureOutput?.thresholdSummary) ? (
+                    <div className="grid min-w-0 gap-1 sm:grid-cols-[92px_minmax(0,1fr)]">
+                      <dt className="text-accent-foreground/70">Threshold</dt>
+                      <dd className="min-w-0 break-words">
+                        {textValue(latestFailureOutput?.thresholdSummary)}
+                      </dd>
+                    </div>
+                  ) : null}
+                </dl>
+                {latestFailureScores.length > 0 ? (
+                  <div className="mt-3 min-w-0 overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-left text-xs">
+                      <thead className="text-accent-foreground/70">
+                        <tr className="border-b border-accent/20">
+                          <th className="py-1.5 pr-3 font-medium">Role</th>
+                          <th className="py-1.5 pr-3 font-medium">Core</th>
+                          <th className="py-1.5 pr-3 font-medium">Generic</th>
+                          <th className="py-1.5 font-medium">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {latestFailureScores.map((row, index) => (
+                          <tr className="border-b border-accent/10 last:border-0" key={index}>
+                            <td className="min-w-0 py-1.5 pr-3 align-top">
+                              <span className="break-words">
+                                {textValue(row.roleSource) ?? "Unknown"}
+                              </span>
+                            </td>
+                            <td className="py-1.5 pr-3 align-top">
+                              {numberValue(row.coreAverage) ?? "-"}
+                            </td>
+                            <td className="py-1.5 pr-3 align-top">
+                              {numberValue(row.genericRisk) ?? "-"}
+                            </td>
+                            <td className="min-w-0 py-1.5 align-top">
+                              <span className="break-words">{textValue(row.notes) ?? "-"}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+                <p className="mt-3 text-xs text-accent-foreground/75">Try generating again.</p>
+              </div>
             ) : null}
           </section>
         ) : (

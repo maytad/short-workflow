@@ -1,4 +1,5 @@
-import type { EpisodeCandidate, EpisodeResearch } from "./prompts/episodeResearch";
+import type { CandidateJudgeResult, RefinedEpisodeBrief } from "./prompts/episodeJudge";
+import type { EpisodeCandidate, RoleEpisodeCandidateResponse } from "./prompts/episodeResearch";
 import type { VisualHookArchetype } from "./prompts/visualHooks";
 
 export type ChannelPresetId = "tiny_mechanisms";
@@ -38,6 +39,18 @@ export type ScriptMetadataDraft = {
   disclosureHint: string;
 };
 
+export type SceneVisualPlan = {
+  firstFrameJob: string;
+  familiarObject: string;
+  visibleAction: string;
+  visibleConsequence: string;
+  viewerQuestion: string;
+  motionOrTension: string;
+  cameraFraming: string;
+  captionSafeZone: string;
+  avoidVisuals: string[];
+};
+
 export type ScriptScene = {
   position: number;
   role: "hook" | "context" | "point" | "payoff" | "cta";
@@ -48,6 +61,7 @@ export type ScriptScene = {
   ssml: string;
   visualBrief: string;
   visualHookArchetype: VisualHookArchetype;
+  visualPlan: SceneVisualPlan;
   ttsDirection: string;
 };
 
@@ -56,7 +70,8 @@ export type GenerateScriptInput = {
   seedId: string;
   targetDurationSeconds: 30 | 45 | 60;
   episodeCandidate?: EpisodeCandidate;
-  episodeResearch?: EpisodeResearch;
+  refinedEpisodeBrief?: RefinedEpisodeBrief;
+  episodeResearch?: { candidates: RoleEpisodeCandidateResponse[]; judge: CandidateJudgeResult };
   episodeResearchPromptPayload?: Record<string, unknown>;
   episodeResearchResponseMetadata?: Record<string, unknown>;
 };
