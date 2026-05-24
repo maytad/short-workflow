@@ -226,7 +226,7 @@ export const candidateJudgePrompt: PromptTemplate<
   CompiledCandidateJudgePrompt
 > = {
   id: "tiny_mechanisms_candidate_judge",
-  version: 1,
+  version: 2,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -269,7 +269,11 @@ export const candidateJudgePrompt: PromptTemplate<
             "The coreAverage is the average of firstFrameClarity, swipeResistance, broadObjectFamiliarity, visualNovelty, retentionPath, and loopPayoffStrength.",
             "A selected candidate must have coreAverage >= 4 and genericRisk <= 2.",
             "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
-            "If one candidate clears the threshold, choose the strongest candidate for the feed test.",
+            "Do not choose by familiar mechanism strength alone. Reward the candidate that opens the widest fresh creative territory while staying visually clear.",
+            "Treat latches, springs, cams, push-pop actions, one-way locks, ratchets, and clickers as high generic risk when they look like a familiar Tiny Mechanisms pattern.",
+            "Do not penalize non-mechanical causes just because they lack a moving part. Optical, material, fluid, acoustic, thermal, electrical, geometric, chemical, or other safe everyday causes can win if the visual proof is clear.",
+            "Prefer candidates whose object, hidden cause, first-frame behavior, and reveal path differ from the other candidates in the batch.",
+            "If one candidate clears the threshold, choose the strongest fresh candidate for the feed test.",
             "If no candidate clears the threshold, return rejected with failureReason and thresholdSummary.",
             "If selected, refine the winner into a production brief without inventing a new topic.",
             "The refined brief must preserve the selected candidate's object or mechanism, central question, visual reveal, and loop payoff.",
