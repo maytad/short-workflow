@@ -66,7 +66,6 @@ export type EpisodeResearchInput = {
   channelPresetId: typeof TINY_MECHANISMS_PRESET_ID;
   targetDurationSeconds: 30 | 45 | 60;
   role: EpisodeCandidateRole;
-  recentLocalTopics?: readonly string[];
 };
 
 export type CompiledEpisodeResearchPrompt = CompiledPrompt & {
@@ -187,22 +186,6 @@ export function roleInstruction(role: EpisodeCandidateRole): string {
   return exhaustiveRole;
 }
 
-function recentLocalTopicLines(recentLocalTopics: readonly string[] | undefined): string[] {
-  if (!recentLocalTopics || recentLocalTopics.length === 0) {
-    return [
-      "# Recent Local Topics",
-      "No recent local topics were supplied. Still vary the object, mechanism family, first-frame behavior, and title angle.",
-    ];
-  }
-
-  return [
-    "# Recent Local Topics",
-    "Use these recent local topics as a hard diversity warning, not as analytics evidence.",
-    "Avoid choosing the same object, mechanism family, first-frame behavior, or title angle unless the user explicitly requested a repeat.",
-    `Recent local topic count: ${recentLocalTopics.length}.`,
-  ];
-}
-
 export const episodeResearchPrompt: PromptTemplate<
   EpisodeResearchInput,
   CompiledEpisodeResearchPrompt
@@ -223,11 +206,9 @@ export const episodeResearchPrompt: PromptTemplate<
         channelPresetId: input.channelPresetId,
         targetDurationSeconds: input.targetDurationSeconds,
         role: input.role,
-        recentLocalTopicCount: input.recentLocalTopics?.length ?? 0,
       },
       metadata: {
         role: input.role,
-        recentLocalTopics: input.recentLocalTopics ?? [],
       },
       messages: [
         {
@@ -244,8 +225,6 @@ export const episodeResearchPrompt: PromptTemplate<
             ...SHORTS_RECOVERY_RESEARCH_RULES,
             "For this recovery batch, pause perception, biology, voice, onions, abstract physics gimmicks, and repeated cabinet or push-latch variants unless the user explicitly asks for them.",
             "",
-            ...recentLocalTopicLines(input.recentLocalTopics),
-            "",
             "# Task",
             "Generate exactly one candidate for the requested role.",
             `The candidate is for a ${input.targetDurationSeconds}-second English YouTube Short.`,
@@ -258,7 +237,7 @@ export const episodeResearchPrompt: PromptTemplate<
             "Start from an everyday moment that feels visually surprising, then identify the smallest hidden cause that explains it.",
             "The hidden cause should be mechanical, material, fluid, pressure-based, geometric, contact-point, or another image-readable physical behavior.",
             "Avoid biology, perception, voice, and abstract explanations in this recovery batch unless the user explicitly asks for them.",
-            "Use latches, springs, cams, one-way locks, ratchets, or click mechanisms only when the presentation is fresher than recent local topics and the visible feed hook is stronger.",
+            "Use latches, springs, cams, one-way locks, ratchets, or click mechanisms only when the visible feed hook is stronger than a generic object demonstration.",
             "The first frame must be understandable with sound off in under 0.5 seconds.",
             "The first line must create curiosity in under 1 second.",
             "The first three words must be concrete enough to stop a feed scroll.",
@@ -283,7 +262,6 @@ export const episodeResearchPrompt: PromptTemplate<
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
             `<candidate_role>${input.role}</candidate_role>`,
-            `<recent_local_topics_json>${JSON.stringify(input.recentLocalTopics ?? [])}</recent_local_topics_json>`,
           ].join("\n"),
         },
       ],

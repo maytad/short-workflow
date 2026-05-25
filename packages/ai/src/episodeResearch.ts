@@ -100,7 +100,6 @@ export async function generateEpisodeResearch(
     channelPresetId: input.channelPresetId,
     targetDurationSeconds: input.targetDurationSeconds,
     candidates: candidateTuple,
-    ...(input.recentLocalTopics ? { recentLocalTopics: input.recentLocalTopics } : {}),
   });
   const { judge } = judgeResult;
 

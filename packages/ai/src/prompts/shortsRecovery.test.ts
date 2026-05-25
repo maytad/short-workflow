@@ -9,23 +9,14 @@ function developerMessage(compiled: { messages: Array<{ role: string; content: s
   return compiled.messages.find((message) => message.role === "developer")?.content ?? "";
 }
 
-function userMessage(compiled: { messages: Array<{ role: string; content: string }> }) {
-  return compiled.messages.find((message) => message.role === "user")?.content ?? "";
-}
-
 describe("shorts recovery prompt policy", () => {
-  test("episode research treats recovery objects as examples and avoids recent repeats", () => {
+  test("episode research treats recovery objects as examples without local DB context", () => {
     const compiled = episodeResearchPrompt.compile({
       channelPresetId: TINY_MECHANISMS_PRESET_ID,
       targetDurationSeconds: 30,
       role: "feed_stop_strategist",
-      recentLocalTopics: [
-        "Why This Zipper Opens Behind the Pull - tiny_mechanisms:ai:zipper-slider-throat",
-        "Your Zipper Tab Is Secretly a Lock - tiny_mechanisms:ai:locking-zipper-slider-pull-tab",
-      ],
     });
     const text = developerMessage(compiled);
-    const request = userMessage(compiled);
 
     expect(compiled.templateVersion).toBe(4);
     expect(text).toContain("Stayed to watch");
@@ -36,12 +27,11 @@ describe("shorts recovery prompt policy", () => {
     expect(text).toContain("Recovery example objects");
     expect(text).toContain("examples, not a ranked topic list");
     expect(text).toContain("presentation quality beats object category");
-    expect(text).toContain("Do not repeat the same object");
     expect(text).toContain("pause perception, biology, voice, onions");
-    expect(request).toContain("<recent_local_topics_json>");
-    expect(request).toContain("locking-zipper-slider-pull-tab");
     expect(text).not.toContain("Prioritized recovery objects");
     expect(text).not.toContain("Prioritize latch, ratchet, zipper");
+    expect(text).not.toContain("Recent Local Topics");
+    expect(text).not.toContain("recent local topics");
     expect(text).not.toContain("Do not default to latches");
     expect(text).not.toContain("A moving part is helpful but not required");
   });
@@ -78,12 +68,8 @@ describe("shorts recovery prompt policy", () => {
       channelPresetId: TINY_MECHANISMS_PRESET_ID,
       targetDurationSeconds: 30,
       candidates: [candidate, candidate, candidate, candidate, candidate],
-      recentLocalTopics: [
-        "Why This Zipper Opens Behind the Pull - tiny_mechanisms:ai:zipper-slider-throat",
-      ],
     });
     const text = developerMessage(compiled);
-    const request = userMessage(compiled);
 
     expect(compiled.templateVersion).toBe(3);
     expect(text).toContain("Stayed to watch");
@@ -95,10 +81,9 @@ describe("shorts recovery prompt policy", () => {
     expect(text).toContain(
       "Do not reward a candidate merely because it uses a recovery example object",
     );
-    expect(text).toContain("Penalize candidates that repeat a recent local object");
     expect(text).toContain("penalize perception, biology, voice, onions");
-    expect(request).toContain("<recent_local_topics_json>");
-    expect(request).toContain("zipper-slider-throat");
+    expect(text).not.toContain("recent local topic");
+    expect(text).not.toContain("recent_local_topics_json");
     expect(text).not.toContain("Do not penalize non-mechanical causes");
   });
 

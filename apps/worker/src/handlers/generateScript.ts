@@ -12,7 +12,6 @@ import {
   slugifyTinyMechanismsAiTopic,
   TINY_MECHANISMS_PENDING_TOPIC,
   TINY_MECHANISMS_PRESET_ID,
-  TINY_MECHANISMS_TOPIC_PREFIX,
   tinyMechanismsProjectTitle,
 } from "@short-workflow/ai";
 import {
@@ -20,7 +19,6 @@ import {
   getProject,
   insertPromptVersion,
   type JobRow,
-  listProjects,
   markJobSucceeded,
   type ProjectRow,
   replaceProjectScenes,
@@ -35,10 +33,6 @@ type ScriptSetup = {
   topic: string;
   input: GenerateScriptInput;
 };
-
-type RecentTopicProject = Pick<ProjectRow, "id" | "title" | "topic" | "createdAt">;
-
-const RECENT_LOCAL_TOPIC_LIMIT = 12;
 
 function workflowFailureDetail(value: unknown, seen = new WeakSet<object>()): unknown {
   if (
@@ -97,32 +91,6 @@ function targetDurationSeconds(value: number): 30 | 45 | 60 {
   throw new Error("unsupported_target_duration");
 }
 
-function cleanRecentTopicPart(value: string) {
-  return value.replace(/\s+/g, " ").trim();
-}
-
-export function buildRecentLocalTopicLines(
-  projects: readonly RecentTopicProject[],
-  currentProjectId: string,
-  limit = RECENT_LOCAL_TOPIC_LIMIT,
-) {
-  return [...projects]
-    .filter((project) => project.id !== currentProjectId)
-    .filter((project) => project.topic.startsWith(TINY_MECHANISMS_TOPIC_PREFIX))
-    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-    .slice(0, limit)
-    .map((project) => {
-      const title = cleanRecentTopicPart(project.title);
-      const topic = cleanRecentTopicPart(project.topic);
-      return `${title} - ${topic}`.slice(0, 220);
-    });
-}
-
-async function listRecentLocalTopicLines(db: DbClient, currentProjectId: string) {
-  const projects = await listProjects(db);
-  return buildRecentLocalTopicLines(projects, currentProjectId);
-}
-
 function resolveExplicitTinyMechanismsSeed(project: ProjectRow) {
   const aiTopicSlug = parseTinyMechanismsAiTopicSlug(project.topic);
   if (aiTopicSlug) {
@@ -168,17 +136,15 @@ function buildLegacyScriptInput(project: ProjectRow): ScriptSetup | null {
   };
 }
 
-async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Promise<ScriptSetup> {
+async function buildPendingAiScriptInput(project: ProjectRow): Promise<ScriptSetup> {
   if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC) {
     throw new Error("unsupported_project_prompt_preset");
   }
 
   const targetDuration = targetDurationSeconds(project.targetDurationSeconds);
-  const recentLocalTopics = await listRecentLocalTopicLines(db, project.id);
   const research = await generateEpisodeResearch({
     channelPresetId: TINY_MECHANISMS_PRESET_ID,
     targetDurationSeconds: targetDuration,
-    recentLocalTopics,
   }).catch((error: unknown) => {
     if (error instanceof EpisodeCandidateRoleError) {
       const reasonDetails = workflowFailureDetail(error.cause);
@@ -242,7 +208,7 @@ export async function generateProjectScript(
   }
 
   const legacySetup = buildLegacyScriptInput(project);
-  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(db, project));
+  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(project));
   const script = await generateScript(scriptSetup.input);
 
   return withDbTransaction(db, async (tx) => {

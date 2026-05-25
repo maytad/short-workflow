@@ -41,7 +41,7 @@ export const SHORTS_RECOVERY_RESEARCH_RULES = [
   ...SHORTS_RECOVERY_METRIC_GATES,
   "The first frame must create a visible moving or tension state in the first 0.5 seconds.",
   `Use ${SHORTS_RECOVERY_EXAMPLE_OBJECTS.join(", ")} as examples of image-readable mechanics, not a ranked topic list; presentation quality beats object category.`,
-  "Do not repeat the same object, mechanism family, first-frame behavior, or title angle in a local batch when recent topics are available.",
+  "Do not let the example list narrow topic selection; start from a fresh visible behavior before choosing the object.",
   `Pause perception, biology, voice, onions, abstract physics gimmicks, and repeated cabinet or push-latch variants unless the user explicitly asks for them.`,
   "Start from a familiar object under visible stress or change, not from a broad fact or clean explanatory category.",
   "Reject candidates whose opening would be a calm object portrait, clean diagram, product shot, or abstract explanation.",
@@ -54,7 +54,6 @@ export const SHORTS_RECOVERY_JUDGE_RULES = [
   "Reward a first frame with a visible moving or tension state that makes the viewer ask why before narration matters.",
   "Penalize perception, biology, voice, onions, abstract physics gimmicks, calm product shots, clean diagrams, and repeated cabinet or push-latch variants.",
   "Do not reward a candidate merely because it uses a recovery example object; reward the opening presentation, visual proof, and loop payoff.",
-  "Penalize candidates that repeat a recent local object, mechanism family, first-frame behavior, or title angle unless the user explicitly requested a repeat.",
   "Do not select a candidate just because the mechanism is familiar; select it because the opening behavior is visually undeniable.",
 ] as const;
 
