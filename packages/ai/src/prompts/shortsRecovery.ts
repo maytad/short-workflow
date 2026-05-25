@@ -1,4 +1,4 @@
-export const SHORTS_RECOVERY_PRIORITIZED_OBJECTS = [
+export const SHORTS_RECOVERY_EXAMPLE_OBJECTS = [
   "latch",
   "ratchet",
   "zipper",
@@ -31,7 +31,7 @@ export const SHORTS_RECOVERY_METRIC_GATES = [
 export const SHORTS_RECOVERY_CHANNEL_BIBLE_LINES = [
   "Shorts recovery goal: increase Stayed to watch from about 45% toward 60%+ before optimizing for raw views.",
   "Distribution note: Shorts feed is already the dominant traffic source, so solve feed response before SEO or hashtag changes.",
-  `Prioritized recovery objects: ${SHORTS_RECOVERY_PRIORITIZED_OBJECTS.join(", ")}.`,
+  `Recovery example objects: ${SHORTS_RECOVERY_EXAMPLE_OBJECTS.join(", ")}. Use these as examples, not a ranked topic list.`,
   `Paused recovery topics: ${SHORTS_RECOVERY_PAUSED_TOPICS.join(", ")}.`,
   "Recovery gate: raw views are a scale signal only; viewer choice and engaged-view quality decide whether a format is reusable.",
 ] as const;
@@ -40,7 +40,8 @@ export const SHORTS_RECOVERY_RESEARCH_RULES = [
   "Use the recovery metric gate: optimize for Stayed to watch, engaged views, and average percentage viewed before raw views.",
   ...SHORTS_RECOVERY_METRIC_GATES,
   "The first frame must create a visible moving or tension state in the first 0.5 seconds.",
-  `Prioritize ${SHORTS_RECOVERY_PRIORITIZED_OBJECTS.join(", ")} when they can open with visible action, tension, snap, lock, release, or contradiction.`,
+  `Use ${SHORTS_RECOVERY_EXAMPLE_OBJECTS.join(", ")} as examples of image-readable mechanics, not a ranked topic list; presentation quality beats object category.`,
+  "Do not repeat the same object, mechanism family, first-frame behavior, or title angle in a local batch when recent topics are available.",
   `Pause perception, biology, voice, onions, abstract physics gimmicks, and repeated cabinet or push-latch variants unless the user explicitly asks for them.`,
   "Start from a familiar object under visible stress or change, not from a broad fact or clean explanatory category.",
   "Reject candidates whose opening would be a calm object portrait, clean diagram, product shot, or abstract explanation.",
@@ -52,6 +53,8 @@ export const SHORTS_RECOVERY_JUDGE_RULES = [
   "A reusable candidate should plausibly reach Stayed to watch 60%+ and average percentage viewed above 60%.",
   "Reward a first frame with a visible moving or tension state that makes the viewer ask why before narration matters.",
   "Penalize perception, biology, voice, onions, abstract physics gimmicks, calm product shots, clean diagrams, and repeated cabinet or push-latch variants.",
+  "Do not reward a candidate merely because it uses a recovery example object; reward the opening presentation, visual proof, and loop payoff.",
+  "Penalize candidates that repeat a recent local object, mechanism family, first-frame behavior, or title angle unless the user explicitly requested a repeat.",
   "Do not select a candidate just because the mechanism is familiar; select it because the opening behavior is visually undeniable.",
 ] as const;
 

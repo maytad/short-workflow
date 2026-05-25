@@ -4,12 +4,13 @@ import path from "node:path";
 
 import { z } from "zod";
 
-import { parseEnv, type Env } from "../env";
+import { type Env, parseEnv } from "../env";
 
 const DEFAULT_YOUTUBE_OAUTH_REDIRECT_URI = "http://127.0.0.1:3001/youtube/oauth/callback";
 export const YOUTUBE_OAUTH_SCOPES = [
   "https://www.googleapis.com/auth/youtube.upload",
   "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/youtube.force-ssl",
   "https://www.googleapis.com/auth/yt-analytics.readonly",
 ] as const;
 const OAUTH_STATE_TTL_MS = 10 * 60 * 1000;

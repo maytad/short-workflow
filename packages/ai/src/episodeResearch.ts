@@ -2,20 +2,20 @@ import OpenAI from "openai";
 
 import {
   CANDIDATE_JUDGE_JSON_SCHEMA,
-  candidateJudgePrompt,
-  parseCandidateJudgeResult,
   type CandidateJudgeInput,
   type CandidateJudgeResult,
+  candidateJudgePrompt,
+  parseCandidateJudgeResult,
   type RefinedEpisodeBrief,
 } from "./prompts/episodeJudge";
 import {
   EPISODE_CANDIDATE_ROLES,
-  episodeResearchJsonSchemaForRole,
-  episodeResearchPrompt,
-  parseRoleEpisodeCandidateResponse,
   type EpisodeCandidate,
   type EpisodeCandidateRole,
   type EpisodeResearchInput,
+  episodeResearchJsonSchemaForRole,
+  episodeResearchPrompt,
+  parseRoleEpisodeCandidateResponse,
   type RoleEpisodeCandidateResponse,
 } from "./prompts/episodeResearch";
 import { promptPayload } from "./prompts/types";
@@ -100,6 +100,7 @@ export async function generateEpisodeResearch(
     channelPresetId: input.channelPresetId,
     targetDurationSeconds: input.targetDurationSeconds,
     candidates: candidateTuple,
+    ...(input.recentLocalTopics ? { recentLocalTopics: input.recentLocalTopics } : {}),
   });
   const { judge } = judgeResult;
 
@@ -208,9 +209,7 @@ async function judgeEpisodeCandidates(
   };
 }
 
-function toCandidateJudgeTuple(
-  candidates: EpisodeCandidate[],
-): CandidateJudgeInput["candidates"] {
+function toCandidateJudgeTuple(candidates: EpisodeCandidate[]): CandidateJudgeInput["candidates"] {
   if (candidates.length !== 5) {
     throw new Error("candidate_judge_requires_five_candidates");
   }

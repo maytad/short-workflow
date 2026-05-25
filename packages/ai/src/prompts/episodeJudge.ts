@@ -99,6 +99,7 @@ export type CandidateJudgeInput = {
     EpisodeCandidate,
     EpisodeCandidate,
   ];
+  recentLocalTopics?: readonly string[];
 };
 
 export type CompiledCandidateJudgePrompt = CompiledPrompt & {
@@ -230,7 +231,7 @@ export const candidateJudgePrompt: PromptTemplate<
   CompiledCandidateJudgePrompt
 > = {
   id: "tiny_mechanisms_candidate_judge",
-  version: 2,
+  version: 3,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -249,9 +250,11 @@ export const candidateJudgePrompt: PromptTemplate<
         channelPresetId: input.channelPresetId,
         targetDurationSeconds: input.targetDurationSeconds,
         candidateCount: input.candidates.length,
+        recentLocalTopicCount: input.recentLocalTopics?.length ?? 0,
       },
       metadata: {
         candidateIds: input.candidates.map((candidate) => candidate.candidateId),
+        recentLocalTopics: input.recentLocalTopics ?? [],
       },
       messages: [
         {
@@ -264,7 +267,7 @@ export const candidateJudgePrompt: PromptTemplate<
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "",
             "# Inputs",
-            "Use only the supplied candidates, channel preset, target duration, and channel bible.",
+            "Use only the supplied candidates, channel preset, target duration, channel bible, and recent local topic list.",
             "Do not use recent analytics, memory, retrieval, external research, or unstated prior performance.",
             "",
             "# Shorts Recovery Policy",
@@ -279,6 +282,7 @@ export const candidateJudgePrompt: PromptTemplate<
             "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
             "Do not choose by familiar mechanism strength alone. Reward the candidate that opens the widest fresh creative territory while staying visually clear.",
             "Treat familiar mechanisms as high generic risk only when the first frame is calm, diagrammatic, repeated, or visually indistinct from recent videos.",
+            "Treat repeated recent local objects or title angles as high generic risk even if the object is familiar and mechanical.",
             "Penalize candidates that lack a visible moving or tension state unless the visual proof is unusually immediate and concrete.",
             "Prefer candidates whose object, hidden cause, first-frame behavior, and reveal path differ from the other candidates in the batch.",
             "If one candidate clears the threshold, choose the strongest fresh candidate for the feed test.",
@@ -298,6 +302,7 @@ export const candidateJudgePrompt: PromptTemplate<
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
             `<candidates_json>${JSON.stringify(input.candidates)}</candidates_json>`,
+            `<recent_local_topics_json>${JSON.stringify(input.recentLocalTopics ?? [])}</recent_local_topics_json>`,
           ].join("\n"),
         },
       ],

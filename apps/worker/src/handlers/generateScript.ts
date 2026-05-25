@@ -1,8 +1,9 @@
 import {
-  encodeTinyMechanismsAiTopic,
-  encodeTinyMechanismsTopic,
   EpisodeCandidateJudgeRejection,
   EpisodeCandidateRoleError,
+  encodeTinyMechanismsAiTopic,
+  encodeTinyMechanismsTopic,
+  type GenerateScriptInput,
   generateEpisodeResearch,
   generateScript,
   getTinyMechanismsSeed,
@@ -11,20 +12,21 @@ import {
   slugifyTinyMechanismsAiTopic,
   TINY_MECHANISMS_PENDING_TOPIC,
   TINY_MECHANISMS_PRESET_ID,
+  TINY_MECHANISMS_TOPIC_PREFIX,
   tinyMechanismsProjectTitle,
-  type GenerateScriptInput,
 } from "@short-workflow/ai";
 import {
+  type DbClient,
   getProject,
   insertPromptVersion,
+  type JobRow,
+  listProjects,
   markJobSucceeded,
+  type ProjectRow,
   replaceProjectScenes,
   setProjectStatus,
   updateProject,
   withDbTransaction,
-  type DbClient,
-  type JobRow,
-  type ProjectRow,
 } from "@short-workflow/db";
 import { TerminalWorkflowError } from "../errors";
 
@@ -34,8 +36,17 @@ type ScriptSetup = {
   input: GenerateScriptInput;
 };
 
+type RecentTopicProject = Pick<ProjectRow, "id" | "title" | "topic" | "createdAt">;
+
+const RECENT_LOCAL_TOPIC_LIMIT = 12;
+
 function workflowFailureDetail(value: unknown, seen = new WeakSet<object>()): unknown {
-  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
     return value;
   }
 
@@ -86,6 +97,32 @@ function targetDurationSeconds(value: number): 30 | 45 | 60 {
   throw new Error("unsupported_target_duration");
 }
 
+function cleanRecentTopicPart(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function buildRecentLocalTopicLines(
+  projects: readonly RecentTopicProject[],
+  currentProjectId: string,
+  limit = RECENT_LOCAL_TOPIC_LIMIT,
+) {
+  return [...projects]
+    .filter((project) => project.id !== currentProjectId)
+    .filter((project) => project.topic.startsWith(TINY_MECHANISMS_TOPIC_PREFIX))
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+    .slice(0, limit)
+    .map((project) => {
+      const title = cleanRecentTopicPart(project.title);
+      const topic = cleanRecentTopicPart(project.topic);
+      return `${title} - ${topic}`.slice(0, 220);
+    });
+}
+
+async function listRecentLocalTopicLines(db: DbClient, currentProjectId: string) {
+  const projects = await listProjects(db);
+  return buildRecentLocalTopicLines(projects, currentProjectId);
+}
+
 function resolveExplicitTinyMechanismsSeed(project: ProjectRow) {
   const aiTopicSlug = parseTinyMechanismsAiTopicSlug(project.topic);
   if (aiTopicSlug) {
@@ -131,15 +168,17 @@ function buildLegacyScriptInput(project: ProjectRow): ScriptSetup | null {
   };
 }
 
-async function buildPendingAiScriptInput(project: ProjectRow): Promise<ScriptSetup> {
+async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Promise<ScriptSetup> {
   if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC) {
     throw new Error("unsupported_project_prompt_preset");
   }
 
   const targetDuration = targetDurationSeconds(project.targetDurationSeconds);
+  const recentLocalTopics = await listRecentLocalTopicLines(db, project.id);
   const research = await generateEpisodeResearch({
     channelPresetId: TINY_MECHANISMS_PRESET_ID,
     targetDurationSeconds: targetDuration,
+    recentLocalTopics,
   }).catch((error: unknown) => {
     if (error instanceof EpisodeCandidateRoleError) {
       const reasonDetails = workflowFailureDetail(error.cause);
@@ -203,7 +242,7 @@ export async function generateProjectScript(
   }
 
   const legacySetup = buildLegacyScriptInput(project);
-  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(project));
+  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(db, project));
   const script = await generateScript(scriptSetup.input);
 
   return withDbTransaction(db, async (tx) => {

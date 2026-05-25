@@ -44,7 +44,7 @@ describe("prompt engineering pattern compliance", () => {
     });
     const text = developerMessage(compiled);
 
-    expect(compiled.templateVersion).toBe(14);
+    expect(compiled.templateVersion).toBe(15);
     expect(text).toContain("# Prompt Engineering Quality Checks");
     expect(text).toContain(
       "Before finalizing, check that scene 1 can be understood with the image alone, the caption is punch text, and the first narration line describes visible action.",

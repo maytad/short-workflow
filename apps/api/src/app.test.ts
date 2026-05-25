@@ -341,7 +341,7 @@ describe("createApp", () => {
     });
   });
 
-  test("creates a YouTube auth URL with upload, Data readonly, and Analytics readonly scopes", async () => {
+  test("creates a YouTube auth URL with upload, delete, Data readonly, and Analytics readonly scopes", async () => {
     const assetRoot = await mkdtemp(path.join(tmpdir(), "short-workflow-youtube-auth-"));
     const previousDatabaseUrl = process.env.DATABASE_URL;
     const previousAssetRoot = process.env.LOCAL_ASSET_ROOT;
@@ -363,6 +363,7 @@ describe("createApp", () => {
 
       expect(scope).toContain("https://www.googleapis.com/auth/youtube.upload");
       expect(scope).toContain("https://www.googleapis.com/auth/youtube.readonly");
+      expect(scope).toContain("https://www.googleapis.com/auth/youtube.force-ssl");
       expect(scope).toContain("https://www.googleapis.com/auth/yt-analytics.readonly");
     } finally {
       if (previousDatabaseUrl === undefined) {
@@ -393,13 +394,12 @@ describe("createApp", () => {
         [
           "https://www.googleapis.com/auth/youtube.upload",
           "https://www.googleapis.com/auth/youtube.readonly",
+          "https://www.googleapis.com/auth/youtube.force-ssl",
           "https://www.googleapis.com/auth/yt-analytics.readonly",
         ].join(" "),
       ),
     ).toBe(true);
-    expect(
-      hasRequiredYoutubeScopes("https://www.googleapis.com/auth/youtube.upload"),
-    ).toBe(false);
+    expect(hasRequiredYoutubeScopes("https://www.googleapis.com/auth/youtube.upload")).toBe(false);
   });
 
   test("refresh rejects reduced YouTube OAuth scopes", async () => {
@@ -407,6 +407,7 @@ describe("createApp", () => {
     const requiredScopes = [
       "https://www.googleapis.com/auth/youtube.upload",
       "https://www.googleapis.com/auth/youtube.readonly",
+      "https://www.googleapis.com/auth/youtube.force-ssl",
       "https://www.googleapis.com/auth/yt-analytics.readonly",
     ].join(" ");
 

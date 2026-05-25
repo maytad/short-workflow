@@ -362,7 +362,7 @@ function scriptTopicFields(input: GenerateScriptInput): {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 14,
+  version: 15,
   purpose: "script",
   provider: "openai",
   compile(input) {
