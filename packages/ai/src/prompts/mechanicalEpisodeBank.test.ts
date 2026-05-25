@@ -64,13 +64,13 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(10);
+    expect(compiled.templateVersion).toBe(13);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
     expect(developerMessage).toContain("visible moving part");
     expect(developerMessage).toContain("common wrong assumption");
     expect(developerMessage).toContain(
-      "Reject topics or angles that cannot show a physical part moving",
+      "Reject topics or angles that cannot show an object moving, locking, sliding, catching, bending, releasing, changing state, or visibly resisting force on screen.",
     );
     expect(developerMessage).toContain("novelty axes");
     expect(developerMessage).toContain(
@@ -82,19 +82,19 @@ describe("mechanical episode bank", () => {
     expect(developerMessage).toContain("familiar object plus surprising behavior");
     expect(developerMessage).toContain("That [visible action] is not [common wrong explanation]");
     expect(developerMessage).toContain(
-      "part moves, part catches or slides or locks or releases, output happens",
+      "visible behavior happens, hidden cause is revealed, output makes sense",
     );
-    expect(developerMessage).toContain("slides, grabs, locks, releases, snaps, pulls, pushes");
+    expect(developerMessage).toContain(
+      "sound, surprise, resistance, speed, snap, or one-way behavior",
+    );
     expect(developerMessage).toContain("Captions must be punch captions, not transcript lines");
-    expect(developerMessage).toContain("2-5 words");
+    expect(developerMessage).toContain("Keep each caption to 2-4 words");
     expect(developerMessage).toContain("Do not copy full narration into captions");
-    expect(developerMessage).toContain("Prefer mechanism-state captions");
+    expect(developerMessage).toContain("Prefer state-change captions");
     expect(developerMessage).toContain("Avoid semicolons, periods, colons");
     expect(developerMessage).toContain("without electronics");
     expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
     expect(developerMessage).toContain("first image prompt must show action, tension, resistance");
-    expect(userMessage).toContain("<mechanism_family>spring_locking</mechanism_family>");
-    expect(userMessage).toContain("<appeal_tier>mass_appeal</appeal_tier>");
     expect(userMessage).toContain(
       "<object_or_mechanism>click pen cam and spring</object_or_mechanism>",
     );
@@ -126,6 +126,20 @@ describe("mechanical episode bank", () => {
     expect(developerMessage).toContain(
       "Do not default to a workshop, repair bench, dark tabletop, or tool tutorial",
     );
+    expect(developerMessage).toContain("# Shorts Recovery Policy");
+    expect(developerMessage).toContain("Recovery target: improve Stayed to watch");
+    expect(developerMessage).toContain(
+      "Scene 1 must show the object already in motion, locked, snapped, stretched, resisting force, or visibly changing state.",
+    );
+    expect(developerMessage).toContain(
+      "Answer the visual question by seconds 2-4 so viewers understand the promise before swiping.",
+    );
+    expect(developerMessage).toContain(
+      "Scene 1 must not be a calm object portrait, slow context setup, title card, explanatory diagram, or generic macro beauty shot.",
+    );
+    expect(developerMessage).toContain(
+      "The first spoken words must name the concrete object, action, or tension visible on screen.",
+    );
   });
 
   test("compiled image prompt emphasizes physical mechanism materiality", () => {
@@ -150,7 +164,11 @@ describe("mechanical episode bank", () => {
       },
     });
 
-    expect(compiled.templateVersion).toBe(6);
+    expect(compiled.templateVersion).toBe(7);
+    expect(compiled.prompt).toContain("Stayed to watch");
+    expect(compiled.prompt).toContain("first-frame feed test");
+    expect(compiled.prompt).toContain("No clean product shot");
+    expect(compiled.prompt).toContain("No clean diagram or cutaway as the opening frame");
     expect(compiled.prompt).toContain("MECHANICAL MATERIALITY");
     expect(compiled.prompt).toContain("VISIBLE TENSION AND HIDDEN CAUSE");
     expect(compiled.prompt).toContain(

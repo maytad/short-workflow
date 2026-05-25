@@ -1,18 +1,16 @@
 import { z } from "zod";
-
-import { TINY_MECHANISMS_CHANNEL_BIBLE, TINY_MECHANISMS_PRESET_ID } from "./presets/tinyMechanisms";
 import {
   candidateScoreJsonSchema,
   EPISODE_CANDIDATE_ROLES,
-  episodeCandidateRoleSchema,
   type EpisodeCandidate,
+  episodeCandidateRoleSchema,
 } from "./episodeResearch";
+import {
+  TINY_MECHANISMS_CHANNEL_BIBLE,
+  type TINY_MECHANISMS_PRESET_ID,
+} from "./presets/tinyMechanisms";
+import { SHORTS_RECOVERY_JUDGE_RULES } from "./shortsRecovery";
 import type { CompiledPrompt, PromptTemplate } from "./types";
-
-const thresholdFailure = {
-  failureReason: "No candidate cleared the medium quality threshold.",
-  thresholdSummary: "Requires coreAverage >= 4 and genericRisk <= 2.",
-} as const;
 
 export const candidateJudgeScoreSchema = z
   .object({
@@ -94,7 +92,13 @@ function computedCoreAverage(score: CandidateJudgeScore) {
 export type CandidateJudgeInput = {
   channelPresetId: typeof TINY_MECHANISMS_PRESET_ID;
   targetDurationSeconds: 30 | 45 | 60;
-  candidates: [EpisodeCandidate, EpisodeCandidate, EpisodeCandidate, EpisodeCandidate, EpisodeCandidate];
+  candidates: [
+    EpisodeCandidate,
+    EpisodeCandidate,
+    EpisodeCandidate,
+    EpisodeCandidate,
+    EpisodeCandidate,
+  ];
 };
 
 export type CompiledCandidateJudgePrompt = CompiledPrompt & {
@@ -263,6 +267,10 @@ export const candidateJudgePrompt: PromptTemplate<
             "Use only the supplied candidates, channel preset, target duration, and channel bible.",
             "Do not use recent analytics, memory, retrieval, external research, or unstated prior performance.",
             "",
+            "# Shorts Recovery Policy",
+            ...SHORTS_RECOVERY_JUDGE_RULES,
+            "For this recovery batch, penalize perception, biology, voice, onions, abstract physics gimmicks, calm product shots, clean diagrams, and repeated cabinet or push-latch variants.",
+            "",
             "# Task",
             "Score all 5 candidates independently.",
             "Select only if a candidate clears the threshold.",
@@ -270,8 +278,8 @@ export const candidateJudgePrompt: PromptTemplate<
             "A selected candidate must have coreAverage >= 4 and genericRisk <= 2.",
             "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
             "Do not choose by familiar mechanism strength alone. Reward the candidate that opens the widest fresh creative territory while staying visually clear.",
-            "Treat latches, springs, cams, push-pop actions, one-way locks, ratchets, and clickers as high generic risk when they look like a familiar Tiny Mechanisms pattern.",
-            "Do not penalize non-mechanical causes just because they lack a moving part. Optical, material, fluid, acoustic, thermal, electrical, geometric, chemical, or other safe everyday causes can win if the visual proof is clear.",
+            "Treat familiar mechanisms as high generic risk only when the first frame is calm, diagrammatic, repeated, or visually indistinct from recent videos.",
+            "Penalize candidates that lack a visible moving or tension state unless the visual proof is unusually immediate and concrete.",
             "Prefer candidates whose object, hidden cause, first-frame behavior, and reveal path differ from the other candidates in the batch.",
             "If one candidate clears the threshold, choose the strongest fresh candidate for the feed test.",
             "If no candidate clears the threshold, return rejected with failureReason and thresholdSummary.",

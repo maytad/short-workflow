@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { TINY_MECHANISMS_CHANNEL_BIBLE, TINY_MECHANISMS_PRESET_ID } from "./presets/tinyMechanisms";
+import { SHORTS_RECOVERY_RESEARCH_RULES } from "./shortsRecovery";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 
 export const EPISODE_CANDIDATE_ROLES = [
@@ -170,15 +171,15 @@ export function episodeResearchJsonSchemaForRole(role: EpisodeCandidateRole) {
 export function roleInstruction(role: EpisodeCandidateRole): string {
   switch (role) {
     case "feed_stop_strategist":
-      return "Focus on the first frame, the first 0.5 seconds, the first line, and maximum swipe resistance. Start from a visually surprising everyday moment, not from a familiar mechanism category.";
+      return "Focus on the first frame, the first 0.5 seconds, the first line, and maximum swipe resistance. Start from a familiar object under visible action or tension, not from a broad fact.";
     case "broad_object_selector":
-      return "Focus on a familiar everyday object, setting, or behavior that a broad audience can recognize immediately. The hidden cause can be any safe everyday physical cause, not only a mechanical part.";
+      return "Focus on a familiar everyday object or setting that a broad audience recognizes immediately. Prefer objects with visible locking, snapping, catching, sliding, releasing, bending, or resisting force.";
     case "visual_mechanism_director":
-      return "Focus on visual proof of cause and effect that can be understood from the picture alone. Motion is useful but not required; contrast, deformation, light, texture, pressure, sound, heat, or material behavior can also carry the proof.";
+      return "Focus on visual proof of cause and effect that can be understood from the picture alone. Prioritize motion, tension, deformation, contact points, force paths, or visible state changes.";
     case "retention_architect":
-      return "Focus on a reveal path that gives the viewer a new reason to keep watching every 3-5 seconds, without a flat middle. Prefer a surprising chain of evidence over another push-pop latch reveal.";
+      return "Focus on a reveal path that gives the viewer a new visual reason to keep watching every 3-5 seconds. Avoid flat middle explanations and reveal the hidden cause early.";
     case "loop_payoff_editor":
-      return "Focus on ending payoff, replay logic, and a title curiosity gap that resolves only after the ending. The payoff can be recognition, reversal, proof, prediction, or a new way to see the same everyday moment.";
+      return "Focus on ending payoff, replay logic, and a title curiosity gap that resolves the first-frame contradiction. The payoff must make the opening action make sense.";
   }
 
   const exhaustiveRole: never = role;
@@ -190,7 +191,7 @@ export const episodeResearchPrompt: PromptTemplate<
   CompiledEpisodeResearchPrompt
 > = {
   id: "tiny_mechanisms_episode_research",
-  version: 2,
+  version: 3,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -220,6 +221,10 @@ export const episodeResearchPrompt: PromptTemplate<
             "# Channel",
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "",
+            "# Shorts Recovery Policy",
+            ...SHORTS_RECOVERY_RESEARCH_RULES,
+            "For this recovery batch, pause perception, biology, voice, onions, abstract physics gimmicks, and repeated cabinet or push-latch variants unless the user explicitly asks for them.",
+            "",
             "# Task",
             "Generate exactly one candidate for the requested role.",
             `The candidate is for a ${input.targetDurationSeconds}-second English YouTube Short.`,
@@ -230,13 +235,13 @@ export const episodeResearchPrompt: PromptTemplate<
             roleInstruction(input.role),
             "Do not start by choosing from a fixed mechanism category or taxonomy.",
             "Start from an everyday moment that feels visually surprising, then identify the smallest hidden cause that explains it.",
-            "The hidden cause can be mechanical, material, fluid, optical, acoustic, thermal, electrical, geometric, chemical, biological-adjacent, or another safe everyday physical cause.",
-            "Those category names are examples of range, not a menu and not required output labels.",
-            "Do not default to latches, springs, cams, push-pop actions, one-way locks, ratchets, or click mechanisms unless the idea is unusually fresh and visually different from those patterns.",
+            "The hidden cause should be mechanical, material, fluid, pressure-based, geometric, contact-point, or another image-readable physical behavior.",
+            "Avoid biology, perception, voice, and abstract explanations in this recovery batch unless the user explicitly asks for them.",
+            "Do not avoid latches, springs, cams, one-way locks, ratchets, or click mechanisms when they create a stronger visible feed hook.",
             "The first frame must be understandable with sound off in under 0.5 seconds.",
             "The first line must create curiosity in under 1 second.",
             "The first three words must be concrete enough to stop a feed scroll.",
-            "Prefer familiar everyday behavior with a visible surprise and a provable hidden cause. A moving part is helpful but not required.",
+            "Prefer familiar everyday behavior with a visible surprise and a provable hidden cause. A visible moving or tension state is strongly preferred for this recovery batch.",
             "Strong candidates may use visible motion, contrast, texture change, pressure, flow, reflection, vibration, heat, sound, failure, deformation, residue, phase change, or another image-readable effect.",
             "Reject calm object portraits, abstract diagrams as hooks, medical advice, finance, legal, politics, crime, disaster, public figures, dangerous instructions, children's characters, and unsupported claims.",
             "Reject candidates that only restate a known object mechanism without a surprising everyday behavior in the first frame.",

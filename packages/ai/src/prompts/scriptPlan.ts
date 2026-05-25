@@ -1,14 +1,15 @@
 import { z } from "zod";
 
 import type { GenerateScriptInput, ProjectStyleContext, ScriptScene } from "../types";
+import type { RefinedEpisodeBrief } from "./episodeJudge";
+import type { EpisodeCandidate } from "./episodeResearch";
 import {
   getTinyMechanismsSeed,
   TINY_MECHANISMS_CHANNEL_BIBLE,
   TINY_MECHANISMS_PRESET_ID,
   TINY_MECHANISMS_SCENE_ROLES_BY_DURATION,
 } from "./presets/tinyMechanisms";
-import type { RefinedEpisodeBrief } from "./episodeJudge";
-import type { EpisodeCandidate } from "./episodeResearch";
+import { SHORTS_RECOVERY_SCRIPT_RULES } from "./shortsRecovery";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 import {
   isVisualHookArchetype,
@@ -328,7 +329,8 @@ function scriptTopicFields(input: GenerateScriptInput): {
       audienceContext: candidate.broadAudienceReason,
       nativeSetting: "the familiar setting where the object naturally appears",
       hookEmotion: candidate.retentionPromise,
-      avoidVisualSetting: "generic workbench, calm object portrait, clean diagram as the opening frame",
+      avoidVisualSetting:
+        "generic workbench, calm object portrait, clean diagram as the opening frame",
       source: "ai_candidate",
       candidate,
     };
@@ -360,7 +362,7 @@ function scriptTopicFields(input: GenerateScriptInput): {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 12,
+  version: 13,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -407,8 +409,9 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "The hook should create a small emotional reason to keep watching: surprise, tension, disbelief, relief, or satisfying completion.",
             "Use the selected episode concept fields directly. Do not drift into a broad everyday-science explainer.",
             "Topic gate: every episode angle must preserve an everyday object or behavior, a visible surprise, a hidden cause, and a common wrong assumption.",
-            "The hidden cause does not need to be a moving mechanical part. It may be physical, material, fluid, optical, acoustic, thermal, electrical, geometric, chemical, or another safe everyday cause.",
-            "Reject topics or angles that cannot show visible evidence of the cause on screen through motion, contrast, deformation, flow, reflection, vibration, heat, sound, texture, residue, failure, or another image-readable effect.",
+            "The hidden cause should be mechanical, material, fluid, pressure-based, geometric, contact-point, or another image-readable physical behavior.",
+            "Avoid biology, perception, voice, abstract optical tricks, and broad everyday-science explanations unless the selected topic explicitly requires them.",
+            "Reject topics or angles that cannot show visible evidence of the cause on screen through motion, tension, contact points, deformation, flow, texture, failure, or another image-readable physical effect.",
             "Use novelty axes before writing: mechanism family, visible action, viewer misconception, and visual strategy. If the angle feels too similar on more than two novelty axes, rewrite the angle while keeping the selected topic.",
             "Open with the misconception, impossible-looking behavior, or satisfying action already happening.",
             "Open with a visible contradiction. Preferred hook pattern: That [visible action] is not [common wrong explanation].",
@@ -428,6 +431,17 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "The first caption must be no more than 4 words.",
             "Do not repeat the sentence shape That X is not Y unless it is clearly the strongest hook.",
             "Every 3-5 seconds must add a new visual reason to keep watching.",
+            "",
+            "# Shorts Recovery Policy",
+            ...SHORTS_RECOVERY_SCRIPT_RULES,
+            "Design the hook scene as the product being tested in Shorts feed.",
+            "Use the first scene to make the viewer choose to stay before the explanatory arc begins.",
+            "For the 12-video recovery batch, vary the opening format across action-first, contradiction-caption-first, and early-mechanism-reveal formats.",
+            "Scene 1 must show the object already in motion, locked, snapped, stretched, resisting force, or visibly changing state.",
+            "Answer the visual question by seconds 2-4 so viewers understand the promise before swiping.",
+            "Must reveal the hidden mechanism within the first two seconds when possible.",
+            "Scene 1 must not be a calm object portrait, slow context setup, title card, explanatory diagram, or generic macro beauty shot.",
+            "The first spoken words must name the concrete object, action, or tension visible on screen.",
             "",
             "# Pacing Rules",
             "All narration, captions, image prompt seeds, SSML, and metadata drafts must be English.",
@@ -510,7 +524,9 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
                 ]
               : []),
             ...(topic.candidate
-              ? [`<selected_candidate_json>${JSON.stringify(topic.candidate)}</selected_candidate_json>`]
+              ? [
+                  `<selected_candidate_json>${JSON.stringify(topic.candidate)}</selected_candidate_json>`,
+                ]
               : []),
             `Return exactly ${roles.length} scenes in this role order.`,
           ].join("\n"),

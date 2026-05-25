@@ -1,10 +1,11 @@
 import type { ImageProvider, ProjectStyleContext } from "../types";
 import { defaultProjectStyleContext } from "./scriptPlan";
+import { SHORTS_RECOVERY_IMAGE_RULES } from "./shortsRecovery";
 import type { CompiledPrompt, PromptTemplate } from "./types";
 import {
   defaultVisualHookArchetype,
-  visualHookDirection,
   type VisualHookArchetype,
+  visualHookDirection,
 } from "./visualHooks";
 
 export type ImagePromptInput = {
@@ -36,7 +37,7 @@ export type CompiledImagePrompt = CompiledPrompt & {
 
 export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImagePrompt> = {
   id: "tiny_mechanisms_scene_image_prompt",
-  version: 6,
+  version: 7,
   purpose: "image_prompt",
   provider: "openai",
   compile(input) {
@@ -61,9 +62,15 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       "This must work as a first-frame visual hook on a phone screen with sound off.",
       "The viewer should understand the object, the action, and the curiosity gap in under 0.5 seconds.",
       "",
+      "# Shorts Recovery Policy",
+      ...SHORTS_RECOVERY_IMAGE_RULES,
+      "",
       "SOCIAL HOOK FRAME",
       `Visual hook archetype: ${hookArchetype}.`,
       `Archetype direction: ${hookDirection}.`,
+      "First-frame feed test: the image must be interesting before the title, narration, or caption helps.",
+      "No clean product shot for hook scenes.",
+      "No clean diagram or cutaway as the opening frame unless the cutaway is the visible surprise.",
       "Show the phenomenon already happening. Do not show a calm setup before the interesting moment.",
       "Do not create a calm object portrait for the hook.",
       "Do not use a clean explanatory diagram as the first frame.",
@@ -92,7 +99,7 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       `Primary visual seed: ${imagePrompt}`,
       ...(visualBrief ? [`Visual brief: ${sentence(visualBrief)}`] : []),
       `Narration context: ${narration}`,
-      `Caption context only, do not render this as text: ${caption}`,
+      `caption context only, do not render this as text: ${caption}`,
       "",
       "COMPOSITION",
       "Use a clear vertical hierarchy: hook subject in the upper/middle frame, caption-safe negative space in the lower 25-30%.",
