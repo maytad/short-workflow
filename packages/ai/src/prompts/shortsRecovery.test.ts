@@ -84,7 +84,7 @@ describe("shorts recovery prompt policy", () => {
     });
     const text = developerMessage(compiled);
 
-    expect(compiled.templateVersion).toBe(13);
+    expect(compiled.templateVersion).toBe(14);
     expect(text).toContain("Stayed to watch");
     expect(text).toContain("first 1-3 seconds");
     expect(text).toContain("first caption must be no more than 4 words");
@@ -118,7 +118,7 @@ describe("shorts recovery prompt policy", () => {
       },
     });
 
-    expect(compiled.templateVersion).toBe(7);
+    expect(compiled.templateVersion).toBe(8);
     expect(compiled.prompt).toContain("Stayed to watch");
     expect(compiled.prompt).toContain("first-frame feed test");
     expect(compiled.prompt).toContain("No clean product shot");

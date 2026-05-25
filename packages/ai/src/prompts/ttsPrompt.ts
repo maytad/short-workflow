@@ -24,7 +24,7 @@ export type CompiledTtsPrompt = CompiledPrompt & {
 
 export const ttsPromptTemplate: PromptTemplate<TtsPromptInput, CompiledTtsPrompt> = {
   id: "tiny_mechanisms_scene_tts_prompt",
-  version: 1,
+  version: 2,
   purpose: "ssml",
   provider: "google_tts",
   compile(input) {
@@ -51,6 +51,10 @@ export const ttsPromptTemplate: PromptTemplate<TtsPromptInput, CompiledTtsPrompt
         `Scene target duration: ${input.scene.durationSeconds} seconds`,
         "Energy: start hooks with urgency, settle into explanation, and land payoff lines cleanly.",
         "Pauses: use brief natural pauses after hooks and before payoffs. Preserve proper nouns exactly as written.",
+        "Speak only the transcript text exactly as provided.",
+        "Do not rewrite, summarize, normalize, add, remove, or reorder words.",
+        "Do not speak director notes, headings, scene metadata, or SSML tag names.",
+        "Audio/subtitle alignment depends on exact transcript fidelity.",
         "",
         "### TRANSCRIPT",
         transcript,

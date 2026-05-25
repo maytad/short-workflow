@@ -37,7 +37,7 @@ export type CompiledImagePrompt = CompiledPrompt & {
 
 export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImagePrompt> = {
   id: "tiny_mechanisms_scene_image_prompt",
-  version: 7,
+  version: 8,
   purpose: "image_prompt",
   provider: "openai",
   compile(input) {
@@ -90,6 +90,13 @@ export const imagePromptTemplate: PromptTemplate<ImagePromptInput, CompiledImage
       "Do not let every scene become a transparent cutaway or the same macro tabletop shot.",
       "For hook scenes, prefer a recognizable real object under tension before using a clean cutaway.",
       "For point scenes, prefer mechanism proof through a cutaway, exposed edge, force path, or physically plausible transparent layer.",
+      "",
+      "# Scene-Specific Cutaway Policy",
+      "Hook scenes: start with a real object under action, tension, resistance, or visible failure before any cutaway.",
+      "Point and payoff scenes: use cutaway or transparent views only to prove the cause after the hook is established.",
+      "If the scene role is hook, any cutaway must still feel like an active real-world moment, not a still technical diagram.",
+      "Example hook: zipper teeth pulled sideways while the seam stays locked, real fabric visible.",
+      "Example point frame: partial cutaway shows teeth interlocking after the real hook is clear.",
       "",
       "SCENE ROLE",
       `Scene ${input.scene.position} is ${input.scene.role}. Visual job: ${roleJob}.`,

@@ -64,7 +64,7 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(13);
+    expect(compiled.templateVersion).toBe(14);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
     expect(developerMessage).toContain("visible moving part");
@@ -164,7 +164,7 @@ describe("mechanical episode bank", () => {
       },
     });
 
-    expect(compiled.templateVersion).toBe(7);
+    expect(compiled.templateVersion).toBe(8);
     expect(compiled.prompt).toContain("Stayed to watch");
     expect(compiled.prompt).toContain("first-frame feed test");
     expect(compiled.prompt).toContain("No clean product shot");

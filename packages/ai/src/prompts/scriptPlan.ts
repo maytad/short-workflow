@@ -362,7 +362,7 @@ function scriptTopicFields(input: GenerateScriptInput): {
 
 export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScriptPlanPrompt> = {
   id: "tiny_mechanisms_script_plan",
-  version: 13,
+  version: 14,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -426,7 +426,7 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Do not over-explain the entire object. Explain the selected mechanism only.",
             'Avoid repeating generic sentence shapes such as "This works because" and "Inside, there is".',
             "Do not start with an intro, a calm setup, or a concept definition.",
-            "Start with the visible surprise already happening, whether that is motion, contrast, deformation, flow, reflection, vibration, heat, sound, texture, residue, failure, or another image-readable effect.",
+            "Start with the visible surprise already happening, whether that is motion, tension, contact points, deformation, force path, flow, texture, or visible failure.",
             "The first narration line must be no more than 8 words.",
             "The first caption must be no more than 4 words.",
             "Do not repeat the sentence shape That X is not Y unless it is clearly the strongest hook.",
@@ -485,6 +485,13 @@ export const scriptPlanPrompt: PromptTemplate<GenerateScriptInput, CompiledScrip
             "Prefer real-world objects, hands, silhouettes, tabletop demonstrations, macro textures, and physically readable cause/effect over abstract floating diagrams.",
             "Prefer the selected nativeSetting over generic tabletop demonstrations.",
             "If the selected avoidVisualSetting names a workbench, repair bench, tutorial, or tool catalog shot, avoid that framing in every scene imagePrompt and visualBrief.",
+            "",
+            "# Prompt Engineering Quality Checks",
+            "Before finalizing, check that scene 1 can be understood with the image alone, the caption is punch text, and the first narration line describes visible action.",
+            "Good hook pattern: zipper teeth are being pulled sideways while the slider keeps them locked.",
+            "Bad hook pattern: a clean zipper cutaway sits still while narration explains what a zipper is.",
+            "Good image prompt pattern: familiar object + force already applied + visible resistance + tight mobile framing.",
+            "Bad image prompt pattern: generic macro product beauty shot, clean diagram, or teardown before the viewer sees the problem.",
             "",
             "# Safety and Scope",
             "Do not invent a new topic. Use the selected topic exactly.",
