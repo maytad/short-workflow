@@ -678,6 +678,24 @@ function intMetric(row: YoutubeAnalyticsRow | undefined, key: string) {
   return value === null ? null : Math.trunc(value);
 }
 
+export function selectCurrentYoutubeSnapshotCounts({
+  analytics,
+  statistics,
+}: {
+  analytics: YoutubeAnalyticsRow | undefined;
+  statistics: YoutubeVideoApiItem["statistics"] | undefined;
+}) {
+  const dataApiViews = normalizeYoutubeMetricNumber(statistics?.viewCount);
+  const dataApiLikes = normalizeYoutubeMetricNumber(statistics?.likeCount);
+  const dataApiComments = normalizeYoutubeMetricNumber(statistics?.commentCount);
+
+  return {
+    views: dataApiViews ?? intMetric(analytics, "views"),
+    likes: dataApiLikes ?? intMetric(analytics, "likes"),
+    comments: dataApiComments ?? intMetric(analytics, "comments"),
+  };
+}
+
 function toSnapshotRuleInput(snapshot: YoutubeAnalyticsSnapshotRow): NullableAnalyticsMetrics {
   return {
     views: snapshot.views,
@@ -781,13 +799,10 @@ async function refreshYoutubeAnalyticsDashboard(
     const mapping = mappingByVideoId.get(item.id);
     const publishedAt = parseDate(item.snippet?.publishedAt);
     const analytics = analyticsRows.get(item.id);
-    const views =
-      intMetric(analytics, "views") ?? normalizeYoutubeMetricNumber(item.statistics?.viewCount);
-    const likes =
-      intMetric(analytics, "likes") ?? normalizeYoutubeMetricNumber(item.statistics?.likeCount);
-    const comments =
-      intMetric(analytics, "comments") ??
-      normalizeYoutubeMetricNumber(item.statistics?.commentCount);
+    const { comments, likes, views } = selectCurrentYoutubeSnapshotCounts({
+      analytics,
+      statistics: item.statistics,
+    });
     const derived = deriveSnapshotMetrics({ likes, now, publishedAt, views });
     const link = await upsertYoutubeVideoLink(db, {
       youtubeVideoId: item.id,

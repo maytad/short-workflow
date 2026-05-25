@@ -19,6 +19,7 @@ import {
   median,
   parseIso8601DurationSeconds,
   requiredScopeError,
+  selectCurrentYoutubeSnapshotCounts,
   toYoutubeAiDiagnosisError,
 } from "./youtubeAnalytics";
 
@@ -424,6 +425,46 @@ describe("requiredScopeError", () => {
   test("detects insufficient YouTube authentication scopes", () => {
     expect(requiredScopeError("Request had insufficient authentication scopes.")).toBe(true);
     expect(requiredScopeError("quotaExceeded")).toBe(false);
+  });
+});
+
+describe("selectCurrentYoutubeSnapshotCounts", () => {
+  test("prefers Data API counts over lagged Analytics API counts", () => {
+    expect(
+      selectCurrentYoutubeSnapshotCounts({
+        analytics: {
+          comments: 0,
+          likes: 4,
+          views: 117,
+        },
+        statistics: {
+          commentCount: "1",
+          likeCount: "15",
+          viewCount: "783",
+        },
+      }),
+    ).toEqual({
+      comments: 1,
+      likes: 15,
+      views: 783,
+    });
+  });
+
+  test("falls back to Analytics API counts when Data API counts are unavailable", () => {
+    expect(
+      selectCurrentYoutubeSnapshotCounts({
+        analytics: {
+          comments: 2,
+          likes: 8,
+          views: 321,
+        },
+        statistics: {},
+      }),
+    ).toEqual({
+      comments: 2,
+      likes: 8,
+      views: 321,
+    });
   });
 });
 
