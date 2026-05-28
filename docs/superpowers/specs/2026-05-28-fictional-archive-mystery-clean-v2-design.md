@@ -153,10 +153,18 @@ Required fields:
 - `disclosure_mode`
 - `selected_candidate_id`
 - `selected_plan_id`
+- `selected_anchor_asset_id`
+- `selected_narration_asset_id`
+- `selected_caption_timing_asset_id`
+- `selected_render_input_asset_id`
 - `target_duration_seconds`
 - `format`
 - `created_at`
 - `updated_at`
+
+Selection fields are nullable until the relevant user approval or generation gate has completed.
+`episodes.format` is the only persisted format source of truth. Plans and render inputs copy from
+the episode; they do not own a separate format decision.
 
 Status values:
 
@@ -184,12 +192,37 @@ narration_ready -> captions_ready
 captions_ready -> render_input_ready
 render_input_ready -> rendering
 rendering -> done
-any non-terminal status -> failed
+any non-terminal status -> failed (unrecoverable episode invalidation only)
 failed -> draft only through explicit user reset
 ```
 
-The status should represent the latest completed gate, not every active job. Active work is derived
-from `jobs`.
+Regeneration transitions are also allowed:
+
+```text
+anchor_ready -> anchor_ready
+beats_ready -> anchor_ready
+beats_ready -> beats_ready
+narration_ready -> narration_ready
+captions_ready -> captions_ready
+render_input_ready -> captions_ready
+```
+
+Regenerating an anchor after beat images exist moves the episode back to `anchor_ready`, clears
+`selected_image_asset_id` on all beats, and makes existing beat image assets stale through lineage.
+Regenerating one beat keeps the episode at `beats_ready` and only clears that beat's selected image
+until a new image is approved.
+Regenerating narration keeps the episode at `narration_ready` if it succeeds and leaves the previous
+selected narration in place if it fails. Regenerating captions keeps the episode at `captions_ready`
+if it succeeds and leaves the previous selected caption timing asset in place if it fails.
+Changing any selected anchor or beat image after `render_input_ready` clears
+`selected_render_input_asset_id` and moves the episode back to `captions_ready` when narration and
+captions are still valid.
+
+The status should represent the latest valid completed gate, not every active job. Active work is
+derived from `jobs`. A recoverable failed job does not automatically set `episodes.status` to
+`failed`; it leaves the episode at the last valid gate and records the failure on the job. Use
+`episodes.status = failed` only when the episode itself becomes unrecoverable. From `failed`, the
+only transition is an explicit user reset to `draft`.
 
 `disclosure_mode` values:
 
@@ -240,7 +273,6 @@ Required fields:
 
 - `id`
 - `episode_id`
-- `format`
 - `anomaly_class`
 - `shot_archetype`
 - `continuity_bible`
@@ -324,13 +356,20 @@ Required fields:
 - `plan_id`
 - `position`
 - `role`
-- `duration_seconds`
+- `planned_duration_seconds`
+- `reconciled_start_seconds`
+- `reconciled_end_seconds`
 - `narration`
 - `caption_intent`
 - `visual_prompt`
 - `motion_preset`
+- `selected_image_asset_id`
 - `created_at`
 - `updated_at`
+
+`planned_duration_seconds` comes from the episode plan. `reconciled_start_seconds` and
+`reconciled_end_seconds` are nullable until caption timing is built from the final narration
+alignment. Render input generation requires every non-disclosure beat to have reconciled timing.
 
 Role values:
 
@@ -342,7 +381,8 @@ Role values:
 - `disclosure`
 
 The `disclosure` beat may be very short and may not require its own image if the overlay can sit
-over the final visual beat.
+over the final visual beat. If it has no selected image, render input must mark the beat as
+reusing the previous visual.
 
 ### assets
 
@@ -450,6 +490,16 @@ Nullable rules:
 - `input_asset_ids` is required for image edit attempts and render input compilation
 - `input_asset_ids` must include the anchor image for every `beat_image` edit attempt
 
+Regeneration counters are derived from `generation_attempts`; do not store separate mutable counter
+columns. Count attempts where `prompt.mode = "regenerate"` and
+`response_metadata.provider_billable = true`. This includes provider-submitted failures and
+successful-but-rejected images because both consume provider budget. Pre-validation failures do not
+count.
+
+Anchor regeneration count is per episode and never resets. Beat regeneration count is scoped to
+`beat_id + parent_anchor_asset_id`; if a new anchor is approved, all beat image selections are
+cleared and beat regeneration counts start fresh for the new anchor lineage.
+
 ### jobs
 
 The existing worker concept remains, but the job table should become episode-level infrastructure.
@@ -462,7 +512,6 @@ Required fields:
 - `status`
 - `attempts`
 - `max_attempts`
-- `parent_job_id`
 - `input`
 - `output`
 - `error_message`
@@ -590,6 +639,12 @@ signs, logos, numbers, UI, or watermarks.
 This is a manual gate. If the anchor looks fake, warped, too subtle, too long-corridor, or visually
 confusing, regenerate before any beat images are created.
 
+Approving an anchor sets `episodes.selected_anchor_asset_id` to the approved anchor asset. Beat
+generation must use this selected anchor as `parent_anchor_asset_id`.
+
+If an anchor is approved after beat images already exist, clear all `episode_beats.selected_image_asset_id`
+values and move `episodes.status` back to `anchor_ready`.
+
 ### 6. Generate Beat Images
 
 Input:
@@ -614,6 +669,9 @@ policy rather than silently falling back to independent generation.
 This is a manual gate. Regenerating one beat should not invalidate the anchor. If the anchor itself
 is wrong, regenerate from the anchor step and mark later beat assets stale through lineage.
 
+Approving a beat image sets `episode_beats.selected_image_asset_id`. Render input generation must
+use only selected beat images.
+
 ### 8. Generate Narration Track
 
 Input:
@@ -630,6 +688,8 @@ Output:
 Default behavior is one episode-level audio request. If the script exceeds provider limits, split
 only as a fallback and pass previous/next text or request IDs for continuity.
 
+On success, set `episodes.selected_narration_asset_id` to the generated narration asset.
+
 ### 9. Build Archive Captions
 
 Input:
@@ -645,19 +705,23 @@ Output:
 
 This step is a deterministic compiler, not a creative generation call. It may use plan hints for
 evidence overlays, but speech timing must come from provider alignment.
+On success, set `episodes.selected_caption_timing_asset_id` to the generated caption timing asset.
 
 Timing reconciliation:
 
-1. Start from planned beat durations in `beat_plan`.
+1. Start from `episode_beats.planned_duration_seconds`.
 2. Generate the final episode-level narration.
 3. Derive phrase timings from ElevenLabs alignment.
 4. Recompute beat start/end boundaries from the narration phrases assigned to each beat.
 5. If total audio duration is within 2 seconds of target duration, stretch or shrink visual beat
-   image durations to match the actual narration.
+   image durations to match the actual narration and write the result to
+   `episode_beats.reconciled_start_seconds` and `episode_beats.reconciled_end_seconds`.
 6. If total audio duration exceeds the target by more than 2 seconds, fail with
    `narration_exceeds_duration` and require script revision before render input generation.
 
-The render input always follows actual narration duration, not the original planned duration.
+The render input always follows actual narration duration and reconciled beat timing, not the
+original planned duration. `renderInput.format.durationSeconds` is derived from the selected
+narration audio duration rounded up to a whole frame at the render FPS.
 
 ### 10. Build Render Input
 
@@ -671,6 +735,8 @@ Input:
 Output:
 
 - one render input JSON asset
+
+On success, set `episodes.selected_render_input_asset_id` to the generated render input asset.
 
 ### 11. Render Video
 
@@ -711,7 +777,6 @@ The plan prompt turns the selected candidate into a production blueprint. It mus
 
 Required plan fields:
 
-- format: `fictional_archive_mystery`
 - anomaly_class
 - shot_archetype
 - continuity_bible
@@ -929,6 +994,14 @@ Segment shape:
 }
 ```
 
+Priority semantics:
+
+- higher priority wins when segments overlap in the same anchor region
+- default priorities are `speech = 10`, `sound = 20`, `evidence = 30`, `hook = 40`,
+  `disclosure = 50`
+- render at most two simultaneous caption segments
+- `hook` and `disclosure` suppress lower-priority `speech` segments if they overlap
+
 Caption rules:
 
 - no word-by-word karaoke
@@ -983,7 +1056,8 @@ Shape:
     role: string;
     startSeconds: number;
     endSeconds: number;
-    imagePath: string;
+    imagePath?: string;
+    reusePreviousVisual?: boolean;
     motionPreset: string;
   }>;
   subtitleSegments: Array<{
@@ -995,6 +1069,10 @@ Shape:
   }>;
 }
 ```
+
+Non-disclosure beats require `imagePath`. A disclosure beat may omit `imagePath` only when
+`reusePreviousVisual = true`; the renderer should hold the previous beat image behind the
+disclosure overlay.
 
 Remotion should render:
 
@@ -1040,12 +1118,13 @@ Initial API routes:
 - `GET /episodes/:episodeId`
 - `DELETE /episodes/:episodeId`
 - `GET /episodes/:episodeId/jobs`
+- `GET /episodes/:episodeId/jobs/:jobId`
 - `POST /episodes/:episodeId/jobs/generate-candidates`
 - `POST /episodes/:episodeId/candidates/:candidateId/select`
 - `POST /episodes/:episodeId/jobs/generate-plan`
 - `POST /episodes/:episodeId/jobs/generate-anchor-image`
 - `POST /episodes/:episodeId/jobs/regenerate-anchor-image`
-- `POST /episodes/:episodeId/anchor/approve`
+- `POST /episodes/:episodeId/anchor/images/:assetId/approve`
 - `POST /episodes/:episodeId/jobs/generate-beat-images`
 - `POST /episodes/:episodeId/beats/:beatId/jobs/regenerate-image`
 - `POST /episodes/:episodeId/beats/:beatId/images/:assetId/approve`
@@ -1077,6 +1156,11 @@ Examples:
 
 Retry should be explicit for creative failures. Provider/network failures can use the existing
 capped retry pattern.
+
+Recoverable job failures should not discard approved work. For example, if narration generation
+fails while the episode is at `beats_ready`, the failed job is visible in the UI and the episode
+stays at `beats_ready` so the user can retry narration without regenerating candidates, plans,
+anchors, or beat images.
 
 ## Migration Strategy
 
