@@ -19,7 +19,7 @@ is required.
 
 - Replace Tiny Mechanisms with a clean fictional archive mystery workflow.
 - Make the data model episode-first rather than scene-first.
-- Use `gpt-image-2` as the primary image model.
+- Use pinned `gpt-image-2-2026-04-21` as the primary image model.
 - Preserve image continuity with an anchor image, reference assets, and a continuity bible.
 - Use ElevenLabs for narration and timestamp data.
 - Replace word-by-word karaoke with an archive documentary caption system.
@@ -52,6 +52,7 @@ The clean workflow is based on current provider and platform constraints:
   limitations around recurring visual consistency and precise composition control. The workflow
   should therefore use reference/edit chains and stored continuity data rather than relying only
   on repeated text prompts.
+  The implementation should pin `gpt-image-2-2026-04-21` for reproducible behavior.
   - https://developers.openai.com/api/docs/models/gpt-image-2
   - https://developers.openai.com/api/docs/guides/image-generation
 - ElevenLabs `convertWithTimestamps` returns audio plus character-level timing data. The API also
@@ -118,6 +119,25 @@ This is preferred over patching the current system because continuity, narration
 style, and job boundaries all change at the same time. A partial rename would keep the system
 hard to reason about.
 
+## Provider And Cost Guardrails
+
+Image generation uses the pinned model ID `gpt-image-2-2026-04-21`.
+
+For `gpt-image-2`, do not pass `input_fidelity`. OpenAI documents that this parameter is not
+configurable for the model because every image input is processed at high fidelity automatically.
+This is useful for anchor-to-beat continuity, but edit requests with reference images can consume
+more input image tokens than text-only generation or lower-fidelity reference workflows.
+Do not budget these edit calls like older low-fidelity image workflows; the reference images are a
+real cost input.
+
+Regeneration must therefore be capped:
+
+- `MAX_ANCHOR_IMAGE_REGENERATIONS_PER_EPISODE = 2`
+- `MAX_BEAT_IMAGE_REGENERATIONS_PER_BEAT = 2`
+
+When a cap is reached, the UI should ask the user to revise the plan, regenerate the anchor, or
+start a new episode. The worker should not continue spending provider calls automatically.
+
 ## Data Model
 
 ### episodes
@@ -152,6 +172,25 @@ Status values:
 - `done`
 - `failed`
 
+Allowed status transitions:
+
+```text
+draft -> candidates_ready
+candidates_ready -> plan_ready
+plan_ready -> anchor_ready
+anchor_ready -> beats_ready
+beats_ready -> narration_ready
+narration_ready -> captions_ready
+captions_ready -> render_input_ready
+render_input_ready -> rendering
+rendering -> done
+any non-terminal status -> failed
+failed -> draft only through explicit user reset
+```
+
+The status should represent the latest completed gate, not every active job. Active work is derived
+from `jobs`.
+
 `disclosure_mode` values:
 
 - `metadata_only`
@@ -183,6 +222,16 @@ Required fields:
 `concept_payload` stores structured candidate details such as location, anomaly, opening visual,
 evidence object, narration angle, and anti-failure notes.
 
+Thresholds:
+
+- `hook_strength_score` must be at least `7`
+- `visual_feasibility_score` must be at least `7`
+- `fiction_clarity_score` must be at least `6`
+
+Candidates below any threshold remain visible but cannot be selected unless the user explicitly
+chooses an override action. If all candidates are below threshold, the job fails with
+`all_candidates_below_threshold`.
+
 ### episode_plans
 
 The approved production blueprint for an episode.
@@ -207,6 +256,62 @@ geometry, materials, lighting, camera behavior, evidence object, color palette, 
 and recurring anchor details.
 
 `beat_plan` stores ordered beat descriptions. It should not store provider outputs.
+
+Required `continuity_bible` shape:
+
+```ts
+{
+  locationType: string;
+  locationGeometry: string;
+  materials: string[];
+  lighting: string;
+  cameraStyle: string;
+  colorPalette: string[];
+  evidenceObject: string;
+  recurringDetails: string[];
+  visualExclusions: string[];
+  anomalyRules: string[];
+}
+```
+
+Required `beat_plan` item shape:
+
+```ts
+{
+  position: number;
+  role: "hook" | "setup" | "evidence" | "escalation" | "reveal" | "disclosure";
+  plannedDurationSeconds: number;
+  narration: string;
+  captionIntent: string;
+  visualPrompt: string;
+  motionPreset: "locked_photo" | "slow_push" | "handheld_drift" | "flash_jitter";
+}
+```
+
+Required `voice_plan` shape:
+
+```ts
+{
+  voiceTone: "calm_archive" | "dry_investigator" | "low_documentary";
+  pacing: "slow" | "measured" | "urgent";
+  targetWords: { min: number; max: number };
+  forbiddenDelivery: string[];
+}
+```
+
+Required `subtitle_plan` shape:
+
+```ts
+{
+  style: "archive_caption";
+  maxWordsPerSpeechSegment: number;
+  evidenceLabels: Array<{ beatPosition: number; text: string }>;
+  soundLabels: Array<{ beatPosition: number; text: string }>;
+  disclosureText: string;
+}
+```
+
+Default `disclosureText` must be `Fictional archive reconstruction.`
 
 ### episode_beats
 
@@ -290,6 +395,15 @@ Provider values:
 `parent_anchor_asset_id` links beat images back to the approved anchor image. `reference_asset_ids`
 stores the actual image references used by the generation or edit request.
 
+Nullable rules:
+
+- `beat_id` is required for role `beat`
+- `beat_id` is optional for role `caption_timing` only if the caption asset covers the full episode
+- `beat_id` must be null for roles `anchor`, `narration`, `render_input`, and `video`
+- `parent_anchor_asset_id` is required for role `beat`
+- `parent_anchor_asset_id` must be null for role `anchor`
+- `reference_asset_ids` is required for role `beat` and should include at least the anchor asset ID
+
 ### generation_attempts
 
 Prompt, request, response, and failure history.
@@ -329,6 +443,13 @@ Action values:
 Use this table instead of `visual_qc_reviews`. Manual rejection reasons can be stored as failed or
 superseded attempts with clear notes.
 
+Nullable rules:
+
+- `asset_id` is null before an asset row exists, such as candidate and episode plan attempts
+- `asset_id` is required after a generation attempt creates or edits an asset
+- `input_asset_ids` is required for image edit attempts and render input compilation
+- `input_asset_ids` must include the anchor image for every `beat_image` edit attempt
+
 ### jobs
 
 The existing worker concept remains, but the job table should become episode-level infrastructure.
@@ -365,6 +486,16 @@ Job type values:
 Regeneration uses the same job types with explicit `input.mode = "regenerate"` and target IDs in
 the job input. The first version can enforce only one active job per episode because the app is
 single-user and local-running.
+
+The one-active-job rule is enforced with a partial unique index:
+
+```sql
+unique (episode_id)
+where status in ('pending', 'processing')
+```
+
+This keeps manual actions predictable and prevents simultaneous provider calls from racing the
+episode state machine.
 
 ### renders
 
@@ -514,6 +645,19 @@ Output:
 
 This step is a deterministic compiler, not a creative generation call. It may use plan hints for
 evidence overlays, but speech timing must come from provider alignment.
+
+Timing reconciliation:
+
+1. Start from planned beat durations in `beat_plan`.
+2. Generate the final episode-level narration.
+3. Derive phrase timings from ElevenLabs alignment.
+4. Recompute beat start/end boundaries from the narration phrases assigned to each beat.
+5. If total audio duration is within 2 seconds of target duration, stretch or shrink visual beat
+   image durations to match the actual narration.
+6. If total audio duration exceeds the target by more than 2 seconds, fail with
+   `narration_exceeds_duration` and require script revision before render input generation.
+
+The render input always follows actual narration duration, not the original planned duration.
 
 ### 10. Build Render Input
 
@@ -667,12 +811,19 @@ Every generated beat image should store:
 If a beat fails visually, regenerate only that beat with the same anchor and stricter beat prompt.
 If multiple beats fail because the world is wrong, regenerate the anchor.
 
+Beat regeneration is capped by the provider guardrail. The UI should display remaining
+regenerations per beat.
+
 ## Anomaly Classes
 
 The first implementation should support a small set of anomaly classes instead of unlimited random
 places.
 
-Suggested starting set:
+The anomaly class registry lives in `packages/shared` as constants and Zod schemas. Database enums,
+API schemas, and prompt templates must derive from that shared registry rather than duplicating
+string literals.
+
+Starting set:
 
 - `missing_room`
 - `dead_end_track`
@@ -728,6 +879,30 @@ The narration job must store:
 
 Caption timing should prefer normalized alignment when text normalization is applied.
 
+## Asset Directory Layout
+
+All generated files live under `LOCAL_ASSET_ROOT` with portable relative paths.
+
+Episode layout:
+
+```text
+episodes/{episodeId}/
+  images/
+    anchor/{assetId}.png
+    beats/{beatId}/{assetId}.png
+  audio/
+    narration/{assetId}.mp3
+  captions/
+    {assetId}.json
+  render-input/
+    {assetId}.json
+  renders/
+    {assetId}.mp4
+```
+
+The database stores only these relative paths. The frontend never receives raw filesystem paths;
+it requests asset previews through API endpoints.
+
 ## Archive Caption System
 
 Replace `KaraokeCaption` with an archive documentary caption system.
@@ -767,6 +942,22 @@ Caption rules:
 - disclosure segment must be readable but should not destroy the opening hook
 
 The renderer should fall back to static phrase captions if caption JSON is missing or invalid.
+
+Disclosure overlay text:
+
+```text
+Fictional archive reconstruction.
+```
+
+For `closing_overlay`, show this as a final lower-third disclosure for at least 2 seconds. For
+`opening_and_closing`, show a shorter opening label:
+
+```text
+Fictional reconstruction.
+```
+
+The opening label must not appear on the first hook frame unless the user explicitly chooses
+`opening_overlay` or `opening_and_closing`.
 
 ## Render Input V2
 
@@ -838,6 +1029,34 @@ Manual gates:
 
 The UI should show image and audio previews through API-served asset URLs, not local filesystem
 paths.
+
+## API Surface
+
+Initial API routes:
+
+- `GET /health`
+- `GET /episodes`
+- `POST /episodes`
+- `GET /episodes/:episodeId`
+- `DELETE /episodes/:episodeId`
+- `GET /episodes/:episodeId/jobs`
+- `POST /episodes/:episodeId/jobs/generate-candidates`
+- `POST /episodes/:episodeId/candidates/:candidateId/select`
+- `POST /episodes/:episodeId/jobs/generate-plan`
+- `POST /episodes/:episodeId/jobs/generate-anchor-image`
+- `POST /episodes/:episodeId/jobs/regenerate-anchor-image`
+- `POST /episodes/:episodeId/anchor/approve`
+- `POST /episodes/:episodeId/jobs/generate-beat-images`
+- `POST /episodes/:episodeId/beats/:beatId/jobs/regenerate-image`
+- `POST /episodes/:episodeId/beats/:beatId/images/:assetId/approve`
+- `POST /episodes/:episodeId/jobs/generate-narration`
+- `POST /episodes/:episodeId/jobs/build-captions`
+- `POST /episodes/:episodeId/jobs/build-render-input`
+- `POST /episodes/:episodeId/jobs/render-video`
+- `GET /assets/:assetId/file`
+
+Mutating endpoints must reject requests with `409 Conflict` when the episode already has an active
+pending or processing job.
 
 ## Error Handling
 
