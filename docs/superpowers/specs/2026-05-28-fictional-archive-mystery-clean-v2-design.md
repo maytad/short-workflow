@@ -166,6 +166,19 @@ Selection fields are nullable until the relevant user approval or generation gat
 `episodes.format` is the only persisted format source of truth. Plans and render inputs copy from
 the episode; they do not own a separate format decision.
 
+`episodes.format` shape:
+
+```ts
+{
+  width: 1080;
+  height: 1920;
+  fps: 30;
+}
+```
+
+Duration is intentionally not part of `episodes.format`. `target_duration_seconds` stores the
+creative target duration, while render input duration is derived from the final narration.
+
 Status values:
 
 - `draft`
@@ -199,11 +212,24 @@ failed -> draft only through explicit user reset
 Regeneration transitions are also allowed:
 
 ```text
+candidates_ready -> candidates_ready
+plan_ready -> plan_ready
 anchor_ready -> anchor_ready
+plan_ready -> candidates_ready
+anchor_ready -> plan_ready
+anchor_ready -> candidates_ready
+beats_ready -> plan_ready
+beats_ready -> candidates_ready
 beats_ready -> anchor_ready
 beats_ready -> beats_ready
+narration_ready -> plan_ready
+narration_ready -> candidates_ready
 narration_ready -> narration_ready
+captions_ready -> plan_ready
+captions_ready -> candidates_ready
 captions_ready -> captions_ready
+render_input_ready -> plan_ready
+render_input_ready -> candidates_ready
 render_input_ready -> captions_ready
 ```
 
@@ -211,12 +237,21 @@ Regenerating an anchor after beat images exist moves the episode back to `anchor
 `selected_image_asset_id` on all beats, and makes existing beat image assets stale through lineage.
 Regenerating one beat keeps the episode at `beats_ready` and only clears that beat's selected image
 until a new image is approved.
+Regenerating candidates keeps the episode at `candidates_ready` and clears `selected_candidate_id`,
+`selected_plan_id`, `selected_anchor_asset_id`, `selected_narration_asset_id`,
+`selected_caption_timing_asset_id`, `selected_render_input_asset_id`, and all beat selections.
+Regenerating a plan keeps the episode at `plan_ready` and clears all downstream selected assets and
+beat image selections because the continuity bible may have changed. Regenerating candidates from
+later gates moves the episode back to `candidates_ready`; regenerating a plan from later gates moves
+the episode back to `plan_ready`.
 Regenerating narration keeps the episode at `narration_ready` if it succeeds and leaves the previous
 selected narration in place if it fails. Regenerating captions keeps the episode at `captions_ready`
 if it succeeds and leaves the previous selected caption timing asset in place if it fails.
 Changing any selected anchor or beat image after `render_input_ready` clears
 `selected_render_input_asset_id` and moves the episode back to `captions_ready` when narration and
 captions are still valid.
+These regeneration transitions exclude `done`; after an episode is done, the user should duplicate
+the episode or explicitly reset it before changing upstream content.
 
 The status should represent the latest valid completed gate, not every active job. Active work is
 derived from `jobs`. A recoverable failed job does not automatically set `episodes.status` to
@@ -568,6 +603,8 @@ Required fields:
 The MP4 path lives in the output video asset. The render input JSON path lives in the render input
 asset.
 
+On successful render, `renders.duration_seconds` copies `renderInput.format.durationSeconds`.
+
 ## Job Flow
 
 ### 1. Generate Episode Candidates
@@ -588,6 +625,11 @@ Failure examples:
 - provider error
 - invalid structured output
 - all candidates below hook or feasibility threshold
+
+Calling the same endpoint while the episode is already at `candidates_ready` or a later non-terminal
+status is treated as candidate regeneration. It creates a new candidate set, clears the selected
+candidate and every downstream selected plan/asset field, and moves the episode to
+`candidates_ready`.
 
 ### 2. Select Candidate
 
@@ -616,6 +658,11 @@ The plan must include:
 - voice plan
 - subtitle plan
 - anti-failure rules
+
+Calling the same endpoint while the episode is already at `plan_ready` or a later non-terminal
+status is treated as plan regeneration. It creates a new plan and new beat rows, keeps prior
+plans/beats/assets as inactive history, clears every downstream selected asset field, and moves the
+episode to `plan_ready`.
 
 ### 4. Generate Anchor Image
 
@@ -1031,6 +1078,8 @@ Fictional reconstruction.
 
 The opening label must not appear on the first hook frame unless the user explicitly chooses
 `opening_overlay` or `opening_and_closing`.
+Opening labels render as caption segments only, not as standalone beats. Only closing disclosure
+may consume a dedicated `disclosure` beat slot.
 
 ## Render Input V2
 
@@ -1136,6 +1185,10 @@ Initial API routes:
 
 Mutating endpoints must reject requests with `409 Conflict` when the episode already has an active
 pending or processing job.
+
+There are no separate candidate or plan regeneration endpoints. Reusing
+`generate-candidates` or `generate-plan` on a later non-terminal episode status triggers the
+regeneration behavior described in the job flow.
 
 ## Error Handling
 
