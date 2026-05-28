@@ -8,12 +8,13 @@ import type {
   Scene,
 } from "@short-workflow/shared";
 
-import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
+import { ApiError } from "../../api/client";
 import {
   assetQueueFeedbackMessage,
   getLatestSceneAsset,
   isAssetCurrentForScene,
 } from "./AssetPanel";
+import { assetPreviewUrl, assetRevealUrl, youtubeStudioUrl } from "./assetUrls";
 import { applyOptimisticSceneUpdate, hasActiveProjectFlowJob, mergeActiveJobCache } from "./hooks";
 import { isGenerateScriptStartable, isProjectFlowStartable } from "./ProjectWorkflow";
 import {
@@ -21,6 +22,11 @@ import {
   formatYoutubePublishTime,
   getRenderPreconditionMessages,
 } from "./RenderPanel";
+import {
+  isYoutubeUploadAuthReady,
+  isYoutubeUploadReconnectRequired,
+  youtubeUploadErrorMessage,
+} from "./youtubeUploadState";
 
 function scene(overrides: Partial<Scene> = {}): Scene {
   return {
@@ -173,6 +179,30 @@ describe("workflow asset helpers", () => {
     expect(assetQueueFeedbackMessage(bulkAssetQueueResponse({ skippedCurrentCount: 4 }))).toBe(
       "All assets are current.",
     );
+  });
+});
+
+describe("YouTube upload auth state", () => {
+  test("requires both connection and required scopes before queueing upload", () => {
+    const reconnectingStatus = {
+      connected: true,
+      hasRequiredScopes: false,
+      reconnectRequired: true,
+    };
+
+    expect(isYoutubeUploadAuthReady(reconnectingStatus)).toBe(false);
+    expect(isYoutubeUploadReconnectRequired(reconnectingStatus)).toBe(true);
+  });
+
+  test("shows actionable upload API errors", () => {
+    expect(
+      youtubeUploadErrorMessage(
+        new ApiError("Conflict", 409, { error: "youtube_reconnect_required" }),
+      ),
+    ).toBe("Reconnect YouTube to grant upload and analytics access, then try again.");
+    expect(
+      youtubeUploadErrorMessage(new ApiError("Conflict", 409, { error: "youtube_schedule_full" })),
+    ).toBe("No public schedule slots are available in the configured window.");
   });
 });
 

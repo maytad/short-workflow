@@ -99,6 +99,7 @@ export type CandidateJudgeInput = {
     EpisodeCandidate,
     EpisodeCandidate,
   ];
+  recentLocalTopics?: readonly string[];
 };
 
 export type CompiledCandidateJudgePrompt = CompiledPrompt & {
@@ -230,7 +231,7 @@ export const candidateJudgePrompt: PromptTemplate<
   CompiledCandidateJudgePrompt
 > = {
   id: "tiny_mechanisms_candidate_judge",
-  version: 3,
+  version: 4,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -249,9 +250,11 @@ export const candidateJudgePrompt: PromptTemplate<
         channelPresetId: input.channelPresetId,
         targetDurationSeconds: input.targetDurationSeconds,
         candidateCount: input.candidates.length,
+        recentLocalTopicCount: input.recentLocalTopics?.length ?? 0,
       },
       metadata: {
         candidateIds: input.candidates.map((candidate) => candidate.candidateId),
+        recentLocalTopics: input.recentLocalTopics ?? [],
       },
       messages: [
         {
@@ -264,12 +267,12 @@ export const candidateJudgePrompt: PromptTemplate<
             TINY_MECHANISMS_CHANNEL_BIBLE,
             "",
             "# Inputs",
-            "Use only the supplied candidates, channel preset, target duration, and channel bible.",
-            "Do not use recent analytics, memory, retrieval, external research, or unstated prior performance.",
+            "Use only the supplied candidates, channel preset, target duration, channel bible, and recent local topic list.",
+            "Do not use recent analytics, performance metrics, memory, retrieval, external research, or unstated prior performance.",
             "",
             "# Shorts Recovery Policy",
             ...SHORTS_RECOVERY_JUDGE_RULES,
-            "For this recovery batch, penalize perception, biology, voice, onions, abstract physics gimmicks, calm product shots, clean diagrams, and repeated cabinet or push-latch variants.",
+            "For this recovery batch, penalize nearest-adjacent repetition, not just exact repeated words. A new object can still be stale if the hook shape and visual proof mode are the same.",
             "",
             "# Task",
             "Score all 5 candidates independently.",
@@ -278,9 +281,11 @@ export const candidateJudgePrompt: PromptTemplate<
             "A selected candidate must have coreAverage >= 4 and genericRisk <= 2.",
             "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
             "Do not choose by familiar mechanism strength alone. Reward the candidate that opens the widest fresh creative territory while staying visually clear.",
-            "Treat familiar mechanisms as high generic risk only when the first frame is calm, diagrammatic, repeated, or visually indistinct from recent videos.",
-            "Penalize candidates that lack a visible moving or tension state unless the visual proof is unusually immediate and concrete.",
-            "Prefer candidates whose object, hidden cause, first-frame behavior, and reveal path differ from the other candidates in the batch.",
+            "Treat familiar mechanisms as high generic risk when the first frame is calm, diagrammatic, repeated, visually indistinct from recent videos, or adjacent to a recent local topic.",
+            "Treat caps, tamper rings, squeeze valves, soap pumps, spray pumps, tub diverters, and other cap/valve/liquid-path ideas as adjacent when a recent local topic already used that cluster.",
+            "Do not over-reward visible pressure, flow, tension, or valve behavior just because it is easy to stage.",
+            "Prefer candidates whose object, hidden cause, creativeTerritory, visualProofMode, first-frame behavior, and reveal path differ from both the other candidates in the batch and the recent local topic list.",
+            "If two candidates score similarly, choose the one with lower nearDuplicateRisk and the less-used visual proof mode.",
             "If one candidate clears the threshold, choose the strongest fresh candidate for the feed test.",
             "If no candidate clears the threshold, return rejected with failureReason and thresholdSummary.",
             "If selected, refine the winner into a production brief without inventing a new topic.",
@@ -298,6 +303,7 @@ export const candidateJudgePrompt: PromptTemplate<
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
             `<candidates_json>${JSON.stringify(input.candidates)}</candidates_json>`,
+            `<recent_local_topics_json>${JSON.stringify(input.recentLocalTopics ?? [])}</recent_local_topics_json>`,
           ].join("\n"),
         },
       ],

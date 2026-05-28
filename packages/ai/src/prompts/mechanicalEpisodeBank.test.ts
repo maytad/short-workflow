@@ -64,19 +64,22 @@ describe("mechanical episode bank", () => {
     const developerMessage = compiled.messages[0]?.content ?? "";
     const userMessage = compiled.messages[1]?.content ?? "";
 
-    expect(compiled.templateVersion).toBe(14);
+    expect(compiled.templateVersion).toBe(20);
     expect(developerMessage).toContain("one tiny physical mechanism revealed");
     expect(developerMessage).toContain("Topic gate");
-    expect(developerMessage).toContain("visible moving part");
+    expect(developerMessage).toContain("immediate visible consequence");
     expect(developerMessage).toContain("common wrong assumption");
     expect(developerMessage).toContain(
-      "Reject topics or angles that cannot show an object moving, locking, sliding, catching, bending, releasing, changing state, or visibly resisting force on screen.",
+      "Reject topics or angles that cannot show a visible proof on screen",
     );
     expect(developerMessage).toContain("novelty axes");
     expect(developerMessage).toContain(
-      "mechanism family, visible action, viewer misconception, and visual strategy",
+      "creative territory, visual proof mode, viewer misconception, and visual strategy",
     );
     expect(developerMessage).toContain("visible contradiction");
+    expect(developerMessage).toContain("large visible consequence");
+    expect(developerMessage).toContain("preserve the mechanism mystery");
+    expect(developerMessage).toContain("generated-image hook headline");
     expect(developerMessage).toContain("The first second must show the contradiction on screen");
     expect(developerMessage).toContain("It should [expected action], but it [surprising action]");
     expect(developerMessage).toContain("familiar object plus surprising behavior");
@@ -94,7 +97,7 @@ describe("mechanical episode bank", () => {
     expect(developerMessage).toContain("Avoid semicolons, periods, colons");
     expect(developerMessage).toContain("without electronics");
     expect(developerMessage).toContain('Do not use a generic "inside this object" opening');
-    expect(developerMessage).toContain("first image prompt must show action, tension, resistance");
+    expect(developerMessage).toContain("first image prompt must show a visible consequence");
     expect(userMessage).toContain(
       "<object_or_mechanism>click pen cam and spring</object_or_mechanism>",
     );
@@ -164,25 +167,36 @@ describe("mechanical episode bank", () => {
       },
     });
 
-    expect(compiled.templateVersion).toBe(8);
+    expect(compiled.templateVersion).toBe(13);
     expect(compiled.prompt).toContain("Stayed to watch");
     expect(compiled.prompt).toContain("first-frame feed test");
     expect(compiled.prompt).toContain("No clean product shot");
     expect(compiled.prompt).toContain("No clean diagram or cutaway as the opening frame");
+    expect(compiled.prompt).toContain("Show one large visible consequence");
+    expect(compiled.prompt).toContain("If the mechanism is black, dark, or tiny");
     expect(compiled.prompt).toContain("MECHANICAL MATERIALITY");
-    expect(compiled.prompt).toContain("VISIBLE TENSION AND HIDDEN CAUSE");
+    expect(compiled.prompt).toContain("VISIBLE PROOF AND HIDDEN CAUSE");
     expect(compiled.prompt).toContain(
-      "stretched, locked, snapped, squeezed, caught, pulled, sliding, or releasing",
+      "action, contrast, surface behavior, sound-source clue, reflection shift",
     );
     expect(compiled.prompt).toContain(
-      "Show both the visible result and the hidden cause in the same frame when possible",
+      "For point and payoff scenes, show both the visible result and the hidden cause",
     );
-    expect(compiled.prompt).toContain("Use non-text visual cues only");
+    expect(compiled.prompt).toContain("Use visual cues that survive silent autoplay");
+    expect(compiled.prompt).toContain("VISUAL HOOK HEADLINE");
+    expect(compiled.prompt).toContain(
+      'Render this exact readable headline inside the generated image: "ONE CLICK REMEMBERS"',
+    );
     expect(compiled.prompt).toContain("VISUAL STRATEGY");
     expect(compiled.prompt).toContain(
-      "Do not let every scene become a transparent cutaway or the same macro tabletop shot",
+      "Do not let every scene become a transparent cutaway, same macro tabletop shot, or same exploded stack",
     );
     expect(compiled.prompt).toContain("Prefer the natural everyday setting implied by the scene");
+    expect(compiled.prompt).toContain("blueprint exploded reveals");
+    expect(compiled.prompt).toContain("technical product blueprint posters");
+    expect(compiled.prompt).toContain(
+      "keep parts close together, keep the active force path visible",
+    );
     expect(compiled.prompt).toContain(
       "Do not default to a workshop, repair bench, dark tabletop, tool catalog shot, or teardown layout",
     );

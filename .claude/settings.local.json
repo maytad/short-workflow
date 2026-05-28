@@ -9,7 +9,8 @@
       "Bash(bun run *)",
       "Bash(bun test *)",
       "Bash(bun pm *)",
-      "Bash(bun install *)"
+      "Bash(bun install *)",
+      "WebFetch(domain:developers.openai.com)"
     ]
   }
 }

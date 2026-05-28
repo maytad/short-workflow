@@ -42,6 +42,27 @@ const jsonRecordSchema = z.record(z.string(), z.unknown());
 const nullableUuidSchema = uuidSchema.nullable();
 const nullableStringSchema = z.string().nullable();
 
+export const projectGenerationFailureSchema = z
+  .object({
+    jobId: uuidSchema,
+    jobType: z.enum(["generate_script", "run_project_flow"]),
+    errorMessage: nullableStringSchema,
+    stage: nullableStringSchema,
+    reason: nullableStringSchema,
+    failedRole: nullableStringSchema,
+    createdAt: isoDateSchema,
+    finishedAt: nullableIsoDateSchema,
+  })
+  .strict();
+
+export const projectYoutubeUploadSchema = z
+  .object({
+    jobId: uuidSchema,
+    youtubeVideoId: z.string().min(1),
+    uploadedAt: nullableIsoDateSchema,
+  })
+  .strict();
+
 export const projectSchema = z
   .object({
     id: uuidSchema,
@@ -53,6 +74,8 @@ export const projectSchema = z
     format: z.literal("vertical_9_16"),
     hasSuccessfulRender: z.boolean().optional(),
     latestRenderStale: z.boolean().optional(),
+    latestFailure: projectGenerationFailureSchema.nullable().optional(),
+    youtubeUpload: projectYoutubeUploadSchema.nullable().optional(),
     createdAt: isoDateSchema,
     updatedAt: isoDateSchema,
   })
@@ -330,6 +353,8 @@ export const renderSchema = z
   .strict();
 
 export type Project = z.infer<typeof projectSchema>;
+export type ProjectGenerationFailure = z.infer<typeof projectGenerationFailureSchema>;
+export type ProjectYoutubeUpload = z.infer<typeof projectYoutubeUploadSchema>;
 export type Scene = z.infer<typeof sceneSchema>;
 export type Asset = z.infer<typeof assetSchema>;
 export type Job = z.infer<typeof jobSchema>;
@@ -351,6 +376,4 @@ export type YoutubeDiagnosisPriority = z.infer<typeof youtubeDiagnosisPrioritySc
 export type YoutubeVideoLink = z.infer<typeof youtubeVideoLinkSchema>;
 export type YoutubeAnalyticsSnapshot = z.infer<typeof youtubeAnalyticsSnapshotSchema>;
 export type YoutubeVideoDiagnosis = z.infer<typeof youtubeVideoDiagnosisSchema>;
-export type YoutubeAnalyticsCreativeContext = z.infer<
-  typeof youtubeAnalyticsCreativeContextSchema
->;
+export type YoutubeAnalyticsCreativeContext = z.infer<typeof youtubeAnalyticsCreativeContextSchema>;

@@ -1,8 +1,8 @@
 import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 
 import type { DbClient } from "../client";
-import { jobs } from "../schema";
 import type { JobRow } from "../schema";
+import { jobs } from "../schema";
 
 export type { JobRow };
 
@@ -207,6 +207,18 @@ export async function retryFailedJob(db: DbClient, jobId: string) {
   return retryJob;
 }
 
+export async function touchProcessingJob(db: DbClient, jobId: string) {
+  const [job] = await db
+    .update(jobs)
+    .set({
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, "processing")))
+    .returning();
+
+  return job ?? null;
+}
+
 export async function recoverStaleJobs(db: DbClient, olderThanMinutes = 10) {
   const threshold = new Date(Date.now() - olderThanMinutes * 60 * 1000);
 
@@ -217,7 +229,7 @@ export async function recoverStaleJobs(db: DbClient, olderThanMinutes = 10) {
       startedAt: null,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(jobs.status, "processing"), lt(jobs.startedAt, threshold)))
+    .where(and(eq(jobs.status, "processing"), lt(jobs.updatedAt, threshold)))
     .returning();
 }
 

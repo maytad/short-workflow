@@ -1,4 +1,27 @@
 import {
+  acknowledgeRenderDisclosure,
+  attachYoutubeScheduleJob,
+  createJobIdempotent,
+  createProject,
+  type DbClient,
+  getAsset,
+  getJob,
+  getProject,
+  getScene,
+  getYoutubeScheduleForJob,
+  type JobRow,
+  listProjectAssets,
+  listProjectRenders,
+  listProjectScenes,
+  listProjectsWithLatestGenerationFailure,
+  parseDailyPublishTimes,
+  reserveNextYoutubeScheduleSlot,
+  retryFailedJob,
+  updateProject,
+  updateScene,
+  withAdvisoryTransactionLock,
+} from "@short-workflow/db";
+import {
   createProjectRequestSchema,
   createTinyMechanismsProjectRequestSchema,
   TINY_MECHANISMS_PENDING_TITLE,
@@ -7,33 +30,11 @@ import {
   updateSceneRequestSchema,
   youtubeUploadRequestSchema,
 } from "@short-workflow/shared";
-import {
-  acknowledgeRenderDisclosure,
-  attachYoutubeScheduleJob,
-  createJobIdempotent,
-  createProject,
-  getAsset,
-  getProject,
-  getYoutubeScheduleForJob,
-  getScene,
-  getJob,
-  listProjectAssets,
-  listProjectRenders,
-  listProjectScenes,
-  listProjects,
-  parseDailyPublishTimes,
-  reserveNextYoutubeScheduleSlot,
-  retryFailedJob,
-  updateProject,
-  updateScene,
-  type DbClient,
-  type JobRow,
-  withAdvisoryTransactionLock,
-} from "@short-workflow/db";
 import { Elysia } from "elysia";
 
 import { parseYoutubeScheduleEnv } from "../env";
 import { conflict, internalError, jsonError, notFound, validationFailed } from "../http";
+import { listProjectJobs } from "../services/jobs";
 import {
   assertProjectCanDelete,
   buildRenderPreconditionReport,
@@ -41,12 +42,11 @@ import {
   deleteProjectLocalFiles,
   deleteProjectRows,
   getProjectDetail,
-  queueProjectFullFlow,
   queueMissingProjectAssets,
+  queueProjectFullFlow,
   readAssetFile,
   revealAssetFile,
 } from "../services/projects";
-import { listProjectJobs } from "../services/jobs";
 import { createYoutubeAuthServices } from "../services/youtubeAuth";
 
 type StatusSetter = {
@@ -82,7 +82,7 @@ function requireRouteParam(value: string | undefined, name: string) {
 }
 
 export type ProjectRouteServices = {
-  listProjects: typeof listProjects;
+  listProjects: typeof listProjectsWithLatestGenerationFailure;
   createProject: typeof createProject;
   getProjectDetail: typeof getProjectDetail;
   updateProject: typeof updateProject;
@@ -118,7 +118,7 @@ async function defaultYoutubeAuthStatus() {
 }
 
 const defaultServices: ProjectRouteServices = {
-  listProjects,
+  listProjects: listProjectsWithLatestGenerationFailure,
   createProject,
   getProjectDetail,
   updateProject,

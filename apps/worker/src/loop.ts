@@ -1,11 +1,12 @@
 import {
   claimNextJob,
   createDbClient,
+  type DbClient,
+  type JobRow,
   markJobFailedOrRetry,
   markJobTerminallyFailed,
   recoverStaleJobs,
-  type DbClient,
-  type JobRow,
+  touchProcessingJob,
 } from "@short-workflow/db";
 
 import { parseEnv } from "./env";
@@ -14,6 +15,8 @@ import { handleJob } from "./handlers";
 import { logWorkerError, logWorkerInfo, type WorkerLogFields } from "./logger";
 
 const emptyQueueSleepMs = 2_000;
+const jobHeartbeatIntervalMs = 30_000;
+const staleJobRecoveryIntervalMs = 30_000;
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,6 +43,42 @@ function jobLogFields(job: JobRow, workerIndex: number, extra?: WorkerLogFields)
   };
 }
 
+function startJobHeartbeat(db: DbClient, job: JobRow, workerIndex: number) {
+  const timer = setInterval(() => {
+    touchProcessingJob(db, job.id).catch((error: unknown) => {
+      logWorkerError(
+        "job_heartbeat_failed",
+        jobLogFields(job, workerIndex, {
+          errorMessage: errorMessage(error),
+        }),
+      );
+    });
+  }, jobHeartbeatIntervalMs);
+
+  return () => clearInterval(timer);
+}
+
+async function recoverStaleJobsOnce(db: DbClient) {
+  const recoveredJobs = await recoverStaleJobs(db);
+  if (recoveredJobs.length > 0) {
+    logWorkerInfo("stale_jobs_recovered", { count: recoveredJobs.length });
+  }
+}
+
+async function staleJobRecoveryLoop(db: DbClient) {
+  while (true) {
+    await sleep(staleJobRecoveryIntervalMs);
+
+    try {
+      await recoverStaleJobsOnce(db);
+    } catch (error) {
+      logWorkerError("stale_jobs_recovery_failed", {
+        errorMessage: errorMessage(error),
+      });
+    }
+  }
+}
+
 async function workerLoop(db: DbClient, workerIndex: number) {
   logWorkerInfo("worker_loop_started", { workerIndex });
 
@@ -52,10 +91,12 @@ async function workerLoop(db: DbClient, workerIndex: number) {
     }
 
     const startedAt = Date.now();
+    const stopHeartbeat = startJobHeartbeat(db, job, workerIndex);
     logWorkerInfo("job_claimed", jobLogFields(job, workerIndex));
 
     try {
       await handleJob(db, job);
+      stopHeartbeat();
       logWorkerInfo(
         "job_succeeded",
         jobLogFields(job, workerIndex, {
@@ -63,6 +104,7 @@ async function workerLoop(db: DbClient, workerIndex: number) {
         }),
       );
     } catch (error) {
+      stopHeartbeat();
       const message = errorMessage(error);
       const updatedJob = isTerminalWorkflowError(error)
         ? await markJobTerminallyFailed(db, job.id, {
@@ -91,12 +133,12 @@ export async function runWorker() {
   const { db } = createDbClient(env.DATABASE_URL);
   logWorkerInfo("worker_starting", { concurrency: env.WORKER_CONCURRENCY });
 
-  const recoveredJobs = await recoverStaleJobs(db);
-  if (recoveredJobs.length > 0) {
-    logWorkerInfo("stale_jobs_recovered", { count: recoveredJobs.length });
-  }
+  await recoverStaleJobsOnce(db);
 
-  await Promise.all(
-    Array.from({ length: env.WORKER_CONCURRENCY }, (_, workerIndex) => workerLoop(db, workerIndex)),
-  );
+  await Promise.all([
+    staleJobRecoveryLoop(db),
+    ...Array.from({ length: env.WORKER_CONCURRENCY }, (_, workerIndex) =>
+      workerLoop(db, workerIndex),
+    ),
+  ]);
 }

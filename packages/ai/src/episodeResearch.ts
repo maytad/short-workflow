@@ -96,11 +96,15 @@ export async function generateEpisodeResearch(
   const rolePromptPayloads = roleCandidateResults.map((result) => result.promptPayload);
   const roleResponseMetadata = roleCandidateResults.map((result) => result.responseMetadata);
   const candidateTuple = toCandidateJudgeTuple(candidates.map((candidate) => candidate.candidate));
-  const judgeResult = await judgeEpisodeCandidates(client, model, {
+  const judgeInput: CandidateJudgeInput = {
     channelPresetId: input.channelPresetId,
     targetDurationSeconds: input.targetDurationSeconds,
     candidates: candidateTuple,
-  });
+  };
+  if (input.recentLocalTopics) {
+    judgeInput.recentLocalTopics = input.recentLocalTopics;
+  }
+  const judgeResult = await judgeEpisodeCandidates(client, model, judgeInput);
   const { judge } = judgeResult;
 
   if (judge.status === "rejected") {

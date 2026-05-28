@@ -6,6 +6,7 @@ export const VISUAL_HOOK_ARCHETYPES = [
   "frozen_motion",
   "scale_shock",
   "reveal_cutaway",
+  "blueprint_exploded_reveal",
 ] as const;
 
 export type VisualHookArchetype = (typeof VISUAL_HOOK_ARCHETYPES)[number];
@@ -18,7 +19,7 @@ export function defaultVisualHookArchetype(role: SceneRole): VisualHookArchetype
     case "context":
       return "hands_on_demo";
     case "point":
-      return "reveal_cutaway";
+      return "blueprint_exploded_reveal";
     case "payoff":
       return "before_after_contrast";
     case "cta":
@@ -42,6 +43,8 @@ export function visualHookDirection(archetype: VisualHookArchetype) {
       return "make a tiny structure feel large and tangible while preserving the real-world mechanism";
     case "reveal_cutaway":
       return "show the hidden internal mechanism through a clean cutaway, transparent layer, or physically plausible cross-section";
+    case "blueprint_exploded_reveal":
+      return "compose a social-native mechanical blueprint reveal: familiar object hero plus 3-5 separated layers, one inset cross-section, leader lines or dimension ticks without readable text, and a clear force path";
   }
 }
 

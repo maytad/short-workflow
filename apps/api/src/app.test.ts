@@ -198,7 +198,7 @@ function request(path: string, init?: RequestInit) {
 
 function createServices(overrides: Partial<ProjectRouteServices> = {}): ProjectRouteServices {
   return {
-    listProjects: async () => [project],
+    listProjects: async () => [{ ...project, latestFailure: null, youtubeUpload: null }],
     createProject: async () => project,
     getProjectDetail: async () => ({
       project,

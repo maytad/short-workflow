@@ -10,7 +10,7 @@ function developerMessage(compiled: { messages: Array<{ role: string; content: s
 }
 
 describe("shorts recovery prompt policy", () => {
-  test("episode research treats recovery objects as examples without local DB context", () => {
+  test("episode research treats recovery objects as examples with lightweight topic diversity hints", () => {
     const compiled = episodeResearchPrompt.compile({
       channelPresetId: TINY_MECHANISMS_PRESET_ID,
       targetDurationSeconds: 30,
@@ -18,7 +18,7 @@ describe("shorts recovery prompt policy", () => {
     });
     const text = developerMessage(compiled);
 
-    expect(compiled.templateVersion).toBe(4);
+    expect(compiled.templateVersion).toBe(5);
     expect(text).toContain("Stayed to watch");
     expect(text).toContain("first 0.5 seconds");
     expect(text).toContain("Stayed to watch under 45%");
@@ -27,11 +27,13 @@ describe("shorts recovery prompt policy", () => {
     expect(text).toContain("Recovery example objects");
     expect(text).toContain("examples, not a ranked topic list");
     expect(text).toContain("presentation quality beats object category");
-    expect(text).toContain("pause perception, biology, voice, onions");
+    expect(text).toContain("Freshness means a different everyday situation");
+    expect(text).toContain("Recent Local Topic Hints");
+    expect(text).toContain("No recent local topics were supplied");
+    expect(text).toContain("not a menu to choose from");
+    expect(text).toContain("nearDuplicateRisk");
     expect(text).not.toContain("Prioritized recovery objects");
     expect(text).not.toContain("Prioritize latch, ratchet, zipper");
-    expect(text).not.toContain("Recent Local Topics");
-    expect(text).not.toContain("recent local topics");
     expect(text).not.toContain("Do not default to latches");
     expect(text).not.toContain("A moving part is helpful but not required");
   });
@@ -54,6 +56,9 @@ describe("shorts recovery prompt policy", () => {
       visualReveal: "Macro cutaway of zipper teeth meshing under force.",
       loopPayoff: "The pull makes the lock tighter.",
       whyThisCanBreakPattern: "It opens on visible tension rather than a clean diagram.",
+      creativeTerritory: "jacket zipper frustration while dressing",
+      visualProofMode: "fabric tension and interlocking tooth contact",
+      nearDuplicateRisk: "low" as const,
       scores: {
         firstFrameClarity: 5,
         swipeResistance: 5,
@@ -71,19 +76,20 @@ describe("shorts recovery prompt policy", () => {
     });
     const text = developerMessage(compiled);
 
-    expect(compiled.templateVersion).toBe(3);
+    expect(compiled.templateVersion).toBe(4);
     expect(text).toContain("Stayed to watch");
     expect(text).toContain("60%+");
     expect(text).toContain("Stayed to watch under 45%");
     expect(text).toContain("Stayed to watch from 45-55%");
     expect(text).toContain("Stayed to watch from 55-60%");
-    expect(text).toContain("visible moving or tension state");
+    expect(text).toContain("recent local topic list");
+    expect(text).toContain("nearest-adjacent repetition");
+    expect(text).toContain("cap/valve/liquid-path");
+    expect(text).toContain("nearDuplicateRisk");
     expect(text).toContain(
       "Do not reward a candidate merely because it uses a recovery example object",
     );
-    expect(text).toContain("penalize perception, biology, voice, onions");
-    expect(text).not.toContain("recent local topic");
-    expect(text).not.toContain("recent_local_topics_json");
+    expect(text).toContain("Do not over-reward visible pressure");
     expect(text).not.toContain("Do not penalize non-mechanical causes");
   });
 
@@ -95,16 +101,21 @@ describe("shorts recovery prompt policy", () => {
     });
     const text = developerMessage(compiled);
 
-    expect(compiled.templateVersion).toBe(15);
+    expect(compiled.templateVersion).toBe(20);
     expect(text).toContain("Stayed to watch");
     expect(text).toContain("first 1-3 seconds");
     expect(text).toContain("first caption must be no more than 4 words");
+    expect(text).toContain("generated-image hook headline");
+    expect(text).toContain("BACKWARD BUT FORWARD");
     expect(text).toContain("no clean product shot");
     expect(text).toContain("no diagram or cutaway as the opening image");
+    expect(text).toContain("large visible consequence");
+    expect(text).toContain("preserve the mechanism mystery");
+    expect(text).toContain("creative territory, visual proof mode");
+    expect(text).toContain("sound-source clue");
     expect(text).toContain("reveal the hidden mechanism within the first two seconds");
     expect(text).toContain("Stayed to watch under 45%");
     expect(text).not.toContain("The hidden cause does not need to be a moving mechanical part");
-    expect(text).not.toContain("optical, acoustic, thermal, electrical, geometric, chemical");
   });
 
   test("image prompt treats the hook frame as the feed test product", () => {
@@ -129,11 +140,29 @@ describe("shorts recovery prompt policy", () => {
       },
     });
 
-    expect(compiled.templateVersion).toBe(8);
+    expect(compiled.templateVersion).toBe(13);
     expect(compiled.prompt).toContain("Stayed to watch");
     expect(compiled.prompt).toContain("first-frame feed test");
     expect(compiled.prompt).toContain("No clean product shot");
     expect(compiled.prompt).toContain("No clean diagram or cutaway as the opening frame");
-    expect(compiled.prompt).toContain("caption context only");
+    expect(compiled.prompt).toContain("No clean diagram, blueprint sheet, exploded teardown");
+    expect(compiled.prompt).toContain("Do not reveal the spring, cam, pawl, aligned holes");
+    expect(compiled.prompt).toContain("Show one large visible consequence");
+    expect(compiled.prompt).toContain("VISIBLE PROOF AND HIDDEN CAUSE");
+    expect(compiled.prompt).toContain("Blueprint Exploded Reveal Grammar");
+    expect(compiled.prompt).toContain("technical product blueprint posters");
+    expect(compiled.prompt).toContain("Do not render readable words");
+    expect(compiled.prompt).toContain("VISUAL HOOK HEADLINE");
+    expect(compiled.prompt).toContain(
+      'Render this exact readable headline inside the generated image: "IT SHOULD SPLIT"',
+    );
+    expect(compiled.prompt).toContain("This is not a subtitle");
+    expect(compiled.prompt).toContain(
+      'The only embedded readable text allowed is the exact hook headline "IT SHOULD SPLIT".',
+    );
+    expect(compiled.prompt).toContain(
+      "No clean diagram, blueprint sheet, exploded teardown, or sliced-open teaching view",
+    );
+    expect(compiled.prompt).not.toContain("caption context only");
   });
 });

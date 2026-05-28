@@ -19,6 +19,7 @@ import {
   getProject,
   insertPromptVersion,
   type JobRow,
+  listRecentTinyMechanismsTopicHints,
   markJobSucceeded,
   type ProjectRow,
   replaceProjectScenes,
@@ -136,15 +137,26 @@ function buildLegacyScriptInput(project: ProjectRow): ScriptSetup | null {
   };
 }
 
-async function buildPendingAiScriptInput(project: ProjectRow): Promise<ScriptSetup> {
+function recentTopicPromptHint(topic: { title: string; topic: string }) {
+  return `${topic.title} | ${topic.topic}`.slice(0, 180);
+}
+
+async function buildPendingAiScriptInput(db: DbClient, project: ProjectRow): Promise<ScriptSetup> {
   if (project.topic !== TINY_MECHANISMS_PENDING_TOPIC) {
     throw new Error("unsupported_project_prompt_preset");
   }
 
   const targetDuration = targetDurationSeconds(project.targetDurationSeconds);
+  const recentLocalTopics = (
+    await listRecentTinyMechanismsTopicHints(db, {
+      excludeProjectId: project.id,
+      limit: 8,
+    })
+  ).map(recentTopicPromptHint);
   const research = await generateEpisodeResearch({
     channelPresetId: TINY_MECHANISMS_PRESET_ID,
     targetDurationSeconds: targetDuration,
+    recentLocalTopics,
   }).catch((error: unknown) => {
     if (error instanceof EpisodeCandidateRoleError) {
       const reasonDetails = workflowFailureDetail(error.cause);
@@ -208,7 +220,7 @@ export async function generateProjectScript(
   }
 
   const legacySetup = buildLegacyScriptInput(project);
-  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(project));
+  const scriptSetup = legacySetup ?? (await buildPendingAiScriptInput(db, project));
   const script = await generateScript(scriptSetup.input);
 
   return withDbTransaction(db, async (tx) => {

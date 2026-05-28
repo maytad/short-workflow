@@ -1,6 +1,6 @@
 import {
-  formatYoutubeDescriptionWithHashtags,
   type Asset,
+  formatYoutubeDescriptionWithHashtags,
   type YoutubeMetadata,
   type YoutubeUploadMode,
 } from "@short-workflow/shared";
@@ -13,6 +13,11 @@ import {
   useUploadYoutubeMutation,
   useYoutubeAuthStatusQuery,
 } from "./hooks";
+import {
+  isYoutubeUploadAuthReady,
+  isYoutubeUploadReconnectRequired,
+  youtubeUploadErrorMessage,
+} from "./youtubeUploadState";
 
 type YoutubeUploadDialogProps = {
   metadata: YoutubeMetadata;
@@ -33,7 +38,8 @@ export function YoutubeUploadDialog({
   const [mode, setMode] = useState<YoutubeUploadMode>("scheduled_public");
   const hashtags = metadata.hashtags.join(" ");
   const uploadDescription = formatYoutubeDescriptionWithHashtags(metadata);
-  const connected = authStatus.data?.connected === true;
+  const authReady = isYoutubeUploadAuthReady(authStatus.data);
+  const reconnectRequired = isYoutubeUploadReconnectRequired(authStatus.data);
 
   async function connectYoutube() {
     const response = await startAuth.mutateAsync();
@@ -49,7 +55,7 @@ export function YoutubeUploadDialog({
   const errorMessage = startAuth.error
     ? "YouTube connection could not be started."
     : uploadYoutube.error
-      ? "YouTube upload could not be queued."
+      ? youtubeUploadErrorMessage(uploadYoutube.error)
       : null;
 
   return (
@@ -85,12 +91,15 @@ export function YoutubeUploadDialog({
         <div className="grid max-h-[calc(100vh-8.5rem)] gap-4 overflow-y-auto p-4 md:grid-cols-[minmax(180px,240px)_minmax(0,1fr)]">
           <div className="min-w-0">
             <div className="overflow-hidden rounded-md border border-border bg-muted">
-              <video
-                className="aspect-[9/16] max-h-[460px] w-full bg-muted object-contain"
-                controls
-                preload="metadata"
-                src={assetPreviewUrl(outputAsset)}
-              />
+              {
+                // biome-ignore lint/a11y/useMediaCaption: MVP generated previews do not have caption track assets.
+                <video
+                  className="aspect-[9/16] max-h-[460px] w-full bg-muted object-contain"
+                  controls
+                  preload="metadata"
+                  src={assetPreviewUrl(outputAsset)}
+                />
+              }
             </div>
           </div>
 
@@ -148,6 +157,13 @@ export function YoutubeUploadDialog({
               </p>
             ) : null}
 
+            {reconnectRequired ? (
+              <p className="flex items-start gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
+                <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+                Reconnect YouTube to grant upload and analytics access before scheduling.
+              </p>
+            ) : null}
+
             {errorMessage ? (
               <p className="flex items-start gap-2 rounded-md border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-accent-foreground">
                 <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
@@ -166,7 +182,7 @@ export function YoutubeUploadDialog({
           >
             Cancel
           </button>
-          {connected ? (
+          {authReady ? (
             <button
               className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={actionPending}
@@ -194,7 +210,7 @@ export function YoutubeUploadDialog({
               ) : (
                 <Youtube className="size-4" aria-hidden="true" />
               )}
-              Connect YouTube
+              {reconnectRequired ? "Reconnect YouTube" : "Connect YouTube"}
             </button>
           )}
         </div>

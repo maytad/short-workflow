@@ -45,6 +45,9 @@ export const episodeCandidateSchema = z
     visualReveal: z.string().min(1),
     loopPayoff: z.string().min(1),
     whyThisCanBreakPattern: z.string().min(1),
+    creativeTerritory: z.string().min(1),
+    visualProofMode: z.string().min(1),
+    nearDuplicateRisk: z.enum(["low", "medium", "high"]),
     scores: episodeCandidateScoreSchema,
   })
   .strict();
@@ -66,6 +69,7 @@ export type EpisodeResearchInput = {
   channelPresetId: typeof TINY_MECHANISMS_PRESET_ID;
   targetDurationSeconds: 30 | 45 | 60;
   role: EpisodeCandidateRole;
+  recentLocalTopics?: readonly string[];
 };
 
 export type CompiledEpisodeResearchPrompt = CompiledPrompt & {
@@ -126,6 +130,9 @@ export const EPISODE_RESEARCH_JSON_SCHEMA = {
         "visualReveal",
         "loopPayoff",
         "whyThisCanBreakPattern",
+        "creativeTerritory",
+        "visualProofMode",
+        "nearDuplicateRisk",
         "scores",
       ],
       properties: {
@@ -145,6 +152,9 @@ export const EPISODE_RESEARCH_JSON_SCHEMA = {
         visualReveal: { type: "string", minLength: 1 },
         loopPayoff: { type: "string", minLength: 1 },
         whyThisCanBreakPattern: { type: "string", minLength: 1 },
+        creativeTerritory: { type: "string", minLength: 1 },
+        visualProofMode: { type: "string", minLength: 1 },
+        nearDuplicateRisk: { type: "string", enum: ["low", "medium", "high"] },
         scores: candidateScoreJsonSchema,
       },
     },
@@ -171,11 +181,11 @@ export function episodeResearchJsonSchemaForRole(role: EpisodeCandidateRole) {
 export function roleInstruction(role: EpisodeCandidateRole): string {
   switch (role) {
     case "feed_stop_strategist":
-      return "Focus on the first frame, the first 0.5 seconds, the first line, and maximum swipe resistance. Start from a familiar object under visible action or tension, not from a broad fact.";
+      return "Focus on the first frame, the first 0.5 seconds, the first line, and maximum swipe resistance. Start from a familiar everyday situation with an immediate visible contradiction, not from a mechanism family or broad fact.";
     case "broad_object_selector":
-      return "Focus on a familiar everyday object or setting that a broad audience recognizes immediately. Prefer objects with visible locking, snapping, catching, sliding, releasing, bending, or resisting force.";
+      return "Focus on a familiar everyday object or setting that a broad audience recognizes immediately. Prefer a surprising use moment, failure, trace, contrast, or state change over another cap, valve, latch, or pump demonstration.";
     case "visual_mechanism_director":
-      return "Focus on visual proof of cause and effect that can be understood from the picture alone. Prioritize motion, tension, deformation, contact points, force paths, or visible state changes.";
+      return "Focus on visual proof of cause and effect that can be understood from the picture alone. Vary proof modes across material transfer, optical clues, acoustic clues, surface behavior, heat, residue, deformation, contact points, and state changes.";
     case "retention_architect":
       return "Focus on a reveal path that gives the viewer a new visual reason to keep watching every 3-5 seconds. Avoid flat middle explanations and reveal the hidden cause early.";
     case "loop_payoff_editor":
@@ -186,12 +196,29 @@ export function roleInstruction(role: EpisodeCandidateRole): string {
   return exhaustiveRole;
 }
 
+function recentLocalTopicLines(recentLocalTopics: readonly string[] | undefined): string[] {
+  if (!recentLocalTopics || recentLocalTopics.length === 0) {
+    return [
+      "# Recent Local Topic Hints",
+      "No recent local topics were supplied. Still avoid making all roles converge on the same proof family, object shape, or title angle.",
+    ];
+  }
+
+  return [
+    "# Recent Local Topic Hints",
+    "These are duplicate warnings only, not analytics, performance evidence, memory, retrieval, or a ranked topic list.",
+    "Avoid the same object, title angle, mechanism family, visual proof mode, or adjacent everyday cluster unless the user explicitly requested a repeat.",
+    "Do not solve freshness by moving to the nearest adjacent cluster; for example, bottle cap ring, ketchup squeeze cap, soap pump, spray bottle pump, and tub diverter are all cap/valve/liquid-path neighbors when one of them is recent.",
+    `Recent local topic count: ${recentLocalTopics.length}.`,
+  ];
+}
+
 export const episodeResearchPrompt: PromptTemplate<
   EpisodeResearchInput,
   CompiledEpisodeResearchPrompt
 > = {
   id: "tiny_mechanisms_episode_research",
-  version: 4,
+  version: 5,
   purpose: "script",
   provider: "openai",
   compile(input) {
@@ -206,9 +233,11 @@ export const episodeResearchPrompt: PromptTemplate<
         channelPresetId: input.channelPresetId,
         targetDurationSeconds: input.targetDurationSeconds,
         role: input.role,
+        recentLocalTopicCount: input.recentLocalTopics?.length ?? 0,
       },
       metadata: {
         role: input.role,
+        recentLocalTopics: input.recentLocalTopics ?? [],
       },
       messages: [
         {
@@ -223,7 +252,9 @@ export const episodeResearchPrompt: PromptTemplate<
             "",
             "# Shorts Recovery Policy",
             ...SHORTS_RECOVERY_RESEARCH_RULES,
-            "For this recovery batch, pause perception, biology, voice, onions, abstract physics gimmicks, and repeated cabinet or push-latch variants unless the user explicitly asks for them.",
+            "For this recovery batch, do not over-correct into the nearest safe cluster after pausing a weak topic. Freshness means a different everyday situation, viewer misconception, and visual proof mode.",
+            "",
+            ...recentLocalTopicLines(input.recentLocalTopics),
             "",
             "# Task",
             "Generate exactly one candidate for the requested role.",
@@ -235,14 +266,14 @@ export const episodeResearchPrompt: PromptTemplate<
             roleInstruction(input.role),
             "Do not start by choosing from a fixed mechanism category or taxonomy.",
             "Start from an everyday moment that feels visually surprising, then identify the smallest hidden cause that explains it.",
-            "The hidden cause should be mechanical, material, fluid, pressure-based, geometric, contact-point, or another image-readable physical behavior.",
-            "Avoid biology, perception, voice, and abstract explanations in this recovery batch unless the user explicitly asks for them.",
-            "Use latches, springs, cams, one-way locks, ratchets, or click mechanisms only when the visible feed hook is stronger than a generic object demonstration.",
+            "The hidden cause can come from any safe image-readable physical behavior; mechanism-family labels are descriptive metadata after the hook, not a menu to choose from.",
+            "Avoid broad lectures and non-visual claims. Biology, perception, voice, optical, acoustic, thermal, material, fluid, electrical, geometric, and everyday chemical causes are allowed only when the visual proof is concrete and safe.",
+            "Use latches, springs, cams, one-way locks, ratchets, click mechanisms, caps, pumps, or valves only when the everyday situation and proof mode are clearly fresher than recent local topics.",
             "The first frame must be understandable with sound off in under 0.5 seconds.",
             "The first line must create curiosity in under 1 second.",
             "The first three words must be concrete enough to stop a feed scroll.",
-            "Prefer familiar everyday behavior with a visible surprise and a provable hidden cause. A visible moving or tension state is strongly preferred for this recovery batch.",
-            "Strong candidates may use visible motion, contrast, texture change, pressure, flow, reflection, vibration, heat, sound, failure, deformation, residue, phase change, or another image-readable effect.",
+            "Prefer familiar everyday behavior with a visible surprise and a provable hidden cause. Motion and tension can work, but do not default to pressure, valves, caps, pumps, or liquid flow because they are easy to stage.",
+            "Strong candidates may use visible motion, still-image contradiction, contrast, texture change, reflection, vibration, heat, sound-source clues, failure, deformation, residue, phase change, material transfer, surface behavior, or another image-readable effect.",
             "Reject calm object portraits, abstract diagrams as hooks, medical advice, finance, legal, politics, crime, disaster, public figures, dangerous instructions, children's characters, and unsupported claims.",
             "Reject candidates that only restate a known object mechanism without a surprising everyday behavior in the first frame.",
             "Reject candidates that require timestamps, beat timing, word-level timing, karaoke timing, or any other timeline annotation.",
@@ -250,7 +281,9 @@ export const episodeResearchPrompt: PromptTemplate<
             "# Scoring",
             "Score the candidate from 1 to 5 for firstFrameClarity, swipeResistance, broadObjectFamiliarity, visualNovelty, retentionPath, loopPayoffStrength, and genericRisk.",
             "For genericRisk, 1 means low generic risk and 5 means high generic risk.",
-            "Raise genericRisk for familiar push-pop, latch, spring, cam-track, one-way lock, ratchet, or clicker ideas unless the object, first frame, and hidden cause feel clearly new.",
+            "Raise genericRisk and nearDuplicateRisk for familiar push-pop, latch, spring, cam-track, one-way lock, ratchet, clicker, cap, pump, or valve ideas unless the everyday situation, first frame, visual proof mode, and hidden cause feel clearly new.",
+            "Set creativeTerritory to the everyday situation and viewer emotion, not the mechanism family.",
+            "Set visualProofMode to the visible evidence type, such as material transfer, reflection shift, sound-source clue, texture failure, deformation, residue trail, heat change, flow path, or contact-point reveal.",
             "",
             "# Output",
             "Return JSON that follows the supplied schema.",
@@ -262,6 +295,7 @@ export const episodeResearchPrompt: PromptTemplate<
             `<channel_preset_id>${input.channelPresetId}</channel_preset_id>`,
             `<target_duration_seconds>${input.targetDurationSeconds}</target_duration_seconds>`,
             `<candidate_role>${input.role}</candidate_role>`,
+            `<recent_local_topics_json>${JSON.stringify(input.recentLocalTopics ?? [])}</recent_local_topics_json>`,
           ].join("\n"),
         },
       ],

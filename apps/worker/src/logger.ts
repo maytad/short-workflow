@@ -2,7 +2,9 @@ export type WorkerLogEvent =
   | "worker_starting"
   | "worker_loop_started"
   | "stale_jobs_recovered"
+  | "stale_jobs_recovery_failed"
   | "job_claimed"
+  | "job_heartbeat_failed"
   | "job_succeeded"
   | "job_retry_scheduled"
   | "job_failed";

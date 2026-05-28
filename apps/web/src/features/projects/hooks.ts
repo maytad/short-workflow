@@ -265,6 +265,20 @@ export function useCreateTinyMechanismsProjectMutation() {
   });
 }
 
+export function useDeleteProjectMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (projectId: string) =>
+      apiFetch<{ deleted: true }>(`/projects/${projectId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+    },
+  });
+}
+
 export function useGenerateScriptMutation(projectId: string) {
   const queryClient = useQueryClient();
 
