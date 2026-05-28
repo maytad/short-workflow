@@ -150,6 +150,7 @@ Required fields:
 - `title`
 - `concept`
 - `status`
+- `failed_reason`
 - `disclosure_mode`
 - `selected_candidate_id`
 - `selected_plan_id`
@@ -165,6 +166,7 @@ Required fields:
 Selection fields are nullable until the relevant user approval or generation gate has completed.
 `episodes.format` is the only persisted format source of truth. Plans and render inputs copy from
 the episode; they do not own a separate format decision.
+`failed_reason` is nullable and should be set only for unrecoverable episode-level failure.
 
 `episodes.format` shape:
 
@@ -178,6 +180,9 @@ the episode; they do not own a separate format decision.
 
 Duration is intentionally not part of `episodes.format`. `target_duration_seconds` stores the
 creative target duration, while render input duration is derived from the final narration.
+
+`concept` is immutable after episode creation. To explore a different concept, create a new episode
+instead of patching the existing one.
 
 Status values:
 
@@ -193,7 +198,7 @@ Status values:
 - `done`
 - `failed`
 
-Allowed status transitions:
+Forward status transitions:
 
 ```text
 draft -> candidates_ready
@@ -209,55 +214,46 @@ any non-terminal status -> failed (unrecoverable episode invalidation only)
 failed -> draft only through explicit user reset
 ```
 
-Regeneration transitions are also allowed:
+Regeneration rule:
+
+Regenerating gate `X` moves the episode to `X_ready` and clears every selected field for gates
+strictly after `X`. The gate order is:
 
 ```text
-candidates_ready -> candidates_ready
-plan_ready -> plan_ready
-anchor_ready -> anchor_ready
-plan_ready -> candidates_ready
-anchor_ready -> plan_ready
-anchor_ready -> candidates_ready
-beats_ready -> plan_ready
-beats_ready -> candidates_ready
-beats_ready -> anchor_ready
-beats_ready -> beats_ready
-narration_ready -> plan_ready
-narration_ready -> candidates_ready
-narration_ready -> narration_ready
-captions_ready -> plan_ready
-captions_ready -> candidates_ready
-captions_ready -> captions_ready
-render_input_ready -> plan_ready
-render_input_ready -> candidates_ready
-render_input_ready -> captions_ready
+candidates -> plan -> anchor -> beats -> narration -> captions -> render_input
 ```
 
-Regenerating an anchor after beat images exist moves the episode back to `anchor_ready`, clears
-`selected_image_asset_id` on all beats, and makes existing beat image assets stale through lineage.
-Regenerating one beat keeps the episode at `beats_ready` and only clears that beat's selected image
-until a new image is approved.
-Regenerating candidates keeps the episode at `candidates_ready` and clears `selected_candidate_id`,
-`selected_plan_id`, `selected_anchor_asset_id`, `selected_narration_asset_id`,
-`selected_caption_timing_asset_id`, `selected_render_input_asset_id`, and all beat selections.
-Regenerating a plan keeps the episode at `plan_ready` and clears all downstream selected assets and
-beat image selections because the continuity bible may have changed. Regenerating candidates from
-later gates moves the episode back to `candidates_ready`; regenerating a plan from later gates moves
-the episode back to `plan_ready`.
-Regenerating narration keeps the episode at `narration_ready` if it succeeds and leaves the previous
-selected narration in place if it fails. Regenerating captions keeps the episode at `captions_ready`
-if it succeeds and leaves the previous selected caption timing asset in place if it fails.
-Changing any selected anchor or beat image after `render_input_ready` clears
-`selected_render_input_asset_id` and moves the episode back to `captions_ready` when narration and
-captions are still valid.
-These regeneration transitions exclude `done`; after an episode is done, the user should duplicate
-the episode or explicitly reset it before changing upstream content.
+This rule is authoritative. Any examples in this document are illustrative. Regeneration is allowed
+from any later non-terminal gate back to any earlier gate. Regeneration is not allowed from `done`;
+after an episode is done, the user should duplicate the episode or explicitly reset it before
+changing upstream content.
+
+Gate-specific clearing:
+
+- regenerating candidates clears `selected_candidate_id`, `selected_plan_id`,
+  `selected_anchor_asset_id`, `selected_narration_asset_id`, `selected_caption_timing_asset_id`,
+  `selected_render_input_asset_id`, all beat selections, and reconciled beat timing
+- regenerating plan clears `selected_plan_id`, `selected_anchor_asset_id`,
+  `selected_narration_asset_id`, `selected_caption_timing_asset_id`, `selected_render_input_asset_id`,
+  all beat selections, and reconciled beat timing because the continuity bible may change
+- regenerating anchor clears `selected_anchor_asset_id`, `selected_narration_asset_id`,
+  `selected_caption_timing_asset_id`, `selected_render_input_asset_id`, all beat selections, and
+  reconciled beat timing
+- regenerating all beats clears all beat selections, `selected_narration_asset_id`,
+  `selected_caption_timing_asset_id`, `selected_render_input_asset_id`, and reconciled beat timing
+- regenerating one beat clears only that beat's `selected_image_asset_id`,
+  `selected_narration_asset_id`, `selected_caption_timing_asset_id`, `selected_render_input_asset_id`,
+  and reconciled beat timing
+- regenerating narration clears `selected_narration_asset_id`, `selected_caption_timing_asset_id`,
+  `selected_render_input_asset_id`, and reconciled beat timing
+- regenerating captions clears `selected_caption_timing_asset_id` and `selected_render_input_asset_id`
+- regenerating render input clears `selected_render_input_asset_id`
 
 The status should represent the latest valid completed gate, not every active job. Active work is
 derived from `jobs`. A recoverable failed job does not automatically set `episodes.status` to
 `failed`; it leaves the episode at the last valid gate and records the failure on the job. Use
-`episodes.status = failed` only when the episode itself becomes unrecoverable. From `failed`, the
-only transition is an explicit user reset to `draft`.
+`episodes.status = failed` and `episodes.failed_reason` only when the episode itself becomes
+unrecoverable. From `failed`, the only transition is an explicit user reset to `draft`.
 
 `disclosure_mode` values:
 
@@ -692,6 +688,9 @@ generation must use this selected anchor as `parent_anchor_asset_id`.
 If an anchor is approved after beat images already exist, clear all `episode_beats.selected_image_asset_id`
 values and move `episodes.status` back to `anchor_ready`.
 
+Calling the generate anchor endpoint while an anchor already exists creates a new anchor candidate
+asset. It does not change `selected_anchor_asset_id` until the user approves that new asset.
+
 ### 6. Generate Beat Images
 
 Input:
@@ -718,6 +717,10 @@ is wrong, regenerate from the anchor step and mark later beat assets stale throu
 
 Approving a beat image sets `episode_beats.selected_image_asset_id`. Render input generation must
 use only selected beat images.
+
+Calling the generate beat images endpoint with no target beat generates all missing or stale beat
+images. Calling it with a target beat ID regenerates only that beat image. It does not change
+`selected_image_asset_id` until the user approves the new asset.
 
 ### 8. Generate Narration Track
 
@@ -1172,10 +1175,8 @@ Initial API routes:
 - `POST /episodes/:episodeId/candidates/:candidateId/select`
 - `POST /episodes/:episodeId/jobs/generate-plan`
 - `POST /episodes/:episodeId/jobs/generate-anchor-image`
-- `POST /episodes/:episodeId/jobs/regenerate-anchor-image`
 - `POST /episodes/:episodeId/anchor/images/:assetId/approve`
 - `POST /episodes/:episodeId/jobs/generate-beat-images`
-- `POST /episodes/:episodeId/beats/:beatId/jobs/regenerate-image`
 - `POST /episodes/:episodeId/beats/:beatId/images/:assetId/approve`
 - `POST /episodes/:episodeId/jobs/generate-narration`
 - `POST /episodes/:episodeId/jobs/build-captions`
@@ -1186,9 +1187,14 @@ Initial API routes:
 Mutating endpoints must reject requests with `409 Conflict` when the episode already has an active
 pending or processing job.
 
-There are no separate candidate or plan regeneration endpoints. Reusing
-`generate-candidates` or `generate-plan` on a later non-terminal episode status triggers the
-regeneration behavior described in the job flow.
+`DELETE /episodes/:episodeId` is destructive. It deletes episode DB rows and makes a best-effort
+attempt to remove `LOCAL_ASSET_ROOT/episodes/{episodeId}/`. It must return `409 Conflict` while the
+episode has a pending or processing job.
+
+There are no separate regeneration endpoints. Reusing `generate-candidates`, `generate-plan`,
+`generate-anchor-image`, or `generate-beat-images` on a later non-terminal episode status triggers
+the regeneration behavior described in the job flow. For one-beat regeneration,
+`generate-beat-images` accepts a target beat ID in the request body.
 
 ## Error Handling
 
@@ -1214,6 +1220,10 @@ Recoverable job failures should not discard approved work. For example, if narra
 fails while the episode is at `beats_ready`, the failed job is visible in the UI and the episode
 stays at `beats_ready` so the user can retry narration without regenerating candidates, plans,
 anchors, or beat images.
+
+When an episode is marked `failed`, copy the latest unrecoverable job error into
+`episodes.failed_reason` so the detail view can show the failure without scanning job history. Clear
+`failed_reason` on explicit reset to `draft`.
 
 ## Migration Strategy
 
